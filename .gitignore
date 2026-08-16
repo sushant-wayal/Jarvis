@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# Build & Output
+dist/
+build/
+out/
+.next/
+.expo/
+web-build/
+coverage/
+.turbo/
+.cache/
+*.tsbuildinfo
+
+# Environment Variables & Secrets
+.env
+.env*.local
+.env.production
+*.env
+!**/.env.example
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+dev.db
+dev.db-journal
+
+# Mobile / Android / iOS
+.expo-shared/
+*.apk
+*.aab
+*.ipa
+*.app
+android/app/build/
+android/.gradle/
+ios/Pods/
+ios/build/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files & Scratch
+scratch/
+.tmp/

@@ -1,0 +1,75 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String         @default("Sushant")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  preferences   String?        // JSON string of user settings & preferences
+  conversations Conversation[]
+  memories      Memory[]
+  devices       Device[]
+}
+
+model Conversation {
+  id             String          @id @default(uuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String          @default("New Conversation")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  messages       Message[]
+  toolExecutions ToolExecution[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // USER, ASSISTANT, SYSTEM, TOOL
+  content        String
+  inputType      String       @default("TEXT") // TEXT, VOICE
+  createdAt      DateTime     @default(now())
+  metadata       String?      // JSON metadata string
+}
+
+model Memory {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String   // FACT, PREFERENCE, PERSON, PROJECT, ROUTINE, CONTEXT
+  content    String
+  importance Int      @default(3) // 1 to 5 scale
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ToolExecution {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolName       String
+  input          String       // JSON payload
+  output         String       // JSON payload
+  status         String       // SUCCESS, FAILURE
+  durationMs     Int
+  createdAt      DateTime     @default(now())
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  platform   String   // iOS, Android, Web
+  appVersion String
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+}

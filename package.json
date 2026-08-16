@@ -1,0 +1,21 @@
+{
+  "name": "jarvis-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:brain": "npm run dev --workspace=apps/brain",
+    "dev:mobile": "npm run dev --workspace=apps/mobile",
+    "build:brain": "npm run build --workspace=apps/brain",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
