@@ -4,11 +4,9 @@
     "slug": "jarvis",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "jarvis",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#0A0D14"
     },
@@ -19,14 +17,7 @@
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0D14"
-      },
       "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     },
     "plugins": ["expo-router"]
   }

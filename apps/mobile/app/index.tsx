@@ -1,6 +1,6 @@
 import { ChatMessage, JarvisState } from '@jarvis/shared';
-import React, { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as React from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { VoiceOrb } from '../src/components/VoiceOrb';
@@ -8,46 +8,48 @@ import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
 import { useVoiceRecorder } from '../src/hooks/useVoiceRecorder';
 import { apiClient } from '../src/services/apiClient';
 
-export default function HomeScreen() {
-  const [jarvisState, setJarvisState] = useState<JarvisState>('IDLE');
-  const [isOnline, setIsOnline] = useState(true);
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [lastTranscript, setLastTranscript] = useState<string>('');
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+export default function HomeScreen(): React.ReactElement {
+  const [jarvisState, setJarvisState] = React.useState<JarvisState>('IDLE');
+  const [isOnline, setIsOnline] = React.useState<boolean>(true);
+  const [conversationId, setConversationId] = React.useState<string | undefined>(undefined);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [lastTranscript, setLastTranscript] = React.useState<string>('');
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
   const { isRecording, recordingLevel, startRecording, stopRecording } = useVoiceRecorder();
   const { isPlaying, playBase64Audio, stopAudio } = useAudioPlayer();
 
-  // Periodic health check
-  useEffect(() => {
-    const check = async () => {
-      const health = await apiClient.checkHealth();
-      const online = Boolean(health);
-      setIsOnline(online);
-      if (!online) {
-        setJarvisState('OFFLINE');
-      } else if (jarvisState === 'OFFLINE') {
-        setJarvisState('IDLE');
-      }
-    };
-    check();
-    const interval = setInterval(check, 10000);
-    return () => clearInterval(interval);
-  }, [jarvisState]);
+  const runHealthCheck = async (): Promise<void> => {
+    const health = await apiClient.checkHealth();
+    const online = Boolean(health);
+    setIsOnline(online);
+    setJarvisState((prev: JarvisState) => {
+      if (!online) return 'OFFLINE';
+      if (prev === 'OFFLINE') return 'IDLE';
+      return prev;
+    });
+  };
+
+  // Check health once on initial mount
+  React.useEffect(() => {
+    runHealthCheck();
+  }, []);
 
   // Sync state transitions
-  useEffect(() => {
+  React.useEffect(() => {
     if (isRecording) {
       setJarvisState('LISTENING');
     } else if (isPlaying) {
       setJarvisState('SPEAKING');
+    } else if (!isRecording && !isPlaying && jarvisState === 'SPEAKING') {
+      setJarvisState('IDLE');
     }
-  }, [isRecording, isPlaying]);
+  }, [isRecording, isPlaying, jarvisState]);
 
-  const handleOrbPress = async () => {
+  const handleOrbPress = async (): Promise<void> => {
     setErrorMsg(null);
 
+    // If currently playing, stop audio and allow immediate new recording
     if (isPlaying) {
       await stopAudio();
       setJarvisState('IDLE');
@@ -95,39 +97,42 @@ export default function HomeScreen() {
             createdAt: new Date().toISOString(),
           };
 
-          setMessages((prev) => [...prev, userMsg, jarvisMsg]);
+          setMessages((prev: ChatMessage[]) => [...prev, userMsg, jarvisMsg]);
         }
 
         if (response.audioBase64) {
           setJarvisState('SPEAKING');
-          await playBase64Audio(response.audioBase64);
+          await playBase64Audio(response.audioBase64, 'audio/mp3', () => {
+            setJarvisState('IDLE');
+          });
         } else {
           setJarvisState('IDLE');
         }
-      } catch (err) {
+      } catch (err: unknown) {
         setJarvisState('ERROR');
         setErrorMsg(err instanceof Error ? err.message : 'No connection. I will need internet access for that.');
       }
     } else {
-      // Start recording
+      // Start recording next question
+      setJarvisState('LISTENING');
       await startRecording();
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusHeader state={jarvisState} isOnline={isOnline} />
+    <View style={styles.screenContainer}>
+      <StatusHeader state={jarvisState} isOnline={isOnline} onRefresh={runHealthCheck} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.orbContainer}>
           <VoiceOrb state={jarvisState} onPress={handleOrbPress} audioLevel={recordingLevel} />
         </View>
 
-        {errorMsg && (
+        {errorMsg ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
           </View>
-        )}
+        ) : null}
 
         {lastTranscript ? (
           <View style={styles.transcriptBox}>
@@ -141,16 +146,16 @@ export default function HomeScreen() {
           {messages.length === 0 ? (
             <Text style={styles.emptyText}>Tap the orb above and speak directly to Jarvis.</Text>
           ) : (
-            messages.slice(-4).map((msg) => <MessageBubble key={msg.id} message={msg} />)
+            messages.slice(-4).map((msg: ChatMessage) => <MessageBubble key={msg.id} message={msg} />)
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  screenContainer: {
     flex: 1,
     backgroundColor: '#0A0D14',
   },

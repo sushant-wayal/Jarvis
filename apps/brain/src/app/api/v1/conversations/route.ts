@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const summaries = conversations.map((c) => ({
+    const summaries = conversations.map((c: Record<string, unknown> & { createdAt: Date; updatedAt: Date; messages: Array<{ content: string }> }) => ({
       id: c.id,
       userId: c.userId,
       title: c.title,

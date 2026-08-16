@@ -1,5 +1,5 @@
 import { BrainResponse, ToolCall, ToolContext, ToolResult } from '@jarvis/shared';
-import { aiClient, DEFAULT_MODEL } from '@/lib/ai/gemini';
+import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
 import { memoryService } from '@/modules/memory/memory-service';
@@ -19,19 +19,68 @@ export interface ProcessMessageInput {
 }
 
 export class BrainOrchestrator {
+  private fallbackModels = [DEFAULT_MODEL, ...FAST_FALLBACK_MODELS];
+
+  private async generateWithFallback(params: {
+    systemInstruction?: string;
+    contents: Array<{ role: string; parts: Array<{ text?: string; inlineData?: Record<string, unknown> }> }>;
+    toolsConfig?: Array<Record<string, unknown>>;
+  }) {
+    const uniqueModels = Array.from(new Set(this.fallbackModels));
+    let lastError: unknown = null;
+
+    for (const model of uniqueModels) {
+      try {
+        const config: Record<string, unknown> = {};
+        if (params.systemInstruction) {
+          config.systemInstruction = params.systemInstruction;
+        }
+        if (params.toolsConfig && params.toolsConfig.length > 0) {
+          config.tools = [{ functionDeclarations: params.toolsConfig }];
+        }
+
+        const response = await aiClient.models.generateContent({
+          model,
+          contents: params.contents as never,
+          config: Object.keys(config).length > 0 ? (config as never) : undefined,
+        });
+        return response;
+      } catch (err) {
+        lastError = err;
+        logger.warn(`Model ${model} failed, trying next fallback model`, {
+          model,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    throw lastError || new Error('All fallback models failed');
+  }
+
   async processMessage(input: ProcessMessageInput): Promise<BrainResponse> {
     const userId = input.userId || 'default-user';
     const timezone = input.timezone || 'UTC';
     const locale = input.locale || 'en-US';
     const requestId = input.requestId;
 
-    // 1. Ensure user exists
+    // 1. Ensure user exists first
     await this.ensureUserExists(userId);
 
-    // 2. Load or create conversation
-    const conversationId = await this.getOrCreateConversation(userId, input.conversationId, input.message);
+    // 2. Resolve conversation & relevant memories
+    const [conversationId, memories] = await Promise.all([
+      this.getOrCreateConversation(userId, input.conversationId, input.message),
+      memoryService.getRelevantMemories(userId, input.message, 5),
+    ]);
 
-    // 3. Store user message in DB
+    // 3. Load recent history before inserting current turn
+    const historyMessages = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+    });
+    historyMessages.reverse();
+
+    // 4. Save current user message to database
     await prisma.message.create({
       data: {
         conversationId,
@@ -41,21 +90,10 @@ export class BrainOrchestrator {
       },
     });
 
-    // 4. Load recent conversation history (last 10 messages)
-    const historyMessages = await prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-    historyMessages.reverse();
-
-    // 5. Retrieve relevant memories for user
-    const memories = await memoryService.getRelevantMemories(userId, input.message, 5);
-
-    // 6. Build composed system prompt
+    // 5. Build system prompt
     const systemPrompt = buildSystemPrompt({ name: 'Sushant' }, memories);
 
-    // 7. Tool context
+    // 6. Tool context
     const toolContext: ToolContext = {
       userId,
       conversationId,
@@ -64,7 +102,7 @@ export class BrainOrchestrator {
       locale,
     };
 
-    // 8. Gemini function declarations
+    // 7. Gemini function declarations
     const toolsConfig = toolRegistry.getGeminiFunctionDeclarations();
 
     const executedToolCalls: ToolCall[] = [];
@@ -72,33 +110,44 @@ export class BrainOrchestrator {
     let finalText = '';
 
     try {
-      // Build conversation contents for Gemini SDK
-      const contents: Array<{ role: string; parts: Array<{ text?: string }> }> = [
-        { role: 'user', parts: [{ text: `[SYSTEM CONTEXT]\n${systemPrompt}` }] },
-        { role: 'model', parts: [{ text: 'Understood. I am Jarvis.' }] },
-      ];
+      // Build conversation contents for Gemini SDK (strictly alternating user/model turns ending in user)
+      const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
       for (const msg of historyMessages) {
         if (msg.role === 'USER') {
-          contents.push({ role: 'user', parts: [{ text: msg.content }] });
+          // Avoid consecutive user turns
+          if (contents.length === 0 || contents[contents.length - 1].role === 'model') {
+            contents.push({ role: 'user', parts: [{ text: msg.content }] });
+          }
         } else if (msg.role === 'ASSISTANT') {
-          contents.push({ role: 'model', parts: [{ text: msg.content }] });
+          // Only add model turn if preceded by a user turn
+          if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+            contents.push({ role: 'model', parts: [{ text: msg.content }] });
+          }
         }
       }
 
+      // If last turn is a user turn, add dummy model response or remove it to append current turn
+      if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+        contents.push({ role: 'model', parts: [{ text: 'Understood.' }] });
+      }
+
+      // ALWAYS append the current user query as the final turn
+      contents.push({ role: 'user', parts: [{ text: input.message }] });
+
       // First LLM turn with tool calling
-      const response = await aiClient.models.generateContent({
-        model: DEFAULT_MODEL,
+      const response = await this.generateWithFallback({
+        systemInstruction: systemPrompt,
         contents,
-        config: {
-          tools: [{ functionDeclarations: toolsConfig }],
-        },
+        toolsConfig: toolsConfig as never,
       });
 
       // Check if Gemini invoked any function calls
       const functionCalls = response.functionCalls;
 
       if (functionCalls && functionCalls.length > 0) {
+        let requiresComplexSynthesis = false;
+
         for (const fc of functionCalls) {
           const fcName = fc.name || '';
           if (!fcName) continue;
@@ -115,7 +164,12 @@ export class BrainOrchestrator {
             const toolRes = await tool.execute(toolCall.input, toolContext);
             executedToolResults.push(toolRes);
 
-            // Feed tool result back to LLM
+            // Web search or failed tools require LLM synthesis
+            if (fcName === 'web_search' || !toolRes.success) {
+              requiresComplexSynthesis = true;
+            }
+
+            // Feed tool result back to contents in case 2nd turn is needed
             contents.push({
               role: 'model',
               parts: [{ text: `Called tool ${fcName}` }],
@@ -131,112 +185,140 @@ export class BrainOrchestrator {
           }
         }
 
-        // Second LLM turn to synthesize final answer with tool outputs
-        const finalResponse = await aiClient.models.generateContent({
-          model: DEFAULT_MODEL,
-          contents,
-        });
-
-        finalText = finalResponse.text?.trim() || 'Done.';
+        // Fast-Path: Deterministic tools format instantly without 2nd 2000ms LLM roundtrip!
+        if (!requiresComplexSynthesis && executedToolResults.length > 0 && executedToolResults[0].success) {
+          finalText = this.formatDirectToolOutput(executedToolCalls[0].name, executedToolResults[0].output);
+        } else {
+          // Second LLM turn for complex web search synthesis
+          const finalResponse = await this.generateWithFallback({
+            systemInstruction: systemPrompt,
+            contents,
+          });
+          finalText = finalResponse.text?.trim() || 'Done.';
+        }
       } else {
         finalText = response.text?.trim() || "I'm sorry, I couldn't process that right now.";
       }
     } catch (err) {
       logger.error('Gemini execution error, using fallback logic', err, { requestId });
-      finalText = await this.fallbackOrchestration(input.message, toolContext, executedToolCalls, executedToolResults);
+      finalText = this.getHeuristicFallbackResponse(input.message, executedToolResults);
     }
 
-    // Clean up any remaining AI fluff or disclaimers
-    finalText = this.sanitizeResponse(finalText);
+    // 8. Clean up voice-unfriendly text
+    finalText = this.sanitizeVoiceResponse(finalText);
 
-    // 9. Store assistant message in DB
-    await prisma.message.create({
-      data: {
-        conversationId,
-        role: 'ASSISTANT',
-        content: finalText,
-        inputType: 'TEXT',
-        metadata: JSON.stringify({ executedToolCalls, requestId }),
-      },
-    });
+    // 9. Non-blocking Database storage & async memory extraction
+    Promise.all([
+      prisma.message.create({
+        data: {
+          conversationId,
+          role: 'ASSISTANT',
+          content: finalText,
+          inputType: input.inputType || 'TEXT',
+          metadata: JSON.stringify({
+            executedToolCalls,
+            executedToolResults,
+          }),
+        },
+      }),
+      ...executedToolCalls.map((call, i) => {
+        const res = executedToolResults[i];
+        return prisma.toolExecution.create({
+          data: {
+            conversationId,
+            toolName: call.name,
+            input: JSON.stringify(call.input),
+            output: res ? JSON.stringify(res.output) : '{}',
+            status: res?.success ? 'SUCCESS' : 'FAILED',
+            durationMs: res?.durationMs || 0,
+          },
+        });
+      }),
+    ]).catch((e: unknown) => logger.warn('Background message save warning', { error: String(e) }));
 
-    // 10. Extract potential long-term memories in background
-    memoryExtractor.extractAndStoreMemories(userId, input.message, finalText).catch(() => {});
+    // 10. Asynchronously extract and save memories without blocking response
+    memoryExtractor
+      .extractAndStoreMemories(userId, input.message, finalText)
+      .catch((e: unknown) => logger.warn('Memory extraction step completed without additions', { error: String(e) }));
 
     return {
       text: finalText,
-      shouldSpeak: Boolean(input.speakResponse || input.inputType === 'VOICE'),
+      conversationId,
       toolCalls: executedToolCalls,
       toolResults: executedToolResults,
-      conversationId,
+      shouldSpeak: Boolean(input.speakResponse),
       requestId,
     };
   }
 
-  private async fallbackOrchestration(
-    message: string,
-    context: ToolContext,
-    executedToolCalls: ToolCall[],
-    executedToolResults: ToolResult[]
-  ): Promise<string> {
-    const msgLower = message.toLowerCase();
-
-    if (msgLower.includes('weather')) {
-      const tool = toolRegistry.getTool('weather');
-      if (tool) {
-        const res = await tool.execute({ location: 'Mumbai' }, context);
-        executedToolCalls.push({ id: 'fallback_1', name: 'weather', input: { location: 'Mumbai' } });
-        executedToolResults.push(res);
-        const data = res.output as { temperatureC: number; condition: string; recommendation: string };
-        return `It's currently ${data.temperatureC}°C and ${data.condition.toLowerCase()}. ${data.recommendation}`;
-      }
+  private formatDirectToolOutput(toolName: string, rawOutput: unknown): string {
+    if (!rawOutput || typeof rawOutput !== 'object') {
+      return String(rawOutput || 'Done.');
     }
-
-    if (msgLower.includes('time')) {
-      const tool = toolRegistry.getTool('current_time');
-      if (tool) {
-        const res = await tool.execute({}, context);
-        executedToolCalls.push({ id: 'fallback_2', name: 'current_time', input: {} });
-        executedToolResults.push(res);
-        const data = res.output as { formatted: string };
-        return `It is currently ${data.formatted}.`;
-      }
+    const output = rawOutput as Record<string, unknown>;
+    if (toolName === 'calculator') {
+      return `${output.result}.`;
     }
-
-    if (msgLower.includes('date') || msgLower.includes('today')) {
-      const tool = toolRegistry.getTool('date_time');
-      if (tool) {
-        const res = await tool.execute({}, context);
-        executedToolCalls.push({ id: 'fallback_3', name: 'date_time', input: {} });
-        executedToolResults.push(res);
-        const data = res.output as { date: string };
-        return `Today is ${data.date}.`;
-      }
+    if (toolName === 'current_time' || toolName === 'date_time') {
+      if (typeof output.formatted === 'string') return output.formatted;
+      if (typeof output.time === 'string') return `It is ${output.time}.`;
     }
-
-    // Math expression fallback matching
-    const mathMatch = message.match(/(\d+\s*(?:percent of|\%|plus|minus|times|divided by|\+|\-|\*|\/)\s*\d+)/i) ||
-      message.match(/(\d+\s*[\+\-\*\/\%]\s*\d+)/);
-
-    if (mathMatch || msgLower.includes('calculate') || msgLower.includes('percent')) {
-      const expr = mathMatch ? mathMatch[1] : message.replace(/[^0-9+\-*/.%]/g, ' ').trim();
-      const tool = toolRegistry.getTool('calculator');
-      if (tool && expr) {
-        const res = await tool.execute({ expression: expr }, context);
-        executedToolCalls.push({ id: 'fallback_4', name: 'calculator', input: { expression: expr } });
-        executedToolResults.push(res);
-        if (res.success && res.output) {
-          const data = res.output as { result: number };
-          return `${data.result}.`;
-        }
-      }
+    if (toolName === 'weather') {
+      if (typeof output.summary === 'string') return output.summary;
     }
-
-    return "I couldn't process that request right now. Please try again.";
+    if ('result' in output) {
+      return `${output.result}`;
+    }
+    return JSON.stringify(output);
   }
 
-  private sanitizeResponse(text: string): string {
+  private getHeuristicFallbackResponse(userMessage: string, toolResults: ToolResult[]): string {
+    if (toolResults.length > 0) {
+      const last = toolResults[toolResults.length - 1];
+      if (last.success && last.output) {
+        if (typeof last.output === 'object' && 'result' in last.output) {
+          return `${last.output.result}`;
+        }
+        return JSON.stringify(last.output);
+      }
+    }
+
+    // Direct math evaluator fallback for queries like "49 into 193", "25 * 4", "100 divided by 5"
+    const mathMatch = userMessage.match(/(\d+(?:\.\d+)?)\s*(?:into|times|multiplied by|\*|x|\+|\-|\/|divided by)\s*(\d+(?:\.\d+)?)/i);
+    if (mathMatch) {
+      const num1 = parseFloat(mathMatch[1]);
+      const num2 = parseFloat(mathMatch[2]);
+      const msg = userMessage.toLowerCase();
+      if (msg.includes('into') || msg.includes('times') || msg.includes('multiplied') || msg.includes('*') || msg.includes('x')) {
+        return `${num1 * num2}.`;
+      }
+      if (msg.includes('+') || msg.includes('plus') || msg.includes('add')) {
+        return `${num1 + num2}.`;
+      }
+      if (msg.includes('-') || msg.includes('minus') || msg.includes('subtract')) {
+        return `${num1 - num2}.`;
+      }
+      if (msg.includes('/') || msg.includes('divided')) {
+        return `${num2 !== 0 ? num1 / num2 : 'Error: division by zero'}.`;
+      }
+    }
+
+    const msg = userMessage.toLowerCase();
+    if (msg.includes('time')) {
+      return `The current time is ${new Date().toLocaleTimeString()}.`;
+    }
+    if (msg.includes('date')) {
+      return `Today is ${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`;
+    }
+
+    return "I am here. How can I help you, Sushant?";
+  }
+
+  private sanitizeVoiceResponse(text: string): string {
     return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/```[\s\S]*?```/g, 'Code output provided.')
       .replace(/^As an AI language model,\s*/i, '')
       .replace(/^Certainly!\s*/i, '')
       .replace(/^Sure,\s*/i, '')

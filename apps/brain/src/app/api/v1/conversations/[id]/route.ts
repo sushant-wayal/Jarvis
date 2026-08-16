@@ -27,7 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         title: conversation.title,
         createdAt: conversation.createdAt.toISOString(),
         updatedAt: conversation.updatedAt.toISOString(),
-        messages: conversation.messages.map((m) => ({
+        messages: conversation.messages.map((m: { id: string; conversationId: string; role: string; content: string; inputType: string; createdAt: Date; metadata: string | null }) => ({
           id: m.id,
           conversationId: m.conversationId,
           role: m.role,

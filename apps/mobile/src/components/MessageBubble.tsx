@@ -2,11 +2,12 @@ import { ChatMessage } from '@jarvis/shared';
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-interface MessageBubbleProps {
+export interface MessageBubbleProps {
   message: ChatMessage;
+  key?: string;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+export function MessageBubble({ message }: MessageBubbleProps): React.ReactElement {
   const isUser = message.role === 'USER';
   const toolCalls = message.metadata?.executedToolCalls as Array<{ name: string }> | undefined;
 
@@ -36,7 +37,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
       </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   wrapper: {

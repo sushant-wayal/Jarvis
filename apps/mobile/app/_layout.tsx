@@ -1,44 +1,61 @@
 import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import * as React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-export default function RootLayout() {
+export default function RootLayout(): React.ReactElement {
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor: '#38BDF8',
-          tabBarInactiveTintColor: '#64748B',
-          tabBarLabelStyle: styles.tabLabel,
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Jarvis Voice',
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🎙️</Text>,
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+        <StatusBar style="light" />
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarStyle: styles.tabBar,
+            tabBarItemStyle: styles.tabBarItem,
+            tabBarActiveTintColor: '#38BDF8',
+            tabBarInactiveTintColor: '#64748B',
+            tabBarLabelStyle: styles.tabLabel,
+            tabBarIconStyle: styles.tabIcon,
           }}
-        />
-        <Tabs.Screen
-          name="conversation"
-          options={{
-            title: 'History',
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>💬</Text>,
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>⚙️</Text>,
-          }}
-        />
-      </Tabs>
-    </View>
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Jarvis Voice',
+              tabBarIcon: () => (
+                <View style={styles.iconWrapper}>
+                  <Text style={{ fontSize: 20 }}>🎙️</Text>
+                </View>
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="conversation"
+            options={{
+              title: 'History',
+              tabBarIcon: () => (
+                <View style={styles.iconWrapper}>
+                  <Text style={{ fontSize: 20 }}>💬</Text>
+                </View>
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="settings"
+            options={{
+              title: 'Settings',
+              tabBarIcon: () => (
+                <View style={styles.iconWrapper}>
+                  <Text style={{ fontSize: 20 }}>⚙️</Text>
+                </View>
+              ),
+            }}
+          />
+        </Tabs>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -50,12 +67,25 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: '#0F172A',
     borderTopColor: '#1E293B',
-    height: 60,
-    paddingBottom: 8,
-    paddingTop: 6,
+    borderTopWidth: 1,
+    height: 66,
+    paddingBottom: 10,
+    paddingTop: 8,
+    elevation: 8,
+  },
+  tabBarItem: {
+    paddingVertical: 2,
   },
   tabLabel: {
     fontSize: 11,
     fontWeight: '600',
+    marginTop: 2,
+  },
+  tabIcon: {
+    marginBottom: 0,
+  },
+  iconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

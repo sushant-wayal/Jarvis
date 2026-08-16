@@ -1,18 +1,19 @@
 import { JarvisState } from '@jarvis/shared';
-import React, { useEffect, useRef } from 'react';
+import * as React from 'react';
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-interface VoiceOrbProps {
+export interface VoiceOrbProps {
   state: JarvisState;
   onPress: () => void;
   audioLevel?: number;
+  key?: string;
 }
 
-export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, onPress, audioLevel = 0 }) => {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+export function VoiceOrb({ state, onPress, audioLevel = 0 }: VoiceOrbProps): React.ReactElement {
+  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+  const rotateAnim = React.useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (state === 'LISTENING') {
       Animated.loop(
         Animated.sequence([
@@ -61,7 +62,7 @@ export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, onPress, audioLevel =
     outputRange: ['0deg', '360deg'],
   });
 
-  const getOrbColor = () => {
+  const getOrbColor = (): string => {
     switch (state) {
       case 'LISTENING':
         return '#00F2FE'; // Vibrant Cyan
@@ -80,7 +81,7 @@ export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, onPress, audioLevel =
     }
   };
 
-  const getLabelText = () => {
+  const getLabelText = (): string => {
     switch (state) {
       case 'LISTENING':
         return 'Listening...';
@@ -125,7 +126,7 @@ export const VoiceOrb: React.FC<VoiceOrbProps> = ({ state, onPress, audioLevel =
       <Text style={[styles.statusText, { color }]}>{getLabelText()}</Text>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {

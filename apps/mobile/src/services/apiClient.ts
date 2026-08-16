@@ -8,12 +8,13 @@ import {
   VoiceResponse,
 } from '@jarvis/shared';
 
-const DEFAULT_API_URL = process.env.EXPO_PUBLIC_JARVIS_API_URL || 'http://localhost:3000/api/v1';
+// Direct IP address of the local Jarvis Brain backend
+const DEFAULT_API_URL = 'http://192.168.1.71:3000/api/v1';
 
 export class JarvisApiClient {
   private baseUrl: string = DEFAULT_API_URL;
 
-  public setBaseUrl(url: string) {
+  public setBaseUrl(url: string): void {
     this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
   }
 
@@ -23,9 +24,16 @@ export class JarvisApiClient {
 
   async checkHealth(): Promise<HealthStatus | null> {
     try {
-      const res = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(4000) });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`${this.baseUrl}/health`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) return null;
       const json = (await res.json()) as ApiResponse<HealthStatus>;
-      return json.data;
+      return json.data || null;
     } catch {
       return null;
     }
@@ -38,7 +46,7 @@ export class JarvisApiClient {
   ): Promise<BrainResponse> {
     const res = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         message,
         conversationId,
@@ -55,6 +63,14 @@ export class JarvisApiClient {
     return json.data;
   }
 
+  async sendMessage(params: {
+    message: string;
+    conversationId?: string;
+    speakResponse?: boolean;
+  }): Promise<BrainResponse> {
+    return this.sendChatMessage(params.message, params.conversationId, params.speakResponse);
+  }
+
   async sendVoiceAudio(
     audioBase64: string,
     mimeType = 'audio/m4a',
@@ -62,7 +78,7 @@ export class JarvisApiClient {
   ): Promise<VoiceResponse> {
     const res = await fetch(`${this.baseUrl}/voice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         audioBase64,
         mimeType,
@@ -79,32 +95,66 @@ export class JarvisApiClient {
     return json.data;
   }
 
+  async synthesizeSpeech(text: string): Promise<{ audioBase64: string } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/voice/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const json = (await res.json()) as ApiResponse<{ audioBase64: string }>;
+      if (json.success && json.data) {
+        return json.data;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   async getConversations(): Promise<ConversationSummary[]> {
-    const res = await fetch(`${this.baseUrl}/conversations`);
+    const res = await fetch(`${this.baseUrl}/conversations`, {
+      headers: { Accept: 'application/json' },
+    });
     const json = (await res.json()) as ApiResponse<ConversationSummary[]>;
     return json.data || [];
   }
 
   async getConversationMessages(id: string): Promise<ChatMessage[]> {
-    const res = await fetch(`${this.baseUrl}/conversations/${id}`);
+    const res = await fetch(`${this.baseUrl}/conversations/${id}`, {
+      headers: { Accept: 'application/json' },
+    });
     const json = (await res.json()) as ApiResponse<{ messages: ChatMessage[] }>;
     return json.data?.messages || [];
   }
 
+  async getMessages(id: string): Promise<ChatMessage[]> {
+    return this.getConversationMessages(id);
+  }
+
   async deleteConversation(id: string): Promise<boolean> {
-    const res = await fetch(`${this.baseUrl}/conversations/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${this.baseUrl}/conversations/${id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    });
     const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
     return Boolean(json.data?.deleted);
   }
 
   async getMemories(): Promise<MemoryItem[]> {
-    const res = await fetch(`${this.baseUrl}/memory`);
+    const res = await fetch(`${this.baseUrl}/memory`, {
+      headers: { Accept: 'application/json' },
+    });
     const json = (await res.json()) as ApiResponse<MemoryItem[]>;
     return json.data || [];
   }
 
   async deleteMemory(id: string): Promise<boolean> {
-    const res = await fetch(`${this.baseUrl}/memory?id=${id}`, { method: 'DELETE' });
+    const res = await fetch(`${this.baseUrl}/memory?id=${id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    });
     const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
     return Boolean(json.data?.deleted);
   }

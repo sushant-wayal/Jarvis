@@ -17,7 +17,7 @@ export class MemoryService {
 
       // Keyword & relevance ranking
       const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const ranked = memories.map((m) => {
+      const ranked = memories.map((m: { content: string; importance: number; id: string; userId: string; type: string; createdAt: Date; updatedAt: Date }) => {
         const contentLower = m.content.toLowerCase();
         let score = m.importance * 2;
         for (const word of queryWords) {
@@ -28,8 +28,8 @@ export class MemoryService {
         return { memory: m, score };
       });
 
-      ranked.sort((a, b) => b.score - a.score);
-      return ranked.slice(0, limit).map((r) => this.mapToMemoryItem(r.memory));
+      ranked.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+      return ranked.slice(0, limit).map((r: { memory: { id: string; userId: string; type: string; content: string; importance: number; createdAt: Date; updatedAt: Date }; score: number }) => this.mapToMemoryItem(r.memory));
     } catch (err) {
       logger.error('Failed to fetch relevant memories', err, { userId });
       return [];

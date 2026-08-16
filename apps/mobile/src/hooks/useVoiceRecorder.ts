@@ -1,5 +1,5 @@
 import { Audio } from 'expo-av';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import * as React from 'react';
 
 export interface UseVoiceRecorderReturn {
   isRecording: boolean;
@@ -11,12 +11,12 @@ export interface UseVoiceRecorderReturn {
 }
 
 export function useVoiceRecorder(): UseVoiceRecorderReturn {
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingLevel, setRecordingLevel] = useState(0);
-  const [hasPermission, setHasPermission] = useState(false);
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = React.useState<boolean>(false);
+  const [recordingLevel, setRecordingLevel] = React.useState<number>(0);
+  const [hasPermission, setHasPermission] = React.useState<boolean>(false);
+  const recordingRef = React.useRef<Audio.Recording | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     (async () => {
       try {
         const { status } = await Audio.requestPermissionsAsync();
@@ -33,7 +33,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     })();
   }, []);
 
-  const startRecording = useCallback(async () => {
+  const startRecording = React.useCallback(async (): Promise<void> => {
     try {
       if (!hasPermission) {
         const { status } = await Audio.requestPermissionsAsync();
@@ -69,7 +69,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }
   }, [hasPermission]);
 
-  const stopRecording = useCallback(async (): Promise<{ audioBase64: string; mimeType: string } | null> => {
+  const stopRecording = React.useCallback(async (): Promise<{ audioBase64: string; mimeType: string } | null> => {
     if (!recordingRef.current) return null;
 
     try {
@@ -83,7 +83,6 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       const uri = recording.getURI();
       if (!uri) return null;
 
-      // In React Native / Expo web or native, fetch local file URI as blob to base64
       const response = await fetch(uri);
       const blob = await response.blob();
 
@@ -105,7 +104,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     }
   }, []);
 
-  const cancelRecording = useCallback(async () => {
+  const cancelRecording = React.useCallback(async (): Promise<void> => {
     if (recordingRef.current) {
       try {
         await recordingRef.current.stopAndUnloadAsync();
