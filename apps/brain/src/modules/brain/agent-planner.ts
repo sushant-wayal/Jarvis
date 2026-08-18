@@ -86,10 +86,10 @@ ${context.systemContextString}
 
 Guidelines:
 1. Speak concisely and clearly. Deliver answers directly.
-2. Use tools whenever external calculation, live information, reminders, or memory actions are needed.
-3. Combine multiple tools in sequence if required to fully satisfy the user's goal.
-4. If a calculation is requested, return the concise mathematical result.
-5. If creating a reminder or task, confirm once completed with date/time.`,
+2. Use tools whenever external calculation, live information, reminders, events, or memory actions are needed.
+3. If user mentions future trips or plans (e.g. "I'm going to Goa next month"), use 'event_create'.
+4. If user asks for a location-triggered reminder (e.g. "When I reach Goa, remind me to go parasailing"), use 'event_reminder_create'.
+5. If creating a reminder or task, confirm once completed with details.`,
           contents: contents as never,
           toolsConfig: toolsConfig as never,
         });
@@ -204,7 +204,7 @@ Guidelines:
           });
         }
 
-        // Fast path for single-step deterministic tools (calculator, date/time)
+        // Fast path for single-step deterministic tools (calculator, date/time, task, event tools)
         if (allDeterministicFastPath && stepCount === 1 && executedToolResults.length > 0 && executedToolResults[0].success) {
           finalText = this.formatDirectOutput(executedToolCalls[0].name, executedToolResults[0].output);
           responseMode = 'ACTION';
@@ -268,6 +268,19 @@ Guidelines:
     }
     if (toolName === 'memory_create') {
       return `I will remember that.`;
+    }
+    if (toolName === 'event_create') {
+      return `Got it. I'll keep your ${output.title || 'trip'} in mind.`;
+    }
+    if (toolName === 'event_reminder_create') {
+      return `Got it. I'll remind you when you're in ${output.targetLocation || 'that area'}.`;
+    }
+    if (toolName === 'place_save') {
+      return `Saved "${output.name}" as a known place.`;
+    }
+    if (toolName === 'location_get') {
+      const locStr = [output.city, output.state, output.country].filter(Boolean).join(', ');
+      return locStr ? `You are currently in ${locStr}.` : 'Location currently unavailable.';
     }
     if ('result' in output) {
       return `${output.result}`;

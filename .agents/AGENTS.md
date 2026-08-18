@@ -24,3 +24,20 @@ When working on this repository, all AI agents must follow these strictly enforc
 20. **Keep APIs backward compatible when possible.** Maintain consistent response contracts (`success`, `data`, `error`, `requestId`).
 21. **Document architectural decisions.** Keep `docs/` updated as features are added or modified.
 22. **Do not implement fake functionality.** Build real, robust, working loops.
+
+## Location Awareness & Event-Based Reminders Rules
+
+23. **Never collect location more frequently than necessary.** Throttle client-side GPS reports and rely on significant location changes.
+24. **Never store detailed location history unless explicitly required and enabled.** Keep only the latest `UserLocationState` and `KnownPlace` entities.
+25. **Treat location as sensitive data.** Validate all coordinate ranges (-90..90, -180..180) and enforce user authentication on location updates.
+26. **Never expose exact coordinates unnecessarily in the UI.** Display semantic context (city, state, area, or named place) rather than raw float numbers.
+27. **Never trigger a location reminder repeatedly on consecutive GPS updates.** Always check cooldown timestamps and deduplication states.
+28. **Event reminders must be idempotent.** Single-fire reminders transition from `PENDING` -> `COMPLETED`, while recurring reminders respect cooldown windows.
+29. **Do not convert every casual statement into a persistent event.** Require clear confidence thresholds for future trip/event extraction.
+30. **Resolve new event information against existing events before creating duplicates.** Auto-link new intentions to active/upcoming events for the same destination.
+31. **Respect event expiration and cancellation.** When an event is cancelled, cascade status changes to associated pending reminders.
+32. **Do not assume background GPS is always available.** Degrade gracefully on permission denial or OS background throttling.
+33. **Keep location interpretation in the backend.** The mobile app transmits raw coordinates; the Brain evaluates semantic places, geofences, and triggers.
+34. **Keep mobile location collection separate from brain logic.** UI components and background handlers only submit GPS updates.
+35. **Never fake location or background capabilities.** Accurately reflect operating system and permission states.
+36. **Keep trigger architecture extensible.** Maintain modular schemas for time, location, event, weather, and composite triggers.

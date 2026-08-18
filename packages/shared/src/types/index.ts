@@ -39,6 +39,8 @@ export type IntentType =
   | 'NAVIGATION'
   | 'PLANNING'
   | 'REMINDER'
+  | 'EVENT_CREATION'
+  | 'LOCATION_QUERY'
   | 'PROACTIVE_REQUEST'
   | 'UNKNOWN';
 
@@ -50,7 +52,8 @@ export type ToolCategory =
   | 'SYSTEM'
   | 'SEARCH'
   | 'FINANCE'
-  | 'CALCULATION';
+  | 'CALCULATION'
+  | 'LOCATION';
 
 export type ToolRiskLevel = 'SAFE' | 'LOW_RISK' | 'HIGH_RISK' | 'CRITICAL';
 
@@ -86,6 +89,38 @@ export type TaskType = 'REMINDER' | 'SCHEDULED_TASK' | 'RECURRING_TASK' | 'CONDI
 export type TaskStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
 export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED' | 'DISMISSED';
+
+export type EventTriggerType =
+  | 'LOCATION_ENTER'
+  | 'LOCATION_NEAR'
+  | 'LOCATION_EXIT'
+  | 'EVENT_ACTIVE'
+  | 'EVENT_APPROACHING'
+  | 'CONTEXT_MATCH';
+
+export type UserEventType =
+  | 'TRIP'
+  | 'MEETING'
+  | 'APPOINTMENT'
+  | 'PLAN'
+  | 'ACTIVITY'
+  | 'DEADLINE'
+  | 'PERSONAL_EVENT';
+
+export type UserEventStatus =
+  | 'PLANNED'
+  | 'UPCOMING'
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type EventReminderStatus =
+  | 'PENDING'
+  | 'TRIGGERED'
+  | 'ACKNOWLEDGED'
+  | 'COMPLETED'
+  | 'DISMISSED'
+  | 'CANCELLED';
 
 export interface ApiError {
   code: string;
@@ -209,6 +244,80 @@ export interface NotificationItem {
   createdAt: string;
 }
 
+export interface LocationUpdate {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  altitude?: number;
+  speed?: number;
+  heading?: number;
+  timestamp?: string;
+}
+
+export interface LocationContext {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  country?: string;
+  state?: string;
+  city?: string;
+  area?: string;
+  knownPlace?: {
+    id: string;
+    name: string;
+  };
+  timestamp: string;
+}
+
+export interface KnownPlaceItem {
+  id: string;
+  userId: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserEventItem {
+  id: string;
+  userId: string;
+  type: UserEventType;
+  title: string;
+  description?: string;
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusMeters?: number;
+  startAt?: string;
+  endAt?: string;
+  status: UserEventStatus;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventReminderItem {
+  id: string;
+  userId: string;
+  eventId?: string;
+  title: string;
+  description?: string;
+  triggerType: EventTriggerType;
+  targetLocation?: string;
+  targetLatitude?: number;
+  targetLongitude?: number;
+  radiusMeters?: number;
+  isRecurring: boolean;
+  status: EventReminderStatus;
+  lastTriggeredAt?: string;
+  cooldownMinutes: number;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BrainResponse {
   text: string;
   shouldSpeak: boolean;
@@ -258,6 +367,7 @@ export interface ToolContext {
   requestId: string;
   timezone: string;
   locale: string;
+  location?: LocationContext;
   agentRunId?: string;
   stepNumber?: number;
 }

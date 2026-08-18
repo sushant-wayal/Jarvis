@@ -12,3 +12,7 @@ Jarvis V2 implements a clear boundary between **Ephemeral Working Memory** and *
 * Stores confidence scores (0.0 to 1.0) and source attribution (`USER_EXPLICIT`, `EXTRACTED_CONVERSATION`).
 * Implements conflict resolution to update conflicting memories when newer, higher-confidence preferences are stated.
 * Exposed to the user via the dedicated **Memories Screen** (`app/memories.tsx`) for searching, filtering, and deletion.
+
+### Location-Aware Context & Memory Scoring
+* Integrates `LocationContext` (`city`, `state`, `country`, `knownPlace`) directly into the `ContextEngine`.
+* Memory queries take geographical relevance into consideration during contextual prompt assembly.

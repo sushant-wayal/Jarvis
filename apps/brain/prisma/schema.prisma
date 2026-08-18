@@ -8,17 +8,21 @@ generator client {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  name          String         @default("Sushant")
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  preferences   String?        // JSON string of user settings & preferences
-  conversations Conversation[]
-  memories      Memory[]
-  devices       Device[]
-  agentRuns     AgentRun[]
-  tasks         Task[]
-  notifications Notification[]
+  id             String             @id @default(uuid())
+  name           String             @default("Sushant")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  preferences    String?            // JSON string of user settings & preferences
+  conversations  Conversation[]
+  memories       Memory[]
+  devices        Device[]
+  agentRuns      AgentRun[]
+  tasks          Task[]
+  notifications  Notification[]
+  locationState  UserLocationState?
+  knownPlaces    KnownPlace[]
+  events         UserEvent[]
+  eventReminders EventReminder[]
 }
 
 model Conversation {
@@ -74,15 +78,15 @@ model ToolExecution {
 }
 
 model AgentRun {
-  id             String      @id @default(uuid())
+  id             String       @id @default(uuid())
   userId         String
-  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  status         String      // PENDING, PLANNING, EXECUTING, WAITING_FOR_USER, COMPLETED, FAILED, CANCELLED
+  status         String       // PENDING, PLANNING, EXECUTING, WAITING_FOR_USER, COMPLETED, FAILED, CANCELLED
   goal           String
   error          String?
-  startedAt      DateTime    @default(now())
+  startedAt      DateTime     @default(now())
   completedAt    DateTime?
   steps          AgentStep[]
 
@@ -107,21 +111,21 @@ model AgentStep {
 }
 
 model Task {
-  id          String          @id @default(uuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String          // REMINDER, SCHEDULED_TASK, RECURRING_TASK, CONDITIONAL_TASK
-  title       String
-  description String?
-  status      String          @default("ACTIVE") // ACTIVE, PAUSED, COMPLETED, FAILED, CANCELLED
-  schedule    String?         // ISO datetime or Cron expression
-  condition   String?         // Conditional trigger description or rule
-  timezone    String          @default("UTC")
-  nextRunAt   DateTime?
-  lastRunAt   DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  executions  TaskExecution[]
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          String          // REMINDER, SCHEDULED_TASK, RECURRING_TASK, CONDITIONAL_TASK
+  title         String
+  description   String?
+  status        String          @default("ACTIVE") // ACTIVE, PAUSED, COMPLETED, FAILED, CANCELLED
+  schedule      String?         // ISO datetime or Cron expression
+  condition     String?         // Conditional trigger description or rule
+  timezone      String          @default("UTC")
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  executions    TaskExecution[]
   notifications Notification[]
 
   @@index([userId, status])
@@ -129,13 +133,13 @@ model Task {
 }
 
 model TaskExecution {
-  id          String   @id @default(uuid())
-  taskId      String
-  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  status      String   // SUCCESS, FAILED
-  result      String?  // JSON execution summary
-  durationMs  Int      @default(0)
-  executedAt  DateTime @default(now())
+  id         String   @id @default(uuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status     String   // SUCCESS, FAILED
+  result     String?  // JSON execution summary
+  durationMs Int      @default(0)
+  executedAt DateTime @default(now())
 
   @@index([taskId])
 }
@@ -168,4 +172,81 @@ model Device {
   createdAt    DateTime @default(now())
 
   @@index([userId])
+}
+
+model UserLocationState {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  latitude     Float
+  longitude    Float
+  accuracy     Float?
+  country      String?
+  state        String?
+  city         String?
+  area         String?
+  knownPlaceId String?
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model KnownPlace {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String   // Home, Office, Gym, Airport, etc.
+  latitude     Float
+  longitude    Float
+  radiusMeters Float    @default(200)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model UserEvent {
+  id           String          @id @default(uuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String          @default("TRIP") // TRIP, MEETING, APPOINTMENT, PLAN, ACTIVITY, DEADLINE, PERSONAL_EVENT
+  title        String
+  description  String?
+  locationName String?         // "Goa", "Mumbai", "Bangalore Airport"
+  latitude     Float?
+  longitude    Float?
+  radiusMeters Float?
+  startAt      DateTime?
+  endAt        DateTime?
+  status       String          @default("PLANNED") // PLANNED, UPCOMING, ACTIVE, COMPLETED, CANCELLED
+  metadata     String?         // JSON string
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  reminders    EventReminder[]
+
+  @@index([userId, status])
+}
+
+model EventReminder {
+  id              String     @id @default(uuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId         String?
+  event           UserEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  title           String
+  description     String?
+  triggerType     String     @default("LOCATION_ENTER") // LOCATION_ENTER, LOCATION_NEAR, LOCATION_EXIT, EVENT_ACTIVE, EVENT_APPROACHING, CONTEXT_MATCH
+  targetLocation  String?    // e.g. "Goa", "Airport"
+  targetLatitude  Float?
+  targetLongitude Float?
+  radiusMeters    Float?     @default(5000)
+  isRecurring     Boolean    @default(false)
+  status          String     @default("PENDING") // PENDING, TRIGGERED, ACKNOWLEDGED, COMPLETED, DISMISSED, CANCELLED
+  lastTriggeredAt DateTime?
+  cooldownMinutes Int        @default(120)
+  expiresAt       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, status])
 }

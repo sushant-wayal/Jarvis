@@ -4,6 +4,12 @@ import { logger } from '@/lib/logging/logger';
 import { calculatorTool } from './calculator';
 import { currentTimeTool } from './current-time';
 import { dateTimeTool } from './date-time';
+import {
+  createEventReminderTool,
+  createEventTool,
+  locationGetTool,
+  placeSaveTool,
+} from './event-tools';
 import { createMemoryTool, searchMemoryTool } from './memory-tools';
 import { createTaskTool, listTasksTool } from './task-tools';
 import { JarvisTool, RegisteredTool } from './types';
@@ -21,11 +27,17 @@ class ToolRegistry {
     this.register(weatherTool as unknown as JarvisTool);
     this.register(webSearchTool as unknown as JarvisTool);
 
-    // V2 Extended Tools
+    // V2 Core Tasks & Memory
     this.register(createTaskTool as unknown as JarvisTool);
     this.register(listTasksTool as unknown as JarvisTool);
     this.register(createMemoryTool as unknown as JarvisTool);
     this.register(searchMemoryTool as unknown as JarvisTool);
+
+    // V2 Location & Event-Based Reminders
+    this.register(createEventTool as unknown as JarvisTool);
+    this.register(createEventReminderTool as unknown as JarvisTool);
+    this.register(placeSaveTool as unknown as JarvisTool);
+    this.register(locationGetTool as unknown as JarvisTool);
   }
 
   public register<TInput>(tool: JarvisTool<TInput>): void {

@@ -12,6 +12,7 @@ export interface ClassifiedIntent {
     condition?: string;
     memoryContent?: string;
     targetTopic?: string;
+    location?: string;
   };
   reason?: string;
 }
@@ -44,7 +45,17 @@ export class IntentEngine {
       };
     }
 
-    // 3. Weather queries
+    // 3. Location queries
+    if (/^(where am i|what is my location|what city am i in|what's my current location|current location)/i.test(msg)) {
+      return {
+        intent: 'LOCATION_QUERY',
+        confidence: 0.98,
+        entities: { targetTopic: 'location' },
+        reason: 'Matched current location query',
+      };
+    }
+
+    // 4. Weather queries
     if (/weather|temperature|forecast|rain today|will it rain/i.test(msg)) {
       return {
         intent: 'INFORMATION_LOOKUP',
@@ -54,7 +65,34 @@ export class IntentEngine {
       };
     }
 
-    // 4. Reminder / Scheduled Task creation
+    // 5. Location-triggered or event-based reminders
+    if (/^(when i reach|when i am in|when i get to|when i'm in|when i'm at|when i arrive at)/i.test(msg)) {
+      const locMatch = msg.match(/(?:when i reach|when i am in|when i get to|when i'm in|when i'm at|when i arrive at)\s+([^,]+)/i);
+      return {
+        intent: 'REMINDER',
+        confidence: 0.96,
+        entities: {
+          location: locMatch ? locMatch[1].trim() : undefined,
+          scheduleTime: message,
+        },
+        reason: 'Matched location-triggered reminder pattern',
+      };
+    }
+
+    // 6. Future trips / Events
+    if (/^(i'm going to|i am going to|i am visiting|i'm visiting|planning a trip to)\s+([^.]+)/i.test(msg)) {
+      const locMatch = msg.match(/(?:going to|visiting|trip to)\s+([a-zA-Z\s]+?)(?:\s+next|\s+this|\s+tomorrow|\s+in|$)/i);
+      return {
+        intent: 'EVENT_CREATION',
+        confidence: 0.94,
+        entities: {
+          location: locMatch ? locMatch[1].trim() : undefined,
+        },
+        reason: 'Matched future trip / event creation pattern',
+      };
+    }
+
+    // 7. Time-based Reminder / Scheduled Task creation
     if (/^(remind me|set a reminder|schedule a task|wake me up|alert me)/i.test(msg)) {
       return {
         intent: 'TASK_CREATION',
@@ -64,7 +102,7 @@ export class IntentEngine {
       };
     }
 
-    // 5. Memory updates
+    // 8. Memory updates
     if (/^(remember that|never forget that|my favorite|i prefer|note down that|save this preference)/i.test(msg)) {
       return {
         intent: 'MEMORY_UPDATE',
@@ -74,7 +112,7 @@ export class IntentEngine {
       };
     }
 
-    // 6. Search queries
+    // 9. Search queries
     if (/^(search for|look up|google|find latest|who won|current news)/i.test(msg)) {
       return {
         intent: 'SEARCH',
@@ -99,7 +137,7 @@ export class IntentEngine {
     // AI Classification for ambiguous queries
     try {
       const prompt = `Classify the user's primary intent into exactly one category:
-CONVERSATION, QUESTION, INFORMATION_LOOKUP, CALCULATION, ACTION, TASK_CREATION, TASK_QUERY, MEMORY_UPDATE, MEMORY_QUERY, SEARCH, NAVIGATION, PLANNING, REMINDER, PROACTIVE_REQUEST, UNKNOWN.
+CONVERSATION, QUESTION, INFORMATION_LOOKUP, CALCULATION, ACTION, TASK_CREATION, TASK_QUERY, MEMORY_UPDATE, MEMORY_QUERY, SEARCH, NAVIGATION, PLANNING, REMINDER, EVENT_CREATION, LOCATION_QUERY, PROACTIVE_REQUEST, UNKNOWN.
 
 User message: "${message}"
 Recent context: "${recentContext.slice(-200)}"

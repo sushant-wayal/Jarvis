@@ -1,4 +1,4 @@
-import { HealthStatus, MemoryItem } from '@jarvis/shared';
+import { HealthStatus, LocationContext, MemoryItem } from '@jarvis/shared';
 import * as React from 'react';
 import {
   Alert,
@@ -12,12 +12,15 @@ import {
   View,
 } from 'react-native';
 import { apiClient } from '../src/services/apiClient';
+import { mobileLocationService } from '../src/services/locationService';
 
 export default function SettingsScreen(): React.ReactElement {
   const [userName, setUserName] = React.useState<string>('Sushant');
   const [serverUrl, setServerUrl] = React.useState<string>(apiClient.getBaseUrl());
   const [healthStatus, setHealthStatus] = React.useState<HealthStatus | null>(null);
   const [autoSpeak, setAutoSpeak] = React.useState<boolean>(true);
+  const [locationEnabled, setLocationEnabled] = React.useState<boolean>(true);
+  const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
   const [memories, setMemories] = React.useState<MemoryItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
 
@@ -35,15 +38,47 @@ export default function SettingsScreen(): React.ReactElement {
     }
   };
 
+  const loadLocation = async (): Promise<void> => {
+    try {
+      const loc = await apiClient.getCurrentLocation();
+      setCurrentLocation(loc);
+    } catch {
+      // ignore
+    }
+  };
+
   React.useEffect(() => {
     checkHealth();
     loadMemories();
+    loadLocation();
   }, []);
 
   const handleSaveConfig = (): void => {
     apiClient.setBaseUrl(serverUrl);
     checkHealth();
     Alert.alert('Settings Saved', 'Jarvis Brain server configuration has been updated.');
+  };
+
+  const handleSyncLocation = async (): Promise<void> => {
+    try {
+      setLoading(true);
+      const perm = await mobileLocationService.requestPermission();
+      if (perm === 'DENIED') {
+        Alert.alert('Permission Denied', 'Please enable location permissions in your phone settings.');
+        return;
+      }
+      const loc = await mobileLocationService.syncCurrentLocation(true);
+      if (loc) {
+        setCurrentLocation(loc);
+        Alert.alert('Location Synced', `Updated to ${loc.city || loc.state || 'current area'}`);
+      } else {
+        Alert.alert('Notice', 'Unable to retrieve location or permission not granted.');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to synchronize GPS location.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteMemory = async (id: string): Promise<void> => {
@@ -75,6 +110,39 @@ export default function SettingsScreen(): React.ReactElement {
           placeholder="Your name"
           placeholderTextColor="#64748B"
         />
+      </View>
+
+      {/* Location Awareness Section */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.cardTitle}>Location Awareness</Text>
+          <Switch
+            value={locationEnabled}
+            onValueChange={setLocationEnabled}
+            trackColor={{ false: '#334155', true: '#0284C7' }}
+            thumbColor={locationEnabled ? '#38BDF8' : '#94A3B8'}
+          />
+        </View>
+        <Text style={styles.locationSubtext}>
+          Enables contextual and location-triggered reminders (e.g. Goa trip parasailing reminder).
+        </Text>
+
+        <View style={styles.locationInfoBox}>
+          <Text style={styles.locationInfoLabel}>Current Detected Location:</Text>
+          <Text style={styles.locationInfoVal}>
+            {currentLocation
+              ? `${[currentLocation.city, currentLocation.state, currentLocation.country].filter(Boolean).join(', ')}`
+              : 'No location synced yet'}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.syncLocationBtn, loading && { opacity: 0.6 }]}
+          onPress={handleSyncLocation}
+          disabled={loading}
+        >
+          <Text style={styles.syncLocationBtnText}>Sync Current GPS Location</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Connectivity & Health */}
@@ -195,13 +263,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E293B',
   },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   cardTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#38BDF8',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  locationSubtext: {
+    color: '#94A3B8',
+    fontSize: 12,
     marginBottom: 12,
+  },
+  locationInfoBox: {
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  locationInfoLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  locationInfoVal: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  syncLocationBtn: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#0284C7',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  syncLocationBtnText: {
+    color: '#38BDF8',
+    fontWeight: '700',
+    fontSize: 13,
   },
   fieldLabel: {
     color: '#94A3B8',

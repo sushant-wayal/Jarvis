@@ -1,4 +1,4 @@
-import { ChatMessage, MemoryItem, TaskItem } from '@jarvis/shared';
+import { ChatMessage, LocationContext, MemoryItem, TaskItem, UserEventItem } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { memoryService } from '@/modules/memory/memory-service';
 import { workingMemoryService } from '@/modules/memory/working-memory';
@@ -18,10 +18,12 @@ export interface AssembledContext {
     name: string;
     preferences: Record<string, unknown>;
   };
+  location?: LocationContext;
   workingMemory: Record<string, unknown>;
   relevantMemories: MemoryItem[];
   recentHistory: ChatMessage[];
   activeTasks: TaskItem[];
+  upcomingEvents: UserEventItem[];
   systemContextString: string;
 }
 
@@ -29,9 +31,10 @@ export class ContextEngine {
   async assembleContext(params: ContextParams): Promise<AssembledContext> {
     const { userId, conversationId, currentMessage, timezone, locale } = params;
 
-    // 1. Fetch user profile, working memory, long-term memory, and history in parallel
-    const [user, memories, historyRecords, taskRecords] = await Promise.all([
+    // 1. Fetch user profile, location, working memory, memories, history, and events in parallel
+    const [user, locationRec, memories, historyRecords, taskRecords, eventRecords] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),
+      prisma.userLocationState.findUnique({ where: { userId } }),
       memoryService.getRelevantMemories(userId, currentMessage, 5),
       prisma.message.findMany({
         where: { conversationId },
@@ -41,6 +44,11 @@ export class ContextEngine {
       prisma.task.findMany({
         where: { userId, status: 'ACTIVE' },
         orderBy: { nextRunAt: 'asc' },
+        take: 3,
+      }),
+      prisma.userEvent.findMany({
+        where: { userId, status: { in: ['PLANNED', 'UPCOMING', 'ACTIVE'] } },
+        orderBy: { createdAt: 'desc' },
         take: 3,
       }),
     ]);
@@ -74,6 +82,37 @@ export class ContextEngine {
       updatedAt: t.updatedAt.toISOString(),
     }));
 
+    const upcomingEvents: UserEventItem[] = eventRecords.map((e) => ({
+      id: e.id,
+      userId: e.userId,
+      type: e.type as UserEventItem['type'],
+      title: e.title,
+      description: e.description ?? undefined,
+      locationName: e.locationName ?? undefined,
+      latitude: e.latitude ?? undefined,
+      longitude: e.longitude ?? undefined,
+      radiusMeters: e.radiusMeters ?? undefined,
+      startAt: e.startAt?.toISOString(),
+      endAt: e.endAt?.toISOString(),
+      status: e.status as UserEventItem['status'],
+      createdAt: e.createdAt.toISOString(),
+      updatedAt: e.updatedAt.toISOString(),
+    }));
+
+    let locationContext: LocationContext | undefined;
+    if (locationRec) {
+      locationContext = {
+        latitude: locationRec.latitude,
+        longitude: locationRec.longitude,
+        accuracy: locationRec.accuracy ?? undefined,
+        city: locationRec.city ?? undefined,
+        state: locationRec.state ?? undefined,
+        country: locationRec.country ?? undefined,
+        area: locationRec.area ?? undefined,
+        timestamp: locationRec.updatedAt.toISOString(),
+      };
+    }
+
     const userProfile = {
       id: user?.id || userId,
       name: user?.name || 'Sushant',
@@ -85,24 +124,37 @@ export class ContextEngine {
     contextStr += `Current Time: ${new Date().toLocaleString(locale, { timeZone: timezone })}\n`;
     contextStr += `Timezone: ${timezone}\n`;
 
+    if (locationContext && (locationContext.city || locationContext.state)) {
+      contextStr += `Current User Location: ${[locationContext.city, locationContext.state, locationContext.country].filter(Boolean).join(', ')}\n`;
+    }
+
+    if (upcomingEvents.length > 0) {
+      contextStr += `\n[Active & Upcoming Plans / Trips]:\n` +
+        upcomingEvents.map((e) => `- [${e.status}] ${e.title}${e.locationName ? ` in ${e.locationName}` : ''}`).join('\n') + '\n';
+    }
+
     if (Object.keys(workingMem).length > 0) {
       contextStr += `\n[Active Task Working Memory]:\n${JSON.stringify(workingMem, null, 2)}\n`;
     }
 
     if (activeTasks.length > 0) {
-      contextStr += `\n[Upcoming / Active Tasks]:\n` + activeTasks.map((t) => `- [${t.type}] ${t.title}${t.nextRunAt ? ` (Due: ${t.nextRunAt})` : ''}`).join('\n') + '\n';
+      contextStr += `\n[Upcoming / Active Tasks]:\n` +
+        activeTasks.map((t) => `- [${t.type}] ${t.title}${t.nextRunAt ? ` (Due: ${t.nextRunAt})` : ''}`).join('\n') + '\n';
     }
 
     if (memories.length > 0) {
-      contextStr += `\n[Long-Term Knowledge & Preferences]:\n` + memories.map((m) => `- [${m.type}] ${m.content}`).join('\n') + '\n';
+      contextStr += `\n[Long-Term Knowledge & Preferences]:\n` +
+        memories.map((m) => `- [${m.type}] ${m.content}`).join('\n') + '\n';
     }
 
     return {
       userProfile,
+      location: locationContext,
       workingMemory: workingMem,
       relevantMemories: memories,
       recentHistory,
       activeTasks,
+      upcomingEvents,
       systemContextString: contextStr,
     };
   }

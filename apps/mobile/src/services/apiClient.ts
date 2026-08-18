@@ -4,12 +4,20 @@ import {
   BrainResponse,
   ChatMessage,
   ConversationSummary,
+  CreateEventReminderRequest,
   CreateTaskRequest,
+  CreateUserEventRequest,
+  EventReminderItem,
   HealthStatus,
+  LocationContext,
+  LocationUpdate,
   MemoryItem,
   NotificationItem,
   TaskItem,
+  UpdateEventReminderRequest,
   UpdateTaskRequest,
+  UpdateUserEventRequest,
+  UserEventItem,
   VoiceResponse,
 } from '@jarvis/shared';
 
@@ -242,6 +250,110 @@ export class JarvisApiClient {
     });
     const json = (await res.json()) as ApiResponse<{ confirmed: boolean }>;
     return Boolean(json.data?.confirmed);
+  }
+
+  // Location Awareness Endpoints
+  async updateLocation(coords: LocationUpdate): Promise<LocationContext | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/location/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(coords),
+      });
+      const json = (await res.json()) as ApiResponse<LocationContext>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getCurrentLocation(): Promise<LocationContext | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/location/current`, {
+        headers: { Accept: 'application/json' },
+      });
+      const json = (await res.json()) as ApiResponse<LocationContext>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Event & Reminders Endpoints
+  async getEvents(status?: string): Promise<UserEventItem[]> {
+    const url = status ? `${this.baseUrl}/events?status=${encodeURIComponent(status)}` : `${this.baseUrl}/events`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    const json = (await res.json()) as ApiResponse<UserEventItem[]>;
+    return json.data || [];
+  }
+
+  async createEvent(data: CreateUserEventRequest): Promise<UserEventItem> {
+    const res = await fetch(`${this.baseUrl}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<UserEventItem>;
+    if (!json.success || !json.data) throw new Error(json.error?.message || 'Failed to create event');
+    return json.data;
+  }
+
+  async updateEvent(id: string, data: UpdateUserEventRequest): Promise<UserEventItem> {
+    const res = await fetch(`${this.baseUrl}/events/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<UserEventItem>;
+    if (!json.success || !json.data) throw new Error(json.error?.message || 'Failed to update event');
+    return json.data;
+  }
+
+  async deleteEvent(id: string): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/events/${id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
+    return Boolean(json.data?.deleted);
+  }
+
+  async getEventReminders(status?: string): Promise<EventReminderItem[]> {
+    const url = status ? `${this.baseUrl}/event-reminders?status=${encodeURIComponent(status)}` : `${this.baseUrl}/event-reminders`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    const json = (await res.json()) as ApiResponse<EventReminderItem[]>;
+    return json.data || [];
+  }
+
+  async createEventReminder(data: CreateEventReminderRequest): Promise<EventReminderItem> {
+    const res = await fetch(`${this.baseUrl}/event-reminders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<EventReminderItem>;
+    if (!json.success || !json.data) throw new Error(json.error?.message || 'Failed to create event reminder');
+    return json.data;
+  }
+
+  async updateEventReminder(id: string, data: UpdateEventReminderRequest): Promise<EventReminderItem> {
+    const res = await fetch(`${this.baseUrl}/event-reminders/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<EventReminderItem>;
+    if (!json.success || !json.data) throw new Error(json.error?.message || 'Failed to update event reminder');
+    return json.data;
+  }
+
+  async deleteEventReminder(id: string): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/event-reminders/${id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
+    return Boolean(json.data?.deleted);
   }
 }
 

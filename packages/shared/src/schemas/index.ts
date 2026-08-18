@@ -102,6 +102,121 @@ export const ConfirmActionSchema = z.object({
 
 export type ConfirmActionRequest = z.input<typeof ConfirmActionSchema>;
 
+export const LocationUpdateSchema = z.object({
+  userId: z.string().optional().default('default-user'),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).optional(),
+  altitude: z.number().optional(),
+  speed: z.number().optional(),
+  heading: z.number().optional(),
+  timestamp: z.string().optional(),
+});
+
+export type LocationUpdateRequest = z.input<typeof LocationUpdateSchema>;
+
+export const CreateKnownPlaceSchema = z.object({
+  userId: z.string().optional().default('default-user'),
+  name: z.string().min(1).max(100),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusMeters: z.number().min(10).max(50000).optional().default(200),
+});
+
+export type CreateKnownPlaceRequest = z.input<typeof CreateKnownPlaceSchema>;
+
+export const UserEventTypeEnum = z.enum([
+  'TRIP',
+  'MEETING',
+  'APPOINTMENT',
+  'PLAN',
+  'ACTIVITY',
+  'DEADLINE',
+  'PERSONAL_EVENT',
+]);
+
+export const UserEventStatusEnum = z.enum([
+  'PLANNED',
+  'UPCOMING',
+  'ACTIVE',
+  'COMPLETED',
+  'CANCELLED',
+]);
+
+export const CreateUserEventSchema = z.object({
+  userId: z.string().optional().default('default-user'),
+  type: UserEventTypeEnum.optional().default('TRIP'),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  locationName: z.string().max(200).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  radiusMeters: z.number().optional(),
+  startAt: z.string().datetime().optional(),
+  endAt: z.string().datetime().optional(),
+  status: UserEventStatusEnum.optional().default('PLANNED'),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export type CreateUserEventRequest = z.input<typeof CreateUserEventSchema>;
+
+export const UpdateUserEventSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  locationName: z.string().max(200).optional(),
+  startAt: z.string().datetime().nullable().optional(),
+  endAt: z.string().datetime().nullable().optional(),
+  status: UserEventStatusEnum.optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export type UpdateUserEventRequest = z.input<typeof UpdateUserEventSchema>;
+
+export const EventTriggerTypeEnum = z.enum([
+  'LOCATION_ENTER',
+  'LOCATION_NEAR',
+  'LOCATION_EXIT',
+  'EVENT_ACTIVE',
+  'EVENT_APPROACHING',
+  'CONTEXT_MATCH',
+]);
+
+export const EventReminderStatusEnum = z.enum([
+  'PENDING',
+  'TRIGGERED',
+  'ACKNOWLEDGED',
+  'COMPLETED',
+  'DISMISSED',
+  'CANCELLED',
+]);
+
+export const CreateEventReminderSchema = z.object({
+  userId: z.string().optional().default('default-user'),
+  eventId: z.string().optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  triggerType: EventTriggerTypeEnum.optional().default('LOCATION_ENTER'),
+  targetLocation: z.string().max(200).optional(),
+  targetLatitude: z.number().min(-90).max(90).optional(),
+  targetLongitude: z.number().min(-180).max(180).optional(),
+  radiusMeters: z.number().min(10).max(100000).optional().default(5000),
+  isRecurring: z.boolean().optional().default(false),
+  cooldownMinutes: z.number().int().min(5).max(10080).optional().default(120),
+  expiresAt: z.string().datetime().optional(),
+});
+
+export type CreateEventReminderRequest = z.input<typeof CreateEventReminderSchema>;
+
+export const UpdateEventReminderSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  status: EventReminderStatusEnum.optional(),
+  isRecurring: z.boolean().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+});
+
+export type UpdateEventReminderRequest = z.input<typeof UpdateEventReminderSchema>;
+
 export const UserProfileSchema = z.object({
   name: z.string().min(1).max(100),
   preferredName: z.string().optional(),
@@ -111,6 +226,7 @@ export const UserProfileSchema = z.object({
   autoSpeak: z.boolean().default(true),
   voiceSpeed: z.number().min(0.5).max(2.0).default(1.0),
   requireConfirmationForRisky: z.boolean().default(true),
+  locationAwarenessEnabled: z.boolean().default(true),
 });
 
 export type UserProfile = z.infer<typeof UserProfileSchema>;

@@ -1,6 +1,6 @@
 # Jarvis V2: Personal Operating Layer & Agentic Assistant
 
-**Jarvis V2** is an autonomous personal AI agent and operating layer designed to work seamlessly across mobile devices, Bluetooth earbuds, and background routines.
+**Jarvis V2** is an autonomous personal AI agent and operating layer designed to work seamlessly across mobile devices, Bluetooth earbuds, and background routines with **Location Awareness** and **Event-Based Reminders**.
 
 ---
 
@@ -9,11 +9,11 @@
 ```text
 jarvis/
 ├── apps/
-│   ├── brain/                    # Next.js 15 App Router backend (ReAct Agent, Schedulers, Memory, STT/TTS)
+│   ├── brain/                    # Next.js 15 App Router backend (ReAct Agent, Schedulers, Location & Events, Memory, STT/TTS)
 │   └── mobile/                   # Expo React Native app (Voice Orb, Tasks, Memories, History, Settings)
 ├── packages/
 │   └── shared/                   # Shared types, Zod validation schemas, API contracts
-├── docs/                         # V2 Audit, Agent Architecture, Tasks, Memory, Security, API specs
+├── docs/                         # Location Awareness, Event Reminders, V2 Audit, Agent Architecture, Tasks, Memory, Security
 ├── .agents/                      # Agent guidelines (AGENTS.md)
 ├── .env.example
 └── README.md
@@ -23,8 +23,15 @@ jarvis/
 
 ## V2 Core Capabilities
 
+- 📍 **Location Awareness & Known Places**:
+  - Ingests battery-optimized GPS updates from mobile client.
+  - Reverse geocodes semantic city, state, country, and matches custom `KnownPlace` regions (*Home, Office, Gym, Airport*).
+- 🏖️ **Event-Based & Context-Aware Reminders**:
+  - Semantic future intentions (e.g. *"I'm going to Goa next month. Make sure I go parasailing there"*).
+  - Geofence and multi-modal trigger evaluation (`LOCATION_ENTER`, `LOCATION_NEAR`, `LOCATION_EXIT`, `EVENT_ACTIVE`).
+  - Strict anti-spam cooldowns (default 120 minutes) and single-fire idempotency.
 - 🤖 **Autonomous Multi-Step Agent Planner**: ReAct execution loop (**Plan → Execute Tool → Observe → Continue/Finish**) with safety limits (max 12 steps, max 10 tool calls, max 2 retries).
-- 🧭 **Structured Intent & Context Engines**: Sub-10ms deterministic intent classification and multi-source context assembly (user profile, working memory, active tasks, ranked memories).
+- 🧭 **Structured Intent & Context Engines**: Sub-10ms deterministic intent classification and multi-source context assembly (user profile, location, working memory, active tasks, upcoming events, ranked memories).
 - 🧠 **Dual Memory System (V2)**:
   - **Short-Term Working Memory**: Ephemeral slot tracking for active agent goals with automatic TTL expiry.
   - **Long-Term Memory V2**: Knowledge lifecycle with confidence scores, source attribution, and conflict resolution.
@@ -42,7 +49,7 @@ jarvis/
   - **Voice Home**: Ambient Voice Orb with real-time breathing animations.
   - **Tasks**: Create, filter, complete, and delete scheduled routines.
   - **Memories**: Browse, search, filter by type (`PREFERENCE`, `FACT`, `GOAL`), and delete memories.
-  - **History & Settings**: Full conversation threads and service health probes.
+  - **History & Settings**: Full conversation threads, service health probes, and location awareness controls.
 
 ---
 
@@ -73,6 +80,9 @@ jarvis/
    ```
 
 For in-depth architectural and developer documentation, see:
+- [Location Awareness](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/location-awareness.md)
+- [Event-Based Reminders](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/event-reminders.md)
+- [Capabilities Guide](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/capabilities-guide.md)
 - [V2 Audit & Roadmap](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/v2-audit.md)
 - [Agent Architecture](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/agent-architecture.md)
 - [Memory System](file:///c:/Users/susha/OneDrive/Desktop/jarvis/docs/memory.md)
