@@ -4,6 +4,8 @@ import { logger } from '@/lib/logging/logger';
 import { calculatorTool } from './calculator';
 import { currentTimeTool } from './current-time';
 import { dateTimeTool } from './date-time';
+import { createMemoryTool, searchMemoryTool } from './memory-tools';
+import { createTaskTool, listTasksTool } from './task-tools';
 import { JarvisTool, RegisteredTool } from './types';
 import { weatherTool } from './weather';
 import { webSearchTool } from './web-search';
@@ -12,11 +14,18 @@ class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
 
   constructor() {
+    // V1 Core Tools
     this.register(calculatorTool as unknown as JarvisTool);
     this.register(currentTimeTool as unknown as JarvisTool);
     this.register(dateTimeTool as unknown as JarvisTool);
     this.register(weatherTool as unknown as JarvisTool);
     this.register(webSearchTool as unknown as JarvisTool);
+
+    // V2 Extended Tools
+    this.register(createTaskTool as unknown as JarvisTool);
+    this.register(listTasksTool as unknown as JarvisTool);
+    this.register(createMemoryTool as unknown as JarvisTool);
+    this.register(searchMemoryTool as unknown as JarvisTool);
   }
 
   public register<TInput>(tool: JarvisTool<TInput>): void {
@@ -24,6 +33,9 @@ class ToolRegistry {
     this.tools.set(tool.name, {
       name: tool.name,
       description: tool.description,
+      category: tool.category,
+      riskLevel: tool.riskLevel,
+      requiresConfirmation: Boolean(tool.requiresConfirmation),
       parameters: jsonSchema,
       execute: async (input: unknown, context: ToolContext): Promise<ToolResult> => {
         const startTime = Date.now();
@@ -46,7 +58,7 @@ class ToolRegistry {
           const errorMsg = err instanceof Error ? err.message : String(err);
           logger.error(`Tool execution failed: ${tool.name}`, err, { ...context });
 
-          this.logExecution(context.conversationId, tool.name, input, { error: errorMsg }, 'FAILURE', durationMs);
+          this.logExecution(context.conversationId, tool.name, input, { error: errorMsg }, 'FAILED', durationMs);
 
           return {
             toolName: tool.name,
@@ -77,7 +89,6 @@ class ToolRegistry {
   }
 
   private zodToJsonSchema(schema: unknown): Record<string, unknown> {
-    // Simple Zod schema converter to OpenAPI/Gemini function declaration format
     const shape = (schema as { shape?: Record<string, { _def: { description?: string; typeName?: string } }> }).shape;
     if (!shape) {
       return { type: 'OBJECT', properties: {} };
@@ -115,7 +126,7 @@ class ToolRegistry {
     toolName: string,
     input: unknown,
     output: unknown,
-    status: 'SUCCESS' | 'FAILURE',
+    status: 'SUCCESS' | 'FAILED',
     durationMs: number
   ): Promise<void> {
     if (!conversationId) return;

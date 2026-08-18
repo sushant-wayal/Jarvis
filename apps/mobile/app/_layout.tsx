@@ -23,10 +23,32 @@ export default function RootLayout(): React.ReactElement {
           <Tabs.Screen
             name="index"
             options={{
-              title: 'Jarvis Voice',
+              title: 'Voice',
               tabBarIcon: () => (
                 <View style={styles.iconWrapper}>
-                  <Text style={{ fontSize: 20 }}>🎙️</Text>
+                  <Text style={{ fontSize: 18 }}>🎙️</Text>
+                </View>
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="tasks"
+            options={{
+              title: 'Tasks',
+              tabBarIcon: () => (
+                <View style={styles.iconWrapper}>
+                  <Text style={{ fontSize: 18 }}>📋</Text>
+                </View>
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name="memories"
+            options={{
+              title: 'Memories',
+              tabBarIcon: () => (
+                <View style={styles.iconWrapper}>
+                  <Text style={{ fontSize: 18 }}>🧠</Text>
                 </View>
               ),
             }}
@@ -37,7 +59,7 @@ export default function RootLayout(): React.ReactElement {
               title: 'History',
               tabBarIcon: () => (
                 <View style={styles.iconWrapper}>
-                  <Text style={{ fontSize: 20 }}>💬</Text>
+                  <Text style={{ fontSize: 18 }}>💬</Text>
                 </View>
               ),
             }}
@@ -48,7 +70,7 @@ export default function RootLayout(): React.ReactElement {
               title: 'Settings',
               tabBarIcon: () => (
                 <View style={styles.iconWrapper}>
-                  <Text style={{ fontSize: 20 }}>⚙️</Text>
+                  <Text style={{ fontSize: 18 }}>⚙️</Text>
                 </View>
               ),
             }}
@@ -77,7 +99,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
   },

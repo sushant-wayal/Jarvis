@@ -8,9 +8,14 @@ const DateTimeInputSchema = z.object({
     .describe('Target day of week to calculate days until, e.g. "Friday", "Monday"'),
 });
 
-export const dateTimeTool: JarvisTool<z.infer<typeof DateTimeInputSchema>, { date: string; dayOfWeek: string; daysUntilTarget?: number; targetDay?: string }> = {
+export const dateTimeTool: JarvisTool<
+  z.infer<typeof DateTimeInputSchema>,
+  { date: string; dayOfWeek: string; daysUntilTarget?: number; targetDay?: string }
+> = {
   name: 'date_time',
   description: "Returns today's full date or calculates days until a specific weekday (e.g. Friday).",
+  category: 'INFORMATION',
+  riskLevel: 'SAFE',
   inputSchema: DateTimeInputSchema,
   async execute(input, context) {
     const now = new Date();

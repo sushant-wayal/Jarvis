@@ -74,6 +74,8 @@ const defaultSearchProvider: SearchProvider = new DuckDuckGoSearchProvider();
 export const webSearchTool: JarvisTool<z.infer<typeof WebSearchInputSchema>, SearchResult> = {
   name: 'web_search',
   description: 'Searches the web for up-to-date real-world facts, news, entity details, or live information.',
+  category: 'SEARCH',
+  riskLevel: 'SAFE',
   inputSchema: WebSearchInputSchema,
   async execute(input) {
     return await defaultSearchProvider.search(input.query);

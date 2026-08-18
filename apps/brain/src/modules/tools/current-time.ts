@@ -22,9 +22,14 @@ const CITY_TIMEZONES: Record<string, string> = {
   mumbai: 'Asia/Kolkata',
 };
 
-export const currentTimeTool: JarvisTool<z.infer<typeof CurrentTimeInputSchema>, { time: string; timezone: string; formatted: string }> = {
+export const currentTimeTool: JarvisTool<
+  z.infer<typeof CurrentTimeInputSchema>,
+  { time: string; timezone: string; formatted: string }
+> = {
   name: 'current_time',
   description: 'Returns the current time and day for a specific timezone or city, or user context local time.',
+  category: 'INFORMATION',
+  riskLevel: 'SAFE',
   inputSchema: CurrentTimeInputSchema,
   async execute(input, context) {
     let tz = input.timezone || context.timezone || 'UTC';

@@ -16,6 +16,9 @@ model User {
   conversations Conversation[]
   memories      Memory[]
   devices       Device[]
+  agentRuns     AgentRun[]
+  tasks         Task[]
+  notifications Notification[]
 }
 
 model Conversation {
@@ -27,6 +30,7 @@ model Conversation {
   updatedAt      DateTime        @updatedAt
   messages       Message[]
   toolExecutions ToolExecution[]
+  agentRuns      AgentRun[]
 }
 
 model Message {
@@ -41,14 +45,20 @@ model Message {
 }
 
 model Memory {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type       String   // FACT, PREFERENCE, PERSON, PROJECT, ROUTINE, CONTEXT
-  content    String
-  importance Int      @default(3) // 1 to 5 scale
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type             String    // FACT, PREFERENCE, PERSON, PROJECT, ROUTINE, GOAL, CONSTRAINT, HABIT, CONTEXT
+  content          String
+  importance       Int       @default(3) // 1 to 5 scale
+  confidence       Float     @default(0.9) // 0.0 to 1.0
+  source           String?   // 'USER_EXPLICIT', 'EXTRACTED_CONVERSATION', 'AGENT_OBSERVATION'
+  lastReferencedAt DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, type])
 }
 
 model ToolExecution {
@@ -58,18 +68,104 @@ model ToolExecution {
   toolName       String
   input          String       // JSON payload
   output         String       // JSON payload
-  status         String       // SUCCESS, FAILURE
+  status         String       // SUCCESS, FAILED
   durationMs     Int
   createdAt      DateTime     @default(now())
 }
 
+model AgentRun {
+  id             String      @id @default(uuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  status         String      // PENDING, PLANNING, EXECUTING, WAITING_FOR_USER, COMPLETED, FAILED, CANCELLED
+  goal           String
+  error          String?
+  startedAt      DateTime    @default(now())
+  completedAt    DateTime?
+  steps          AgentStep[]
+
+  @@index([userId, status])
+  @@index([conversationId])
+}
+
+model AgentStep {
+  id          String    @id @default(uuid())
+  agentRunId  String
+  agentRun    AgentRun  @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  stepNumber  Int
+  type        String    // THINK, TOOL_CALL, OBSERVATION, RESPONSE, WAIT, CONFIRMATION
+  status      String    // PENDING, RUNNING, COMPLETED, FAILED, SKIPPED
+  input       String?   // JSON input / arguments
+  output      String?   // JSON output / results
+  summary     String?   // Concise human-readable safe summary
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([agentRunId, stepNumber])
+}
+
+model Task {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String          // REMINDER, SCHEDULED_TASK, RECURRING_TASK, CONDITIONAL_TASK
+  title       String
+  description String?
+  status      String          @default("ACTIVE") // ACTIVE, PAUSED, COMPLETED, FAILED, CANCELLED
+  schedule    String?         // ISO datetime or Cron expression
+  condition   String?         // Conditional trigger description or rule
+  timezone    String          @default("UTC")
+  nextRunAt   DateTime?
+  lastRunAt   DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  executions  TaskExecution[]
+  notifications Notification[]
+
+  @@index([userId, status])
+  @@index([nextRunAt, status])
+}
+
+model TaskExecution {
+  id          String   @id @default(uuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status      String   // SUCCESS, FAILED
+  result      String?  // JSON execution summary
+  durationMs  Int      @default(0)
+  executedAt  DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  title     String
+  body      String
+  deepLink  String?
+  status    String   @default("PENDING") // PENDING, SENT, FAILED, DISMISSED
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+}
+
 model Device {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name       String
-  platform   String   // iOS, Android, Web
-  appVersion String
-  lastSeenAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  platform     String   // iOS, Android, Web
+  appVersion   String
+  pushToken    String?
+  capabilities String?  // JSON array of capabilities (VOICE_INPUT, AUDIO_OUTPUT, etc.)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
 }

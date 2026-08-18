@@ -1,6 +1,7 @@
-import { ChatMessage, JarvisState } from '@jarvis/shared';
+import { ChatMessage, JarvisState, ToolRiskLevel } from '@jarvis/shared';
 import * as React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ConfirmationModal } from '../src/components/ConfirmationModal';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { VoiceOrb } from '../src/components/VoiceOrb';
@@ -15,6 +16,21 @@ export default function HomeScreen(): React.ReactElement {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [lastTranscript, setLastTranscript] = React.useState<string>('');
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Confirmation modal state
+  const [confirmationState, setConfirmationState] = React.useState<{
+    visible: boolean;
+    actionId: string;
+    toolName: string;
+    riskLevel: ToolRiskLevel;
+    summary: string;
+  }>({
+    visible: false,
+    actionId: '',
+    toolName: '',
+    riskLevel: 'SAFE',
+    summary: '',
+  });
 
   const { isRecording, recordingLevel, startRecording, stopRecording } = useVoiceRecorder();
   const { isPlaying, playBase64Audio, stopAudio } = useAudioPlayer();
@@ -119,6 +135,16 @@ export default function HomeScreen(): React.ReactElement {
     }
   };
 
+  const handleConfirmAction = async (confirmed: boolean) => {
+    const actionId = confirmationState.actionId;
+    setConfirmationState((prev) => ({ ...prev, visible: false }));
+    try {
+      await apiClient.confirmAction(actionId, confirmed);
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <View style={styles.screenContainer}>
       <StatusHeader state={jarvisState} isOnline={isOnline} onRefresh={runHealthCheck} />
@@ -150,6 +176,17 @@ export default function HomeScreen(): React.ReactElement {
           )}
         </View>
       </ScrollView>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        visible={confirmationState.visible}
+        actionId={confirmationState.actionId}
+        toolName={confirmationState.toolName}
+        riskLevel={confirmationState.riskLevel}
+        summary={confirmationState.summary}
+        onConfirm={() => handleConfirmAction(true)}
+        onCancel={() => handleConfirmAction(false)}
+      />
     </View>
   );
 }

@@ -98,6 +98,8 @@ const defaultProvider: WeatherProvider = new OpenMeteoWeatherProvider();
 export const weatherTool: JarvisTool<z.infer<typeof WeatherInputSchema>, WeatherData> = {
   name: 'weather',
   description: 'Fetches real-time weather information and practical recommendations for any city or location.',
+  category: 'INFORMATION',
+  riskLevel: 'SAFE',
   inputSchema: WeatherInputSchema,
   async execute(input) {
     const loc = input.location || 'Mumbai';

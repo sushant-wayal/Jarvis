@@ -1,9 +1,12 @@
 export type JarvisState =
   | 'IDLE'
   | 'LISTENING'
+  | 'TRANSCRIBING'
   | 'PROCESSING'
   | 'THINKING'
+  | 'EXECUTING'
   | 'SPEAKING'
+  | 'INTERRUPTED'
   | 'ERROR'
   | 'OFFLINE';
 
@@ -17,7 +20,72 @@ export type MemoryType =
   | 'PERSON'
   | 'PROJECT'
   | 'ROUTINE'
+  | 'GOAL'
+  | 'CONSTRAINT'
+  | 'HABIT'
   | 'CONTEXT';
+
+export type IntentType =
+  | 'CONVERSATION'
+  | 'QUESTION'
+  | 'INFORMATION_LOOKUP'
+  | 'CALCULATION'
+  | 'ACTION'
+  | 'TASK_CREATION'
+  | 'TASK_QUERY'
+  | 'MEMORY_UPDATE'
+  | 'MEMORY_QUERY'
+  | 'SEARCH'
+  | 'NAVIGATION'
+  | 'PLANNING'
+  | 'REMINDER'
+  | 'PROACTIVE_REQUEST'
+  | 'UNKNOWN';
+
+export type ToolCategory =
+  | 'INFORMATION'
+  | 'COMMUNICATION'
+  | 'PRODUCTIVITY'
+  | 'PERSONAL'
+  | 'SYSTEM'
+  | 'SEARCH'
+  | 'FINANCE'
+  | 'CALCULATION';
+
+export type ToolRiskLevel = 'SAFE' | 'LOW_RISK' | 'HIGH_RISK' | 'CRITICAL';
+
+export type ResponseMode =
+  | 'ANSWER'
+  | 'ACTION'
+  | 'CLARIFICATION'
+  | 'CONFIRMATION'
+  | 'PROGRESS'
+  | 'ERROR';
+
+export type AgentRunStatus =
+  | 'PENDING'
+  | 'PLANNING'
+  | 'EXECUTING'
+  | 'WAITING_FOR_USER'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type AgentStepType =
+  | 'THINK'
+  | 'TOOL_CALL'
+  | 'OBSERVATION'
+  | 'RESPONSE'
+  | 'WAIT'
+  | 'CONFIRMATION';
+
+export type AgentStepStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+
+export type TaskType = 'REMINDER' | 'SCHEDULED_TASK' | 'RECURRING_TASK' | 'CONDITIONAL_TASK';
+
+export type TaskStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED' | 'DISMISSED';
 
 export interface ApiError {
   code: string;
@@ -58,6 +126,10 @@ export interface MemoryItem {
   type: MemoryType;
   content: string;
   importance: number;
+  confidence?: number;
+  source?: string;
+  lastReferencedAt?: string;
+  expiresAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,6 +148,67 @@ export interface ToolResult {
   durationMs: number;
 }
 
+export interface AgentStep {
+  id: string;
+  agentRunId: string;
+  stepNumber: number;
+  type: AgentStepType;
+  status: AgentStepStatus;
+  input?: unknown;
+  output?: unknown;
+  summary?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface AgentRun {
+  id: string;
+  userId: string;
+  conversationId: string;
+  status: AgentRunStatus;
+  goal: string;
+  steps: AgentStep[];
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+export interface TaskItem {
+  id: string;
+  userId: string;
+  type: TaskType;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  schedule?: string;
+  condition?: string;
+  timezone: string;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskExecutionItem {
+  id: string;
+  taskId: string;
+  status: 'SUCCESS' | 'FAILED';
+  result?: string;
+  executedAt: string;
+  durationMs: number;
+}
+
+export interface NotificationItem {
+  id: string;
+  userId: string;
+  taskId?: string;
+  title: string;
+  body: string;
+  deepLink?: string;
+  status: NotificationStatus;
+  createdAt: string;
+}
+
 export interface BrainResponse {
   text: string;
   shouldSpeak: boolean;
@@ -85,6 +218,15 @@ export interface BrainResponse {
   requestId: string;
   audioBase64?: string;
   audioUrl?: string;
+  mode?: ResponseMode;
+  agentRunId?: string;
+  pendingConfirmation?: {
+    actionId: string;
+    toolName: string;
+    riskLevel: ToolRiskLevel;
+    summary: string;
+    payload: Record<string, unknown>;
+  };
 }
 
 export interface VoiceResponse {
@@ -95,6 +237,7 @@ export interface VoiceResponse {
   conversationId: string;
   requestId: string;
   shouldSpeak: boolean;
+  agentRunId?: string;
 }
 
 export interface HealthStatus {
@@ -115,4 +258,6 @@ export interface ToolContext {
   requestId: string;
   timezone: string;
   locale: string;
+  agentRunId?: string;
+  stepNumber?: number;
 }

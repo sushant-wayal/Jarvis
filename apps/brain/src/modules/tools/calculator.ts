@@ -7,9 +7,15 @@ const CalculatorInputSchema = z.object({
     .describe('Mathematical expression to calculate, e.g. "1836100 / 12" or "15 * 85000 / 100"'),
 });
 
-export const calculatorTool: JarvisTool<z.infer<typeof CalculatorInputSchema>, { result: number; expression: string }> = {
+export const calculatorTool: JarvisTool<
+  z.infer<typeof CalculatorInputSchema>,
+  { result: number; expression: string }
+> = {
   name: 'calculator',
-  description: 'Performs mathematical calculations accurately (addition, subtraction, multiplication, division, percentages).',
+  description:
+    'Performs mathematical calculations accurately (addition, subtraction, multiplication, division, percentages).',
+  category: 'CALCULATION',
+  riskLevel: 'SAFE',
   inputSchema: CalculatorInputSchema,
   async execute(input) {
     let expr = input.expression
@@ -22,7 +28,6 @@ export const calculatorTool: JarvisTool<z.infer<typeof CalculatorInputSchema>, {
       .replace(/(\*|\/|\+|\-)\s*(\*|\/|\+|\-)/g, '$1');
 
     try {
-      // Safe math calculation using Function construction without access to scope
       const sanitize = new Function(`"use strict"; return (${expr});`);
       const val = sanitize();
 
@@ -35,7 +40,9 @@ export const calculatorTool: JarvisTool<z.infer<typeof CalculatorInputSchema>, {
         result: Math.round(val * 100000) / 100000,
       };
     } catch (err) {
-      throw new Error(`Calculation error for "${input.expression}": ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(
+        `Calculation error for "${input.expression}": ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   },
 };

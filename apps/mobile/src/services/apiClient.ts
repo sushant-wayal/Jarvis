@@ -1,10 +1,15 @@
 import {
+  AgentRun,
   ApiResponse,
   BrainResponse,
   ChatMessage,
   ConversationSummary,
+  CreateTaskRequest,
   HealthStatus,
   MemoryItem,
+  NotificationItem,
+  TaskItem,
+  UpdateTaskRequest,
   VoiceResponse,
 } from '@jarvis/shared';
 
@@ -157,6 +162,86 @@ export class JarvisApiClient {
     });
     const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
     return Boolean(json.data?.deleted);
+  }
+
+  async getTasks(status?: string): Promise<TaskItem[]> {
+    const url = status ? `${this.baseUrl}/tasks?status=${encodeURIComponent(status)}` : `${this.baseUrl}/tasks`;
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<TaskItem[]>;
+    return json.data || [];
+  }
+
+  async createTask(data: CreateTaskRequest): Promise<TaskItem> {
+    const res = await fetch(`${this.baseUrl}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<TaskItem>;
+    if (!json.success || !json.data) {
+      throw new Error(json.error?.message || 'Failed to create task');
+    }
+    return json.data;
+  }
+
+  async updateTask(id: string, data: UpdateTaskRequest): Promise<TaskItem> {
+    const res = await fetch(`${this.baseUrl}/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<TaskItem>;
+    if (!json.success || !json.data) {
+      throw new Error(json.error?.message || 'Failed to update task');
+    }
+    return json.data;
+  }
+
+  async deleteTask(id: string): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/tasks/${id}`, {
+      method: 'DELETE',
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
+    return Boolean(json.data?.deleted);
+  }
+
+  async getNotifications(): Promise<NotificationItem[]> {
+    const res = await fetch(`${this.baseUrl}/notifications`, {
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<NotificationItem[]>;
+    return json.data || [];
+  }
+
+  async dismissNotification(id: string): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/notifications`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const json = (await res.json()) as ApiResponse<{ dismissed: boolean }>;
+    return Boolean(json.data?.dismissed);
+  }
+
+  async getAgentRun(id: string): Promise<AgentRun | null> {
+    const res = await fetch(`${this.baseUrl}/agent/${id}`, {
+      headers: { Accept: 'application/json' },
+    });
+    const json = (await res.json()) as ApiResponse<AgentRun>;
+    return json.data || null;
+  }
+
+  async confirmAction(actionId: string, confirmed: boolean): Promise<boolean> {
+    const res = await fetch(`${this.baseUrl}/agent/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ actionId, confirmed }),
+    });
+    const json = (await res.json()) as ApiResponse<{ confirmed: boolean }>;
+    return Boolean(json.data?.confirmed);
   }
 }
 
