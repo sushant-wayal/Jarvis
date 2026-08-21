@@ -1,6 +1,7 @@
 import { MemoryType } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
+import { ttlEngine } from '@/modules/brain/ttl-engine';
 
 export interface MemoryCandidate {
   userId: string;
@@ -9,6 +10,8 @@ export interface MemoryCandidate {
   importance: number;
   confidence: number;
   source?: string;
+  ttlDays?: number;
+  expiresAt?: Date;
 }
 
 export class MemoryLifecycleService {
@@ -23,6 +26,17 @@ export class MemoryLifecycleService {
           type: candidate.type,
         },
       });
+
+      // Determine dynamic expiry date
+      let expiresAt: Date;
+      if (candidate.expiresAt) {
+        expiresAt = candidate.expiresAt;
+      } else if (candidate.ttlDays !== undefined && candidate.ttlDays > 0) {
+        expiresAt = ttlEngine.calculateExpiryDate(candidate.ttlDays);
+      } else {
+        const suggestedDays = await ttlEngine.suggestMemoryTtl(candidate.content, candidate.type);
+        expiresAt = ttlEngine.calculateExpiryDate(suggestedDays);
+      }
 
       // Simple keyword / entity conflict detection
       const words = candidate.content.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
@@ -39,9 +53,10 @@ export class MemoryLifecycleService {
       }
 
       if (conflictingMemoryId) {
-        logger.info('Updating existing conflicting memory with latest user knowledge', {
+        logger.info('Updating existing conflicting memory with latest user knowledge & renewed TTL', {
           conflictingMemoryId,
           newContent: candidate.content,
+          expiresAt,
         });
 
         await prisma.memory.update({
@@ -51,6 +66,7 @@ export class MemoryLifecycleService {
             importance: candidate.importance,
             confidence: candidate.confidence,
             source: candidate.source || 'EXTRACTED_CONVERSATION',
+            expiresAt,
             lastReferencedAt: new Date(),
           },
         });
@@ -63,6 +79,7 @@ export class MemoryLifecycleService {
             importance: candidate.importance,
             confidence: candidate.confidence,
             source: candidate.source || 'EXTRACTED_CONVERSATION',
+            expiresAt,
             lastReferencedAt: new Date(),
           },
         });

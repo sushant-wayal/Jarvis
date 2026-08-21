@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Voice Interaction - JARVIS</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600&amp;family=Inter:wght@400;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-error-container": "#ffdad6",
+                        "secondary-container": "#6f00be",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary-fixed": "#002022",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#6900b3",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131314",
+                        "secondary-fixed-dim": "#ddb7ff",
+                        "surface-container-high": "#2a2a2b",
+                        "on-background": "#e5e2e3",
+                        "surface-bright": "#3a393a",
+                        "on-error": "#690005",
+                        "surface-container-lowest": "#0e0e0f",
+                        "secondary": "#ddb7ff",
+                        "on-primary": "#00363a",
+                        "on-primary-container": "#006970",
+                        "on-secondary-container": "#d6a9ff",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-container": "#fed639",
+                        "primary": "#dbfcff",
+                        "on-secondary": "#490080",
+                        "tertiary-fixed": "#ffe179",
+                        "surface-container-low": "#1c1b1c",
+                        "on-surface": "#e5e2e3",
+                        "error": "#ffb4ab",
+                        "tertiary": "#fff5de",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-highest": "#353436",
+                        "error-container": "#93000a",
+                        "outline": "#849495",
+                        "on-tertiary-fixed-variant": "#554500",
+                        "tertiary-fixed-dim": "#eac324",
+                        "secondary-fixed": "#f0dbff",
+                        "primary-container": "#00f0ff",
+                        "primary-fixed-dim": "#00dbe9",
+                        "inverse-surface": "#e5e2e3",
+                        "surface-dim": "#131314",
+                        "surface-variant": "#353436",
+                        "on-tertiary": "#3b2f00",
+                        "surface-tint": "#00dbe9",
+                        "inverse-primary": "#006970",
+                        "inverse-on-surface": "#313031",
+                        "surface": "#131314",
+                        "on-tertiary-container": "#715d00",
+                        "surface-container": "#201f20",
+                        "on-tertiary-fixed": "#231b00"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    spacing: {
+                        "stack-sm": "8px",
+                        "stack-lg": "48px",
+                        "stack-md": "24px",
+                        "gutter": "16px",
+                        "safe-margin": "24px",
+                        "container-padding": "20px"
+                    },
+                    fontFamily: {
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "label-caps": ["Inter"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "body-md": ["Inter"],
+                        "body-xl": ["Inter"],
+                        "headline-lg": ["Hanken Grotesk"]
+                    },
+                    fontSize: {
+                        "headline-lg-mobile": ["28px", { lineHeight: "36px", fontWeight: "500" }],
+                        "label-caps": ["12px", { lineHeight: "16px", letterSpacing: "0.1em", fontWeight: "600" }],
+                        "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "600" }],
+                        "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+                        "body-xl": ["20px", { lineHeight: "32px", letterSpacing: "0.01em", fontWeight: "400" }],
+                        "headline-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.01em", fontWeight: "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .orb-pulse {
+            animation: pulse-glow 3s infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            0% {
+                box-shadow: 0 0 20px rgba(0, 240, 255, 0.2), inset 0 0 40px rgba(0, 240, 255, 0.3);
+                transform: scale(0.98);
+            }
+
+            100% {
+                box-shadow: 0 0 60px rgba(0, 240, 255, 0.4), inset 0 0 80px rgba(0, 240, 255, 0.5);
+                transform: scale(1.02);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col overflow-hidden relative">
+    <!-- Top Navigation (Shell suppressed for focused interaction, minimal brand header only) -->
+    <header class="flex items-center justify-between px-safe-margin h-16 w-full z-50 bg-transparent fixed top-0">
+        <div class="flex items-center gap-4">
+            <!-- Placeholder for Leading Icon if needed in structural rules, but minimized for immersive feel -->
+        </div>
+        <div class="font-headline-lg-mobile text-headline-lg-mobile tracking-widest text-primary">JARVIS</div>
+        <div class="w-10"></div> <!-- Balancing space -->
+    </header>
+    <!-- Main Content Canvas -->
+    <main class="flex-1 flex flex-col items-center justify-center relative z-10 px-safe-margin pt-20 pb-safe-margin">
+        <!-- Ambient Orb Area (Speaking State) -->
+        <div class="relative w-64 h-64 mb-stack-lg flex items-center justify-center">
+            <!-- Simulated glowing orb container -->
+            <div
+                class="absolute inset-0 rounded-full bg-gradient-to-br from-primary-container/40 to-background orb-pulse">
+            </div>
+            <!-- Core of the orb -->
+            <div
+                class="absolute w-3/4 h-3/4 rounded-full bg-primary-container/20 backdrop-blur-md flex items-center justify-center">
+                <span class="material-symbols-outlined text-primary text-6xl opacity-80" data-icon="graphic_eq"
+                    style="font-variation-settings: 'FILL' 0;">graphic_eq</span>
+            </div>
+            <!-- Optional: Use webgl shader here if available in real environment -->
+            <!-- <webgl-shader src="{{DATA:ANIMATION:ANIMATION_1}}" class="absolute inset-0 w-full h-full rounded-full opacity-60"></webgl-shader> -->
+        </div>
+        <!-- Typography-First Conversation -->
+        <div class="w-full max-w-lg text-center flex flex-col gap-4">
+            <span class="font-label-caps text-label-caps text-outline-variant uppercase tracking-widest">JARVIS</span>
+            <p class="font-headline-lg-mobile text-headline-lg-mobile text-primary leading-tight">
+                "I've noted your preference for local experiences in Goa."
+            </p>
+        </div>
+    </main>
+    <!-- Contextual Control (Bottom Area) -->
+    <div
+        class="fixed bottom-0 w-full z-50 flex flex-col items-center pb-8 pt-4 bg-gradient-to-t from-background via-background/80 to-transparent">
+        <button
+            class="glass-panel px-6 py-3 rounded-full flex items-center gap-3 text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all active:scale-95 group">
+            <span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors"
+                data-icon="stop_circle" data-weight="fill" style="font-variation-settings: 'FILL' 1;">stop_circle</span>
+            <span class="font-label-caps text-label-caps uppercase tracking-widest">Tap to stop</span>
+        </button>
+        <!-- Gesture Navigation Bar -->
+        <div class="w-10 h-1 bg-surface-variant rounded-full mt-6"></div>
+    </div>
+</body>
+
+</html>

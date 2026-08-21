@@ -1,15 +1,29 @@
 import { JarvisState } from '@jarvis/shared';
 import * as React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { colors, typography } from '../theme/tokens';
+import { Icon } from './Icon';
 
 export interface StatusHeaderProps {
-  state: JarvisState;
+  state?: JarvisState;
   isOnline: boolean;
   onRefresh?: () => Promise<void> | void;
-  key?: string;
+  title?: string;
+  showAvatar?: boolean;
 }
 
-export function StatusHeader({ state, isOnline, onRefresh }: StatusHeaderProps): React.ReactElement {
+export function StatusHeader({
+  state = 'IDLE',
+  isOnline,
+  onRefresh,
+  title,
+}: StatusHeaderProps): React.ReactElement {
   const [isRefreshing, setIsRefreshing] = React.useState<boolean>(false);
 
   const handleRefresh = async (): Promise<void> => {
@@ -18,76 +32,58 @@ export function StatusHeader({ state, isOnline, onRefresh }: StatusHeaderProps):
       try {
         await onRefresh();
       } finally {
-        setTimeout(() => setIsRefreshing(false), 500);
+        setTimeout(() => setIsRefreshing(false), 400);
       }
     }
   };
 
-  const getStateInfo = (): { label: string; color: string; icon: string } => {
-    switch (state) {
-      case 'LISTENING':
-        return { label: 'Listening...', color: '#38BDF8', icon: '🎙️' };
-      case 'THINKING':
-        return { label: 'Thinking...', color: '#A855F7', icon: '⚡' };
-      case 'SPEAKING':
-        return { label: 'Speaking', color: '#10B981', icon: '🔊' };
-      case 'PROCESSING':
-        return { label: 'Processing...', color: '#F59E0B', icon: '⏳' };
-      case 'ERROR':
-        return { label: 'Error', color: '#EF4444', icon: '⚠️' };
-      case 'OFFLINE':
-        return { label: 'Offline', color: '#EF4444', icon: '🔴' };
-      case 'IDLE':
-      default:
-        return { label: isOnline ? 'Voice Ready' : 'Offline', color: isOnline ? '#38BDF8' : '#64748B', icon: isOnline ? '✨' : '🔴' };
-    }
-  };
-
-  const statusInfo = getStateInfo();
-
   return (
     <View style={styles.header}>
-      <View style={styles.titleRow}>
-        <Text style={styles.title}>JARVIS</Text>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={handleRefresh}
-          activeOpacity={0.7}
-          disabled={isRefreshing}
-        >
-          {isRefreshing ? (
-            <ActivityIndicator size="small" color="#38BDF8" />
-          ) : (
-            <Text style={styles.refreshText}>🔄 Refresh</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-      <View style={styles.badgesRow}>
+      {/* Left indicator: Online status */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={handleRefresh}
+        style={styles.leftStatus}
+      >
         <View
           style={[
-            styles.badge,
-            {
-              backgroundColor: isOnline ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-              borderColor: statusInfo.color,
-            },
+            styles.pulseDot,
+            { backgroundColor: isOnline ? colors.primaryFixed : colors.error },
           ]}
-        >
-          <Text style={[styles.badgeText, { color: statusInfo.color }]}>
-            {statusInfo.icon} {statusInfo.label}
-          </Text>
-        </View>
+        />
+        <Text style={[typography.labelCaps, styles.statusLabel]}>
+          {isOnline ? 'Online' : 'Offline'}
+        </Text>
+      </TouchableOpacity>
 
-        <View
-          style={[
-            styles.badge,
-            {
-              backgroundColor: 'rgba(30, 41, 59, 0.8)',
-              borderColor: '#334155',
-            },
-          ]}
-        >
-          <Text style={[styles.badgeText, { color: '#94A3B8' }]}>📱 Online</Text>
+      {/* Center Branding if title provided */}
+      {title ? (
+        <View style={styles.centerBrand}>
+          <Text style={[typography.headlineLgMobile, styles.brandTitle]}>{title}</Text>
         </View>
+      ) : null}
+
+      {/* Right: Voice Ready Indicator with Material mic Icon */}
+      <View style={styles.rightStatus}>
+        {isRefreshing ? (
+          <ActivityIndicator size="small" color={colors.primaryFixed} />
+        ) : (
+          <View style={styles.voiceReadyGroup}>
+            <Icon
+              name="mic"
+              size={14}
+              color={isOnline ? colors.primaryFixed : colors.outline}
+            />
+            <Text
+              style={[
+                typography.labelCaps,
+                { color: isOnline ? colors.primaryFixed : colors.outline },
+              ]}
+            >
+              Voice Ready
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -95,53 +91,52 @@ export function StatusHeader({ state, isOnline, onRefresh }: StatusHeaderProps):
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-    backgroundColor: '#0F172A',
-  },
-  titleRow: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 10,
+    backgroundColor: 'transparent',
+    zIndex: 20,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    letterSpacing: 2,
-  },
-  refreshButton: {
-    backgroundColor: 'rgba(30, 41, 59, 0.9)',
-    borderColor: '#334155',
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 80,
-  },
-  refreshText: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  badgesRow: {
+  leftStatus: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
+  pulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    shadowColor: colors.primaryContainer,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+  statusLabel: {
+    color: colors.onSurfaceVariant,
+    letterSpacing: 1.5,
+  },
+  centerBrand: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandTitle: {
+    color: colors.primary,
+    letterSpacing: 3,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  rightStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  voiceReadyGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
 });

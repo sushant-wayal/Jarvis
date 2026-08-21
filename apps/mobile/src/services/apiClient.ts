@@ -5,6 +5,7 @@ import {
   ChatMessage,
   ConversationSummary,
   CreateEventReminderRequest,
+  CreateMemoryRequest,
   CreateTaskRequest,
   CreateUserEventRequest,
   EventReminderItem,
@@ -22,7 +23,8 @@ import {
 } from '@jarvis/shared';
 
 // Direct IP address of the local Jarvis Brain backend
-const DEFAULT_API_URL = 'http://192.168.1.71:3000/api/v1';
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_JARVIS_API_URL || 'http://192.168.1.88:3000/api/v1';
 
 export class JarvisApiClient {
   private baseUrl: string = DEFAULT_API_URL;
@@ -161,6 +163,19 @@ export class JarvisApiClient {
     });
     const json = (await res.json()) as ApiResponse<MemoryItem[]>;
     return json.data || [];
+  }
+
+  async createMemory(data: CreateMemoryRequest): Promise<MemoryItem> {
+    const res = await fetch(`${this.baseUrl}/memory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = (await res.json()) as ApiResponse<MemoryItem>;
+    if (!json.success || !json.data) {
+      throw new Error(json.error?.message || 'Failed to create memory');
+    }
+    return json.data;
   }
 
   async deleteMemory(id: string): Promise<boolean> {

@@ -27,6 +27,8 @@ export type VoiceUploadRequest = z.input<typeof VoiceUploadSchema>;
 export const CreateConversationSchema = z.object({
   title: z.string().optional().default('New Conversation'),
   userId: z.string().optional().default('default-user'),
+  expiresAt: z.string().datetime().optional(),
+  ttlDays: z.number().int().min(1).max(365).optional(),
 });
 
 export type CreateConversationRequest = z.input<typeof CreateConversationSchema>;
@@ -51,6 +53,7 @@ export const CreateMemorySchema = z.object({
   confidence: z.number().min(0).max(1).optional().default(0.9),
   source: z.string().optional(),
   expiresAt: z.string().datetime().optional(),
+  ttlDays: z.number().int().min(1).max(365).optional(),
 });
 
 export type CreateMemoryRequest = z.input<typeof CreateMemorySchema>;

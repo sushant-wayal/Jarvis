@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Jarvis - Memory Bank</title>
+    <!-- Material Symbols -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Google Fonts: Inter and Hanken Grotesk -->
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600&amp;family=Inter:wght@400;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <!-- Tailwind Theme Config -->
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#7df4ff",
+                        "surface-container-highest": "#353436",
+                        "outline": "#849495",
+                        "surface-tint": "#00dbe9",
+                        "on-error": "#690005",
+                        "tertiary": "#fff5de",
+                        "on-tertiary-fixed": "#231b00",
+                        "on-primary": "#00363a",
+                        "error": "#ffb4ab",
+                        "primary": "#dbfcff",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-lowest": "#0e0e0f",
+                        "surface-container-high": "#2a2a2b",
+                        "primary-fixed-dim": "#00dbe9",
+                        "secondary-fixed": "#f0dbff",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-fixed": "#ffe179",
+                        "error-container": "#93000a",
+                        "outline-variant": "#3b494b",
+                        "on-background": "#e5e2e3",
+                        "on-surface": "#e5e2e3",
+                        "surface-dim": "#131314",
+                        "surface": "#131314",
+                        "on-secondary-fixed-variant": "#6900b3",
+                        "surface-container": "#201f20",
+                        "inverse-surface": "#e5e2e3",
+                        "on-tertiary-fixed-variant": "#554500",
+                        "tertiary-fixed-dim": "#eac324",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-secondary-container": "#d6a9ff",
+                        "on-tertiary": "#3b2f00",
+                        "on-error-container": "#ffdad6",
+                        "background": "#131314",
+                        "on-primary-fixed": "#002022",
+                        "surface-container-low": "#1c1b1c",
+                        "secondary-fixed-dim": "#ddb7ff",
+                        "surface-bright": "#3a393a",
+                        "inverse-primary": "#006970",
+                        "primary-container": "#00f0ff",
+                        "secondary-container": "#6f00be",
+                        "on-tertiary-container": "#715d00",
+                        "surface-variant": "#353436",
+                        "inverse-on-surface": "#313031",
+                        "on-secondary": "#490080",
+                        "secondary": "#ddb7ff",
+                        "on-primary-container": "#006970",
+                        "tertiary-container": "#fed639"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding": "20px",
+                        "gutter": "16px",
+                        "stack-sm": "8px",
+                        "stack-lg": "48px",
+                        "safe-margin": "24px",
+                        "stack-md": "24px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "headline-lg": ["Hanken Grotesk"],
+                        "body-xl": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "500" }],
+                        "body-xl": ["20px", { "lineHeight": "32px", "letterSpacing": "0.01em", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Hide scrollbar for clean horizontal scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Subtle glow for inputs/cards */
+        .glass-card {
+            background: rgba(53, 52, 54, 0.1);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background text-on-background min-h-screen flex flex-col md:flex-row antialiased overflow-x-hidden selection:bg-primary-fixed/30">
+    <!-- TopAppBar (Mobile Only) -->
+    <header
+        class="md:hidden fixed top-0 w-full z-50 bg-gradient-to-b from-surface/80 to-transparent backdrop-blur-md flex justify-between items-center px-6 h-16 transition-transform scale-95 duration-200">
+        <button class="text-on-surface-variant hover:text-primary-fixed transition-colors">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">menu</span>
+        </button>
+        <div class="font-headline-lg-mobile text-headline-lg-mobile text-primary-fixed tracking-[0.2em]">JARVIS</div>
+        <button class="text-on-surface-variant hover:text-primary-fixed transition-colors">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">settings</span>
+        </button>
+    </header>
+    <!-- NavigationDrawer (Desktop Only) -->
+    <aside
+        class="hidden md:flex flex-col fixed inset-y-0 left-0 z-[60] h-full w-80 rounded-r-lg border-r border-white/5 backdrop-blur-2xl shadow-2xl bg-surface-dim/95 p-6 ease-in-out duration-300">
+        <!-- Profile Header -->
+        <div class="flex items-center gap-4 mb-stack-lg">
+            <div class="w-12 h-12 rounded-full overflow-hidden border border-white/10 bg-surface-container-highest">
+                <img class="w-full h-full object-cover"
+                    data-alt="A futuristic, minimalist avatar portrait of a user in a sleek, dimly lit cybernetic environment. The lighting is cool and moody, emphasizing a premium high-tech aesthetic."
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCo2iGEyiNNzHAhK4ZnpclwfAQzcLlQwLoIfoJfzv5WOehdys-Wq3NjudkRRwYl6JAFmrhTtuRpVTJChXffyeBxXJObsWakE061ZaNADOsJPHg1CbMiFoKGC19Z2_t_6l6TCNpc2NOe0xdmLzaDDoI2cTpGE3P21cfqWNKp4k5nap03x8_ojHgwSiMM6zpExi2zFf9hplOpv4B5ZP1hokoi0BPbkvTT5pi3OH_MY0eT2PTUK2hGBjsevw" />
+            </div>
+            <div class="flex flex-col">
+                <span class="font-body-md text-on-surface font-semibold">User</span>
+                <span class="font-label-caps text-label-caps text-on-surface-variant">Intelligence Level: 01</span>
+                <span class="font-label-caps text-label-caps text-primary-fixed mt-1 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-primary-fixed inline-block pulse"></span> Online
+                </span>
+            </div>
+        </div>
+        <!-- Navigation Links -->
+        <nav class="flex flex-col gap-2">
+            <!-- System Status -->
+            <a class="flex items-center gap-4 p-3 rounded-DEFAULT text-on-surface-variant hover:bg-white/5 transition-all"
+                href="#">
+                <span class="material-symbols-outlined font-body-md text-body-md">memory</span>
+                <span class="font-body-md text-body-md">System Status</span>
+            </a>
+            <!-- Memory Bank (Active) -->
+            <a class="flex items-center gap-4 p-3 rounded-DEFAULT bg-primary-fixed/10 text-primary-fixed font-bold border-l-2 border-primary-fixed hover:bg-white/5 transition-all"
+                href="#">
+                <span class="material-symbols-outlined font-body-md text-body-md">storage</span>
+                <span class="font-body-md text-body-md">Memory Bank</span>
+            </a>
+            <!-- Neural Network -->
+            <a class="flex items-center gap-4 p-3 rounded-DEFAULT text-on-surface-variant hover:bg-white/5 transition-all"
+                href="#">
+                <span class="material-symbols-outlined font-body-md text-body-md">lan</span>
+                <span class="font-body-md text-body-md">Neural Network</span>
+            </a>
+            <!-- Voice Settings -->
+            <a class="flex items-center gap-4 p-3 rounded-DEFAULT text-on-surface-variant hover:bg-white/5 transition-all"
+                href="#">
+                <span class="material-symbols-outlined font-body-md text-body-md">mic</span>
+                <span class="font-body-md text-body-md">Voice Settings</span>
+            </a>
+            <!-- Security -->
+            <a class="flex items-center gap-4 p-3 rounded-DEFAULT text-on-surface-variant hover:bg-white/5 transition-all"
+                href="#">
+                <span class="material-symbols-outlined font-body-md text-body-md">shield</span>
+                <span class="font-body-md text-body-md">Security</span>
+            </a>
+        </nav>
+        <div class="mt-auto pt-6 border-t border-white/5 font-label-caps text-label-caps text-primary-fixed">
+            JARVIS CORE v4.2
+        </div>
+    </aside>
+    <!-- Main Content Canvas -->
+    <main class="flex-1 md:ml-80 pt-24 md:pt-16 pb-28 md:pb-12 px-safe-margin w-full max-w-[1400px] mx-auto">
+        <!-- Page Header -->
+        <div class="mb-stack-lg">
+            <h1 class="font-display-lg text-on-surface mb-2">Memory Bank</h1>
+            <p class="font-body-xl text-on-surface-variant opacity-80 max-w-2xl">Organized intelligence and derived
+                context. Reviewing known parameters.</p>
+        </div>
+        <!-- Categories / Filters (Horizontal Scroll) -->
+        <div class="flex gap-4 mb-stack-md overflow-x-auto no-scrollbar pb-2">
+            <button
+                class="px-6 py-2 rounded-full border border-primary-fixed/30 bg-primary-fixed/10 font-label-caps text-label-caps text-primary-fixed whitespace-nowrap">ALL
+                MEMORIES</button>
+            <button
+                class="px-6 py-2 rounded-full border border-white/10 glass-card font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface hover:bg-white/5 transition-colors whitespace-nowrap">PERSONAL</button>
+            <button
+                class="px-6 py-2 rounded-full border border-white/10 glass-card font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface hover:bg-white/5 transition-colors whitespace-nowrap">PREFERENCES</button>
+            <button
+                class="px-6 py-2 rounded-full border border-white/10 glass-card font-label-caps text-label-caps text-on-surface-variant hover:text-on-surface hover:bg-white/5 transition-colors whitespace-nowrap">TRAVEL</button>
+        </div>
+        <!-- Bento Grid / Cards Layout -->
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <!-- Memory Card 1 (Example from Prompt) -->
+            <div
+                class="glass-card rounded-DEFAULT p-6 flex flex-col justify-between group hover:bg-surface-container-highest/20 transition-colors relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-primary-fixed/50"></div>
+                <div>
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="font-label-caps text-label-caps text-primary-fixed">TRAVEL</span>
+                        <button class="text-on-surface-variant opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span class="material-symbols-outlined"
+                                style="font-variation-settings: 'wght' 300;">more_vert</span>
+                        </button>
+                    </div>
+                    <p class="font-body-xl text-on-surface leading-relaxed mb-6">
+                        Travel preference: You prefer exploring local experiences while travelling.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 pt-4 border-t border-white/5 mt-auto">
+                    <span class="material-symbols-outlined text-on-surface-variant opacity-70"
+                        style="font-size: 16px;">history</span>
+                    <span class="font-body-md text-on-surface-variant opacity-70 text-sm">Source: Last
+                        conversation</span>
+                </div>
+            </div>
+            <!-- Memory Card 2 -->
+            <div
+                class="glass-card rounded-DEFAULT p-6 flex flex-col justify-between group hover:bg-surface-container-highest/20 transition-colors relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-secondary-fixed/50"></div>
+                <div>
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="font-label-caps text-label-caps text-secondary-fixed">PREFERENCES</span>
+                        <button class="text-on-surface-variant opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span class="material-symbols-outlined"
+                                style="font-variation-settings: 'wght' 300;">more_vert</span>
+                        </button>
+                    </div>
+                    <p class="font-body-xl text-on-surface leading-relaxed mb-6">
+                        Communication style: Direct, concise, and focused on actionable insights.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 pt-4 border-t border-white/5 mt-auto">
+                    <span class="material-symbols-outlined text-on-surface-variant opacity-70"
+                        style="font-size: 16px;">forum</span>
+                    <span class="font-body-md text-on-surface-variant opacity-70 text-sm">Source: Global Settings</span>
+                </div>
+            </div>
+            <!-- Memory Card 3 -->
+            <div
+                class="glass-card rounded-DEFAULT p-6 flex flex-col justify-between group hover:bg-surface-container-highest/20 transition-colors relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full bg-tertiary-fixed/50"></div>
+                <div>
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="font-label-caps text-label-caps text-tertiary-fixed">PERSONAL</span>
+                        <button class="text-on-surface-variant opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span class="material-symbols-outlined"
+                                style="font-variation-settings: 'wght' 300;">more_vert</span>
+                        </button>
+                    </div>
+                    <p class="font-body-xl text-on-surface leading-relaxed mb-6">
+                        Morning Routine: Review schedule, check weather for local area, 10-minute brief.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 pt-4 border-t border-white/5 mt-auto">
+                    <span class="material-symbols-outlined text-on-surface-variant opacity-70"
+                        style="font-size: 16px;">calendar_month</span>
+                    <span class="font-body-md text-on-surface-variant opacity-70 text-sm">Source: Core
+                        Initialization</span>
+                </div>
+            </div>
+            <!-- Memory Card 4 (Image Context Example) -->
+            <div
+                class="glass-card rounded-DEFAULT p-6 flex flex-col justify-between group hover:bg-surface-container-highest/20 transition-colors relative overflow-hidden md:col-span-2 xl:col-span-1">
+                <div class="absolute top-0 left-0 w-1 h-full bg-primary-fixed/30"></div>
+                <div>
+                    <div class="flex justify-between items-start mb-4">
+                        <span class="font-label-caps text-label-caps text-on-surface-variant">CONTEXT AWARENESS</span>
+                        <button class="text-on-surface-variant opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span class="material-symbols-outlined"
+                                style="font-variation-settings: 'wght' 300;">more_vert</span>
+                        </button>
+                    </div>
+                    <p class="font-body-xl text-on-surface leading-relaxed mb-4">
+                        Current operational environment implies focus on deep-work tasks. Suppressing non-critical
+                        notifications.
+                    </p>
+                    <div
+                        class="h-24 w-full rounded-lg bg-surface-container-highest overflow-hidden opacity-50 group-hover:opacity-80 transition-opacity">
+                        <img class="w-full h-full object-cover"
+                            data-alt="A minimalist abstract representation of digital data streams flowing smoothly in a dark void. Cool cyan and deep blue hues dominate, creating a sense of calm focus and hyper-intelligence."
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjfdN4LWglS18dzHTvP-Hw2LcPsUxMxAOiTJX_7M62A9jF6P3rOZ8NUpj0hCLJOS2KXAi_0SlFr2pnaWR7KHXc7gJDYjMw0y316Eid2JSbffQgc5B4u9-2mZW4K4wZFsv5R4R47pdatc6FmAJACcWSwgnV9g648aExXHsHl3dcKrSiD0_lCIeIacAPpaeJWSBO9Ipw-DaR3aBMFGCbRu2HI8JrtwtlsQ5jiN_LQzoEC0c_BIDpw4-oEw" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    <!-- Floating Action Button (FAB) -->
+    <button
+        class="fixed bottom-28 md:bottom-12 right-6 md:right-12 w-16 h-16 rounded-full bg-primary-fixed text-on-primary-fixed flex items-center justify-center shadow-[0_0_24px_rgba(125,244,255,0.4)] hover:scale-105 active:scale-95 transition-all z-[70]">
+        <span class="material-symbols-outlined" style="font-size: 28px;">add</span>
+    </button>
+    <!-- BottomNavBar (Mobile Only) -->
+    <nav
+        class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-20 px-6 pb-4 bg-surface/5 rounded-t-lg border-t border-white/10 backdrop-blur-xl">
+        <!-- Home -->
+        <a class="flex items-center justify-center text-outline opacity-50 hover:opacity-100 transition-opacity active:scale-90 transition-transform duration-300"
+            href="#">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">home</span>
+        </a>
+        <!-- Database (Active - Memory Bank) -->
+        <a class="flex items-center justify-center text-primary-fixed drop-shadow-[0_0_8px_rgba(0,219,233,0.5)] active:scale-90 transition-transform duration-300"
+            href="#">
+            <span class="material-symbols-outlined font-label-caps text-label-caps"
+                style="font-variation-settings: 'FILL' 1;">database</span>
+        </a>
+        <!-- Calendar -->
+        <a class="flex items-center justify-center text-outline opacity-50 hover:opacity-100 transition-opacity active:scale-90 transition-transform duration-300"
+            href="#">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">calendar_today</span>
+        </a>
+        <!-- Insights -->
+        <a class="flex items-center justify-center text-outline opacity-50 hover:opacity-100 transition-opacity active:scale-90 transition-transform duration-300"
+            href="#">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">insights</span>
+        </a>
+        <!-- Person -->
+        <a class="flex items-center justify-center text-outline opacity-50 hover:opacity-100 transition-opacity active:scale-90 transition-transform duration-300"
+            href="#">
+            <span class="material-symbols-outlined font-label-caps text-label-caps">person</span>
+        </a>
+    </nav>
+    <!-- Ambient Background Glows -->
+    <div
+        class="fixed top-[-20%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-primary-fixed/5 blur-[120px] pointer-events-none z-[-1]">
+    </div>
+    <div
+        class="fixed bottom-[-20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-secondary-fixed/5 blur-[100px] pointer-events-none z-[-1]">
+    </div>
+</body>
+
+</html>

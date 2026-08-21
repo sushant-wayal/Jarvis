@@ -81,15 +81,17 @@ export class AgentPlanner {
 
         // Call Gemini with tools and system instruction
         const response = await this.generateWithFallback({
-          systemInstruction: `You are Jarvis, a proactive, capable personal AI operating layer.
+          systemInstruction: `You are Jarvis, a proactive, capable, and natural personal AI operating layer.
 ${context.systemContextString}
 
-Guidelines:
-1. Speak concisely and clearly. Deliver answers directly.
-2. Use tools whenever external calculation, live information, reminders, events, or memory actions are needed.
-3. If user mentions future trips or plans (e.g. "I'm going to Goa next month"), use 'event_create'.
-4. If user asks for a location-triggered reminder (e.g. "When I reach Goa, remind me to go parasailing"), use 'event_reminder_create'.
-5. If creating a reminder or task, confirm once completed with details.`,
+Core Principles:
+1. Deliver direct, high-value, and engaging answers to the user's questions immediately.
+2. For casual, advisory, weekend, lifestyle, or brainstorming queries (e.g., "what should I do this weekend?", "recommend something fun", "how should I plan my evening?"):
+   - Respond with inspiring, structured, and practical recommendations right away.
+   - Do NOT stall, output raw tool parameters, or complain about missing location data.
+3. Context Awareness: Current time, date, day of week, user name, and known context are already provided in the context above. Do NOT invoke 'date_time', 'current_time', or 'location_get' tools simply to check the day/time for casual chatting.
+4. Intelligent Tool Use: Use tools when actions or external lookups are genuinely required (e.g. creating reminders/tasks with 'task_create', creating trips/events with 'event_create', location reminders with 'event_reminder_create', web searching with 'web_search', or saving memories).
+5. Seamless Synthesis: When tools provide output, synthesize that information into a polished, natural conversational response. Never display raw JSON or internal parameter keys.`,
           contents: contents as never,
           toolsConfig: toolsConfig as never,
         });
@@ -99,7 +101,7 @@ Guidelines:
         // No more tool calls -> Final Assistant Answer
         if (!functionCalls || functionCalls.length === 0) {
           finalText = response.text?.trim() || 'Done.';
-          responseMode = 'ANSWER';
+          responseMode = executedToolCalls.length > 0 ? 'ACTION' : 'ANSWER';
 
           await prisma.agentStep.create({
             data: {
@@ -116,8 +118,6 @@ Guidelines:
         }
 
         // Process Tool Calls
-        let allDeterministicFastPath = true;
-
         for (const fc of functionCalls) {
           const fcName = fc.name || '';
           if (!fcName) continue;
@@ -189,26 +189,15 @@ Guidelines:
             },
           });
 
-          if (fcName === 'web_search' || !toolRes.success) {
-            allDeterministicFastPath = false;
-          }
-
           // Feed observation back to model
           contents.push({
             role: 'model',
-            parts: [{ text: `Called tool ${fcName}` }],
+            parts: [{ text: `Executed tool ${fcName}` }],
           });
           contents.push({
             role: 'user',
-            parts: [{ text: `[OBSERVATION for ${fcName}]: ${JSON.stringify(toolRes.output)}` }],
+            parts: [{ text: `[Observation for ${fcName}]: ${JSON.stringify(toolRes.output)}` }],
           });
-        }
-
-        // Fast path for single-step deterministic tools (calculator, date/time, task, event tools)
-        if (allDeterministicFastPath && stepCount === 1 && executedToolResults.length > 0 && executedToolResults[0].success) {
-          finalText = this.formatDirectOutput(executedToolCalls[0].name, executedToolResults[0].output);
-          responseMode = 'ACTION';
-          break;
         }
       }
 

@@ -1,6 +1,8 @@
+import { ToolRiskLevel } from '@jarvis/shared';
 import * as React from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ToolRiskLevel } from '@jarvis/shared';
+import { colors, rounded, typography } from '../theme/tokens';
+import { GlassCard } from './GlassCard';
 
 export interface ConfirmationModalProps {
   visible: boolean;
@@ -20,31 +22,54 @@ export function ConfirmationModal({
   onConfirm,
   onCancel,
 }: ConfirmationModalProps): React.ReactElement {
+  const isHighRisk = riskLevel === 'HIGH_RISK' || riskLevel === 'CRITICAL';
+
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
-        <View style={styles.modalBox}>
-          <View style={styles.header}>
-            <Text style={styles.warningIcon}>⚠️</Text>
-            <Text style={styles.title}>Confirm Action</Text>
+        <GlassCard style={styles.modalBox} variant="active">
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <Text style={styles.alertIcon}>⚠️</Text>
+            <Text style={[typography.headlineLgMobile, styles.title]}>Action Authorization</Text>
           </View>
 
-          <View style={styles.riskBadge}>
-            <Text style={styles.riskText}>Risk: {riskLevel}</Text>
+          {/* Risk Level Badge */}
+          <View
+            style={[
+              styles.riskBadge,
+              { backgroundColor: isHighRisk ? 'rgba(239, 68, 68, 0.15)' : 'rgba(254, 214, 57, 0.15)' },
+            ]}
+          >
+            <Text
+              style={[
+                typography.labelCaps,
+                { color: isHighRisk ? colors.error : colors.tertiaryContainer },
+              ]}
+            >
+              RISK PROTOCOL: {riskLevel}
+            </Text>
           </View>
 
-          <Text style={styles.toolText}>Tool: {toolName}</Text>
-          <Text style={styles.summaryText}>{summary}</Text>
+          {/* Tool Designation */}
+          <View style={styles.toolRow}>
+            <Text style={[typography.labelCaps, styles.toolLabel]}>TARGET TOOL:</Text>
+            <Text style={styles.toolName}>{toolName}</Text>
+          </View>
 
+          {/* Action Summary */}
+          <Text style={[typography.bodyMd, styles.summaryText]}>{summary}</Text>
+
+          {/* Button Options */}
           <View style={styles.btnRow}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[typography.labelCaps, styles.cancelText]}>DISMISS</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm}>
-              <Text style={styles.confirmText}>Approve & Execute</Text>
+              <Text style={[typography.labelCaps, styles.confirmText]}>AUTHORIZE</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </GlassCard>
       </View>
     </Modal>
   );
@@ -53,57 +78,61 @@ export function ConfirmationModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalBox: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 20,
     width: '100%',
-    maxWidth: 400,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
+    maxWidth: 420,
+    backgroundColor: colors.surfaceContainerLow,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: rounded.lg,
+    padding: 24,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 14,
   },
-  warningIcon: {
+  alertIcon: {
     fontSize: 20,
   },
   title: {
+    color: colors.onSurface,
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#F8FAFC',
+    letterSpacing: 1,
   },
   riskBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#78350F',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
+    marginBottom: 14,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+  },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 10,
   },
-  riskText: {
-    color: '#FDE68A',
-    fontSize: 11,
-    fontWeight: 'bold',
+  toolLabel: {
+    color: colors.outline,
+    fontSize: 10,
   },
-  toolText: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginBottom: 6,
+  toolName: {
+    color: colors.primaryFixed,
+    fontSize: 13,
+    fontWeight: '600',
   },
   summaryText: {
-    fontSize: 14,
-    color: '#F1F5F9',
-    lineHeight: 20,
-    marginBottom: 20,
+    color: colors.onSurfaceVariant,
+    lineHeight: 22,
+    marginBottom: 24,
   },
   btnRow: {
     flexDirection: 'row',
@@ -111,24 +140,31 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     flex: 1,
-    backgroundColor: '#334155',
-    paddingVertical: 12,
-    borderRadius: 10,
+    backgroundColor: colors.surfaceContainerHigh,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: rounded.full,
     alignItems: 'center',
   },
   cancelText: {
-    color: '#F8FAFC',
-    fontWeight: '600',
+    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    letterSpacing: 1.5,
   },
   confirmBtn: {
     flex: 1.5,
-    backgroundColor: '#0284C7',
-    paddingVertical: 12,
-    borderRadius: 10,
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderColor: 'rgba(0, 240, 255, 0.4)',
+    borderWidth: 1,
+    paddingVertical: 14,
+    borderRadius: rounded.full,
     alignItems: 'center',
   },
   confirmText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+    color: colors.primaryFixed,
+    fontSize: 11,
+    letterSpacing: 1.5,
+    fontWeight: '700',
   },
 });

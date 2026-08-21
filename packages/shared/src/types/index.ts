@@ -151,6 +151,7 @@ export interface ConversationSummary {
   title: string;
   createdAt: string;
   updatedAt: string;
+  expiresAt?: string;
   messageCount?: number;
   lastMessage?: string;
 }

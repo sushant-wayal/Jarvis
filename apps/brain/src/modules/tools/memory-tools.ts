@@ -20,16 +20,12 @@ export const createMemoryTool: JarvisTool<z.infer<typeof CreateMemoryInputSchema
   riskLevel: 'LOW_RISK',
   inputSchema: CreateMemoryInputSchema,
   async execute(input, context) {
-    const memory = await prisma.memory.create({
-      data: {
-        userId: context.userId,
-        type: input.type || 'FACT',
-        content: input.content,
-        importance: input.importance || 3,
-        confidence: 1.0,
-        source: 'USER_EXPLICIT',
-      },
-    });
+    const memory = await memoryService.saveMemory(
+      context.userId,
+      input.type || 'FACT',
+      input.content,
+      input.importance || 3
+    );
 
     return {
       success: true,

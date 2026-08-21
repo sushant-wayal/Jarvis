@@ -23,12 +23,13 @@ Assistant response: "${assistantResponse}"
 Do NOT save temporary plans, casual questions, or current tasks (e.g. "I'm going to the gym tomorrow", "What is the weather").
 ONLY extract persistent long-term facts/preferences (e.g. "I prefer to be called Sushant", "I am allergic to peanuts", "I prefer concise answers").
 
-If a long-term memory is found, respond strictly with a valid JSON array of objects:
+If a long-term memory is found, respond strictly with a valid JSON array of objects with a suggested TTL in days:
 [
   {
     "type": "FACT" | "PREFERENCE" | "PERSON" | "PROJECT" | "ROUTINE",
     "content": "Description of long-term memory",
-    "importance": 1-5
+    "importance": 1-5,
+    "ttlDays": number (1 to 365 days; e.g. 180-365 for core identity/allergies/rules, 30-90 for projects/goals, 7-30 for seasonal routines/habits)
   }
 ]
 
@@ -47,11 +48,18 @@ If NO long-term memory is present, respond with: []`;
         type: MemoryType;
         content: string;
         importance?: number;
+        ttlDays?: number;
       }>;
 
       for (const item of items) {
         if (item.content && item.type) {
-          await memoryService.saveMemory(userId, item.type, item.content, item.importance || 3);
+          await memoryService.saveMemory(
+            userId,
+            item.type,
+            item.content,
+            item.importance || 3,
+            item.ttlDays
+          );
           logger.info('Memory Extractor stored new memory', { userId, memory: item });
         }
       }

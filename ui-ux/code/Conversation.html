@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Jarvis - Conversation UI</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&amp;family=Inter:wght@400;500;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-error-container": "#ffdad6",
+                        "secondary-container": "#6f00be",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary-fixed": "#002022",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#6900b3",
+                        "primary-fixed": "#7df4ff",
+                        "background": "#131314",
+                        "secondary-fixed-dim": "#ddb7ff",
+                        "surface-container-high": "#2a2a2b",
+                        "on-background": "#e5e2e3",
+                        "surface-bright": "#3a393a",
+                        "on-error": "#690005",
+                        "surface-container-lowest": "#0e0e0f",
+                        "secondary": "#ddb7ff",
+                        "on-primary": "#00363a",
+                        "on-primary-container": "#006970",
+                        "on-secondary-container": "#d6a9ff",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-container": "#fed639",
+                        "primary": "#dbfcff",
+                        "on-secondary": "#490080",
+                        "tertiary-fixed": "#ffe179",
+                        "surface-container-low": "#1c1b1c",
+                        "on-surface": "#e5e2e3",
+                        "error": "#ffb4ab",
+                        "tertiary": "#fff5de",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-highest": "#353436",
+                        "error-container": "#93000a",
+                        "outline": "#849495",
+                        "on-tertiary-fixed-variant": "#554500",
+                        "tertiary-fixed-dim": "#eac324",
+                        "secondary-fixed": "#f0dbff",
+                        "primary-container": "#00f0ff",
+                        "primary-fixed-dim": "#00dbe9",
+                        "inverse-surface": "#e5e2e3",
+                        "surface-dim": "#131314",
+                        "surface-variant": "#353436",
+                        "on-tertiary": "#3b2f00",
+                        "surface-tint": "#00dbe9",
+                        "inverse-primary": "#006970",
+                        "inverse-on-surface": "#313031",
+                        "surface": "#131314",
+                        "on-tertiary-container": "#715d00",
+                        "surface-container": "#201f20",
+                        "on-tertiary-fixed": "#231b00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "48px",
+                        "stack-md": "24px",
+                        "gutter": "16px",
+                        "safe-margin": "24px",
+                        "container-padding": "20px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": [
+                            "Hanken Grotesk"
+                        ],
+                        "label-caps": [
+                            "Inter"
+                        ],
+                        "display-lg": [
+                            "Hanken Grotesk"
+                        ],
+                        "body-md": [
+                            "Inter"
+                        ],
+                        "body-xl": [
+                            "Inter"
+                        ],
+                        "headline-lg": [
+                            "Hanken Grotesk"
+                        ]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": [
+                            "28px",
+                            {
+                                "lineHeight": "36px",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "label-caps": [
+                            "12px",
+                            {
+                                "lineHeight": "16px",
+                                "letterSpacing": "0.1em",
+                                "fontWeight": "600"
+                            }
+                        ],
+                        "display-lg": [
+                            "48px",
+                            {
+                                "lineHeight": "56px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                            }
+                        ],
+                        "body-md": [
+                            "16px",
+                            {
+                                "lineHeight": "24px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "body-xl": [
+                            "20px",
+                            {
+                                "lineHeight": "32px",
+                                "letterSpacing": "0.01em",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "headline-lg": [
+                            "32px",
+                            {
+                                "lineHeight": "40px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "500"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ambient Orb Animation */
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                opacity: 0.8;
+                transform: scale(1);
+                filter: drop-shadow(0 0 20px rgba(0, 219, 233, 0.4));
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.05);
+                filter: drop-shadow(0 0 40px rgba(0, 219, 233, 0.7));
+            }
+        }
+
+        .jarvis-orb {
+            animation: pulse-glow 4s ease-in-out infinite;
+            background: radial-gradient(circle at center, rgba(0, 240, 255, 0.8) 0%, rgba(0, 105, 112, 0.4) 40%, transparent 70%);
+        }
+
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Subtle Inner Border for Context Cards */
+        .inner-glow {
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Hide scrollbar but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            /* IE and Edge */
+            scrollbar-width: none;
+            /* Firefox */
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background text-on-background min-h-screen font-body-md overflow-hidden flex flex-col relative selection:bg-primary-container selection:text-on-primary-container">
+    <!-- Top App Bar -->
+    <header class="flex items-center justify-between px-safe-margin h-16 w-full z-50 bg-background/50 backdrop-blur-xl">
+        <button aria-label="Menu"
+            class="text-primary hover:opacity-80 transition-opacity flex items-center justify-center p-2 rounded-full hover:bg-surface-container-low">
+            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">blur_on</span>
+        </button>
+        <h1 class="font-headline-lg-mobile text-headline-lg-mobile tracking-widest text-primary uppercase select-none">
+            JARVIS</h1>
+        <div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant/30 relative">
+            <img alt="User Profile" class="object-cover w-full h-full"
+                data-alt="A sophisticated, minimalist user avatar showing a silhouette or subtle abstract profile against a dark background with subtle cyan lighting highlights, perfect for a high-end AI assistant interface."
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3eMAyzf7dro09jSZv9UaLKGXpZDYdxwX5Vb8aWLDz5gS20wjNuv_RicbjIOU9WqDR0W13-CHEezDlLoR23gPUrwFL4WChce-MeUBiDvL86SNzaymJn9lNBiEc8L941LQae68lYYZogymk26meH2WeRz86t5tm6DxY1v-bB6U5RGSvq8_8sKc3UndkNisbmkGecLy_5ubeIt4wchoWchyEgHJrtrfBwy2aR4ykBDbaT4-qp1uOZpsD_A" />
+        </div>
+    </header>
+    <!-- Main Conversation Canvas -->
+    <main
+        class="flex-1 overflow-y-auto no-scrollbar px-safe-margin pb-[120px] pt-8 flex flex-col gap-stack-lg relative z-10">
+        <!-- User Message -->
+        <div class="flex flex-col gap-stack-sm items-end w-full">
+            <div
+                class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest px-2 opacity-70">
+                Sushant</div>
+            <div class="font-body-xl text-body-xl text-on-surface max-w-[85%] text-right leading-relaxed">
+                What's the weather in Goa next month? I'm thinking of planning a trip.
+            </div>
+        </div>
+        <!-- Jarvis Ambient Indicator -->
+        <div class="flex justify-start w-full my-stack-sm pl-2">
+            <div class="w-16 h-16 jarvis-orb rounded-full flex-shrink-0"></div>
+        </div>
+        <!-- Jarvis Response -->
+        <div class="flex flex-col gap-stack-sm items-start w-full">
+            <div
+                class="font-label-caps text-label-caps text-primary uppercase tracking-widest px-2 flex items-center gap-2">
+                <span class="material-symbols-outlined text-[14px]">graphic_eq</span> JARVIS
+            </div>
+            <div class="font-body-xl text-body-xl text-primary-fixed-dim max-w-[90%] leading-relaxed">
+                Goa in November transitions into its peak season. Expect comfortable, breezy days averaging 28°C (82°F)
+                and clear nights around 22°C (72°F). The monsoon has typically passed, making it ideal for coastal
+                activities.
+                <br /><br />
+                Based on your calendar, you have a clear week starting November 12th. Shall I draft a tentative
+                itinerary focusing on North Goa's quieter beaches?
+            </div>
+            <!-- Contextual Action Cards (Bento style) -->
+            <div class="mt-stack-md w-full grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl">
+                <!-- Weather Card -->
+                <div
+                    class="glass-panel rounded-DEFAULT p-container-padding flex flex-col gap-3 relative overflow-hidden group hover:bg-white/5 transition-colors cursor-pointer">
+                    <div class="flex justify-between items-start">
+                        <span class="material-symbols-outlined text-primary-container">thermostat</span>
+                        <span class="font-label-caps text-label-caps text-on-surface-variant">NOV FORECAST</span>
+                    </div>
+                    <div class="flex items-baseline gap-2 mt-2">
+                        <span class="font-display-lg text-display-lg text-on-surface">28°</span>
+                        <span class="font-body-md text-body-md text-outline">Avg High</span>
+                    </div>
+                    <div class="text-sm text-outline-variant">Clear skies, low humidity.</div>
+                    <!-- Decorative background element -->
+                    <div
+                        class="absolute -right-6 -bottom-6 w-32 h-32 bg-primary/10 rounded-full blur-2xl group-hover:bg-primary/20 transition-colors">
+                    </div>
+                </div>
+                <!-- Flight Suggestion Card -->
+                <div
+                    class="glass-panel rounded-DEFAULT p-container-padding flex flex-col gap-3 relative overflow-hidden group hover:bg-white/5 transition-colors cursor-pointer">
+                    <div class="flex justify-between items-start">
+                        <span class="material-symbols-outlined text-tertiary-container">flight_takeoff</span>
+                        <span class="font-label-caps text-label-caps text-on-surface-variant">FLIGHT TRENDS</span>
+                    </div>
+                    <div class="mt-2 flex flex-col gap-1">
+                        <div class="flex justify-between items-center text-on-surface font-body-md">
+                            <span>BOM</span>
+                            <span class="material-symbols-outlined text-outline-variant text-sm">arrow_forward</span>
+                            <span>GOI</span>
+                        </div>
+                        <div class="text-sm text-outline mt-1">Direct flights from ₹4,500 if booked now.</div>
+                    </div>
+                </div>
+                <!-- Action Button -->
+                <button
+                    class="md:col-span-2 glass-panel rounded-full py-4 px-6 flex items-center justify-center gap-2 hover:bg-primary/10 transition-colors border-primary/20 text-primary group">
+                    <span class="material-symbols-outlined group-hover:scale-110 transition-transform">event_note</span>
+                    <span class="font-label-caps text-label-caps">DRAFT ITINERARY</span>
+                </button>
+            </div>
+        </div>
+        <!-- Spacer for scrolling above input -->
+        <div class="h-8 w-full flex-shrink-0"></div>
+    </main>
+    <!-- Input Area (Docked above bottom nav zone) -->
+    <div
+        class="fixed bottom-[80px] left-0 w-full px-safe-margin z-40 bg-gradient-to-t from-background via-background/90 to-transparent pt-12 pb-4 pointer-events-none">
+        <div class="pointer-events-auto max-w-3xl mx-auto relative group">
+            <!-- Glow effect behind input -->
+            <div
+                class="absolute -inset-1 bg-gradient-to-r from-primary-container/0 via-primary-container/20 to-primary-container/0 rounded-full blur opacity-0 group-focus-within:opacity-100 transition-opacity duration-500">
+            </div>
+            <div
+                class="relative glass-panel rounded-full flex items-center px-6 py-4 focus-within:border-primary/50 transition-colors bg-surface-container-lowest/80 backdrop-blur-3xl">
+                <button class="text-outline hover:text-primary transition-colors flex-shrink-0 mr-4">
+                    <span class="material-symbols-outlined" style="font-weight: 300;">add</span>
+                </button>
+                <input autocomplete="off"
+                    class="w-full bg-transparent border-none focus:ring-0 text-on-surface placeholder:text-outline-variant font-body-md p-0"
+                    placeholder="Ask Jarvis anything..." type="text" />
+                <button class="text-primary hover:text-primary-container transition-colors flex-shrink-0 ml-4">
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">mic</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Bottom Nav Bar (Gesture Zone) -->
+    <nav
+        class="fixed bottom-0 w-full z-50 flex justify-around items-center h-20 px-gutter bg-surface-container-lowest/10 backdrop-blur-2xl">
+        <button
+            class="flex items-center justify-center text-outline-variant hover:text-primary transition-colors p-4 group">
+            <span class="material-symbols-outlined group-active:scale-110 duration-300 ease-out">home</span>
+        </button>
+        <button
+            class="flex items-center justify-center text-outline-variant hover:text-primary transition-colors p-4 group">
+            <span class="material-symbols-outlined group-active:scale-110 duration-300 ease-out">database</span>
+        </button>
+        <!-- Active Tab: Central Orb/Action -->
+        <button
+            class="flex items-center justify-center text-primary-container drop-shadow-[0_0_8px_rgba(0,240,255,0.5)] p-4 group active:scale-110 transition-transform duration-300 ease-out relative">
+            <div class="absolute inset-2 bg-primary/20 rounded-full blur-md"></div>
+            <span class="material-symbols-outlined relative z-10" style="font-variation-settings: 'FILL' 1;">bolt</span>
+        </button>
+        <button
+            class="flex items-center justify-center text-outline-variant hover:text-primary transition-colors p-4 group">
+            <span class="material-symbols-outlined group-active:scale-110 duration-300 ease-out">history</span>
+        </button>
+        <button
+            class="flex items-center justify-center text-outline-variant hover:text-primary transition-colors p-4 group">
+            <span class="material-symbols-outlined group-active:scale-110 duration-300 ease-out">settings</span>
+        </button>
+    </nav>
+    <!-- Subtle Background Elements for Depth -->
+    <div class="fixed inset-0 pointer-events-none z-[-1] overflow-hidden">
+        <!-- Abstract gradient blurs representing 'digital air' -->
+        <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-container/5 rounded-full blur-[120px]">
+        </div>
+        <div
+            class="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-secondary-container/5 rounded-full blur-[150px]">
+        </div>
+    </div>
+    <script>
+        // Simple micro-interaction for input focus
+        const inputField = document.querySelector('input[type="text"]');
+        const orb = document.querySelector('.jarvis-orb');
+
+        inputField.addEventListener('focus', () => {
+            if (orb) {
+                orb.style.transform = 'scale(0.8)';
+                orb.style.opacity = '0.5';
+                orb.style.transition = 'all 0.5s ease';
+            }
+        });
+
+        inputField.addEventListener('blur', () => {
+            if (orb) {
+                orb.style.transform = '';
+                orb.style.opacity = '';
+                // Let the CSS animation take back over
+            }
+        });
+    </script>
+</body>
+
+</html>

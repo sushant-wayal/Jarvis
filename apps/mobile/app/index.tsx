@@ -1,21 +1,38 @@
-import { ChatMessage, JarvisState, ToolRiskLevel } from '@jarvis/shared';
+import { ChatMessage, JarvisState, TaskItem, ToolRiskLevel, UserEventItem } from '@jarvis/shared';
 import * as React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { ConfirmationModal } from '../src/components/ConfirmationModal';
-import { MessageBubble } from '../src/components/MessageBubble';
+import { GlassCard } from '../src/components/GlassCard';
+import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { VoiceOrb } from '../src/components/VoiceOrb';
 import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
 import { useVoiceRecorder } from '../src/hooks/useVoiceRecorder';
 import { apiClient } from '../src/services/apiClient';
+import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function HomeScreen(): React.ReactElement {
   const [jarvisState, setJarvisState] = React.useState<JarvisState>('IDLE');
   const [isOnline, setIsOnline] = React.useState<boolean>(true);
   const [conversationId, setConversationId] = React.useState<string | undefined>(undefined);
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [lastTranscript, setLastTranscript] = React.useState<string>('');
+  const [assistantSpokenText, setAssistantSpokenText] = React.useState<string>('');
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  // Dynamic context info
+  const [userName, setUserName] = React.useState<string>('Sir');
+  const [contextHint, setContextHint] = React.useState<{
+    icon: 'flight_takeoff' | 'my_location' | 'calendar_today' | 'blur_on';
+    text: string;
+  }>({
+    icon: 'blur_on',
+    text: 'Ready for your commands.',
+  });
 
   // Confirmation modal state
   const [confirmationState, setConfirmationState] = React.useState<{
@@ -35,6 +52,66 @@ export default function HomeScreen(): React.ReactElement {
   const { isRecording, recordingLevel, startRecording, stopRecording } = useVoiceRecorder();
   const { isPlaying, playBase64Audio, stopAudio } = useAudioPlayer();
 
+  const getGreeting = (): string => {
+    const hour = new Date().getHours();
+    if (hour < 12) return `Good morning, ${userName}.`;
+    if (hour < 17) return `Good afternoon, ${userName}.`;
+    return `Good evening, ${userName}.`;
+  };
+
+  const loadDynamicContext = async (): Promise<void> => {
+    try {
+      const [events, tasks, location, memories] = await Promise.all([
+        apiClient.getEvents('ACTIVE').catch(() => [] as UserEventItem[]),
+        apiClient.getTasks('ACTIVE').catch(() => [] as TaskItem[]),
+        apiClient.getCurrentLocation().catch(() => null),
+        apiClient.getMemories().catch(() => []),
+      ]);
+
+      // Extract user name from memory if available
+      if (memories && memories.length > 0) {
+        const nameMem = memories.find(
+          (m) =>
+            m.content.toLowerCase().includes('name is') ||
+            m.content.toLowerCase().includes('call me') ||
+            m.type === 'PERSON'
+        );
+        if (nameMem) {
+          const match = nameMem.content.match(/(?:name is|call me)\s+([A-Za-z]+)/i);
+          if (match && match[1]) {
+            setUserName(match[1]);
+          }
+        }
+      }
+
+      if (events && events.length > 0) {
+        const topEvent = events[0];
+        setContextHint({
+          icon: 'flight_takeoff',
+          text: `${topEvent.title}${topEvent.locationName ? ` in ${topEvent.locationName}` : ''}`,
+        });
+      } else if (tasks && tasks.length > 0) {
+        const topTask = tasks[0];
+        setContextHint({
+          icon: 'calendar_today',
+          text: `Upcoming: ${topTask.title}`,
+        });
+      } else if (location && (location.city || location.state)) {
+        setContextHint({
+          icon: 'my_location',
+          text: `Active in ${location.city || location.state}.`,
+        });
+      } else {
+        setContextHint({
+          icon: 'blur_on',
+          text: 'Ready for your commands.',
+        });
+      }
+    } catch {
+      // Keep default context
+    }
+  };
+
   const runHealthCheck = async (): Promise<void> => {
     const health = await apiClient.checkHealth();
     const online = Boolean(health);
@@ -46,12 +123,17 @@ export default function HomeScreen(): React.ReactElement {
     });
   };
 
-  // Check health once on initial mount
   React.useEffect(() => {
     runHealthCheck();
+    loadDynamicContext();
+
+    const interval = setInterval(() => {
+      runHealthCheck();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  // Sync state transitions
   React.useEffect(() => {
     if (isRecording) {
       setJarvisState('LISTENING');
@@ -65,7 +147,7 @@ export default function HomeScreen(): React.ReactElement {
   const handleOrbPress = async (): Promise<void> => {
     setErrorMsg(null);
 
-    // If currently playing, stop audio and allow immediate new recording
+    // If currently speaking, interrupt audio
     if (isPlaying) {
       await stopAudio();
       setJarvisState('IDLE');
@@ -73,7 +155,6 @@ export default function HomeScreen(): React.ReactElement {
     }
 
     if (isRecording) {
-      // Stop recording and send audio to backend
       setJarvisState('PROCESSING');
       const audioData = await stopRecording();
 
@@ -94,27 +175,7 @@ export default function HomeScreen(): React.ReactElement {
 
         setConversationId(response.conversationId);
         setLastTranscript(response.transcript);
-
-        if (response.transcript) {
-          const userMsg: ChatMessage = {
-            id: `msg_u_${Date.now()}`,
-            conversationId: response.conversationId,
-            role: 'USER',
-            content: response.transcript,
-            inputType: 'VOICE',
-            createdAt: new Date().toISOString(),
-          };
-          const jarvisMsg: ChatMessage = {
-            id: `msg_j_${Date.now()}`,
-            conversationId: response.conversationId,
-            role: 'ASSISTANT',
-            content: response.response,
-            inputType: 'VOICE',
-            createdAt: new Date().toISOString(),
-          };
-
-          setMessages((prev: ChatMessage[]) => [...prev, userMsg, jarvisMsg]);
-        }
+        setAssistantSpokenText(response.response);
 
         if (response.audioBase64) {
           setJarvisState('SPEAKING');
@@ -126,11 +187,12 @@ export default function HomeScreen(): React.ReactElement {
         }
       } catch (err: unknown) {
         setJarvisState('ERROR');
-        setErrorMsg(err instanceof Error ? err.message : 'No connection. I will need internet access for that.');
+        setErrorMsg(err instanceof Error ? err.message : 'No connection to Jarvis brain.');
       }
     } else {
-      // Start recording next question
       setJarvisState('LISTENING');
+      setAssistantSpokenText('');
+      setLastTranscript('');
       await startRecording();
     }
   };
@@ -145,37 +207,135 @@ export default function HomeScreen(): React.ReactElement {
     }
   };
 
+  const isSpeakingState = jarvisState === 'SPEAKING' && Boolean(assistantSpokenText);
+  const isListeningState = jarvisState === 'LISTENING';
+  const isThinkingState = jarvisState === 'THINKING' || jarvisState === 'PROCESSING';
+
   return (
     <View style={styles.screenContainer}>
-      <StatusHeader state={jarvisState} isOnline={isOnline} onRefresh={runHealthCheck} />
+      {/* Background Atmospheric Digital Air Elements matching Home.html */}
+      <View style={styles.atmosphereContainer} pointerEvents="none">
+        <View style={styles.atmosphereTopLeft} />
+        <View style={styles.atmosphereBottomRight} />
+      </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.orbContainer}>
-          <VoiceOrb state={jarvisState} onPress={handleOrbPress} audioLevel={recordingLevel} />
+      {/* Header matching Home.html & Jarvis Speaking.html */}
+      <StatusHeader
+        state={jarvisState}
+        isOnline={isOnline}
+        onRefresh={runHealthCheck}
+      />
+
+      {/* Main Immersive Canvas */}
+      <View style={styles.mainCanvas}>
+        {/* Living Voice Orb */}
+        <View style={styles.orbWrapper}>
+          <VoiceOrb
+            state={jarvisState}
+            onPress={handleOrbPress}
+            audioLevel={recordingLevel}
+            size={280}
+            showStatusLabel={false}
+          />
         </View>
 
+        {/* Dynamic Typography & Context Area */}
+        {isSpeakingState ? (
+          /* Jarvis Speaking State matching Jarvis Speaking.html */
+          <View style={styles.typographyBlock}>
+            <Text style={[typography.labelCaps, styles.speakingJarvisTag]}>JARVIS</Text>
+            <Text style={[typography.headlineLgMobile, styles.speakingResponseText]}>
+              "{assistantSpokenText}"
+            </Text>
+          </View>
+        ) : isListeningState ? (
+          /* Listening State Typography */
+          <View style={styles.typographyBlock}>
+            <Text style={[typography.displayLg, styles.stateHeading]}>
+              Listening...
+            </Text>
+            <Text style={[typography.bodyMd, styles.stateSubtext]}>
+              Speak naturally. Tap the button below when done.
+            </Text>
+          </View>
+        ) : isThinkingState ? (
+          /* Thinking/Processing State Typography */
+          <View style={styles.typographyBlock}>
+            <Text style={[typography.displayLg, styles.stateHeading]}>
+              Processing...
+            </Text>
+            <Text style={[typography.bodyMd, styles.stateSubtext]}>
+              Synthesizing response through cognition matrix.
+            </Text>
+          </View>
+        ) : (
+          /* Ambient Home State Greeting matching Home.html */
+          <View style={styles.typographyBlock}>
+            <Text style={[typography.displayLg, styles.displayGreeting]}>
+              {getGreeting()}
+            </Text>
+
+            {/* Dynamic Glass Hint Pill matching Home.html */}
+            <GlassCard style={styles.glassHintPill}>
+              <Icon
+                name={contextHint.icon}
+                size={18}
+                color={colors.primaryFixed}
+                style={{ opacity: 0.85 }}
+              />
+              <Text style={[typography.bodyMd, styles.contextHintText]}>
+                {contextHint.text}
+              </Text>
+            </GlassCard>
+          </View>
+        )}
+
+        {/* Transient Error Notification */}
         {errorMsg ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
-          </View>
+          <GlassCard style={styles.errorBox}>
+            <Icon name="error" size={16} color={colors.error} />
+            <Text style={styles.errorText}>{errorMsg}</Text>
+          </GlassCard>
         ) : null}
+      </View>
 
-        {lastTranscript ? (
-          <View style={styles.transcriptBox}>
-            <Text style={styles.transcriptLabel}>Heard:</Text>
-            <Text style={styles.transcriptText}>"{lastTranscript}"</Text>
-          </View>
-        ) : null}
-
-        <View style={styles.recentSection}>
-          <Text style={styles.sectionTitle}>Recent Voice Interaction</Text>
-          {messages.length === 0 ? (
-            <Text style={styles.emptyText}>Tap the orb above and speak directly to Jarvis.</Text>
-          ) : (
-            messages.slice(-4).map((msg: ChatMessage) => <MessageBubble key={msg.id} message={msg} />)
-          )}
+      {/* Bottom Voice Interaction Trigger matching Home.html & Jarvis Speaking.html */}
+      {isSpeakingState ? (
+        <View style={styles.bottomControlZone}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleOrbPress}
+            style={styles.stopButtonPill}
+          >
+            <Icon name="stop_circle" size={18} color={colors.primaryFixed} />
+            <Text style={[typography.labelCaps, styles.stopButtonText]}>TAP TO STOP</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      ) : (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleOrbPress}
+          style={styles.bottomVoiceTrigger}
+        >
+          <View style={styles.triggerContent}>
+            <View
+              style={[
+                styles.triggerIconRing,
+                isRecording && styles.triggerRingActive,
+              ]}
+            >
+              <Icon
+                name={isRecording ? 'stop_circle' : 'graphic_eq'}
+                size={28}
+                color={colors.primaryFixed}
+              />
+            </View>
+            <Text style={[typography.labelCaps, styles.triggerLabel]}>
+              {isRecording ? 'TAP TO COMPLETE' : 'TAP TO SPEAK'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
 
       {/* Confirmation Modal */}
       <ConfirmationModal
@@ -194,69 +354,175 @@ export default function HomeScreen(): React.ReactElement {
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: '#0A0D14',
+    backgroundColor: '#000000',
+    position: 'relative',
+    justifyContent: 'space-between',
   },
-  scrollContent: {
-    paddingBottom: 24,
+  atmosphereContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
   },
-  orbContainer: {
+  atmosphereTopLeft: {
+    position: 'absolute',
+    top: '-15%',
+    left: '-15%',
+    width: '60%',
+    height: '60%',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(125, 244, 255, 0.04)',
+  },
+  atmosphereBottomRight: {
+    position: 'absolute',
+    bottom: '-15%',
+    right: '-15%',
+    width: '60%',
+    height: '60%',
+    borderRadius: 9999,
+    backgroundColor: 'rgba(125, 244, 255, 0.03)',
+  },
+  mainCanvas: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 24,
+    zIndex: 10,
+    marginTop: -20,
+  },
+  orbWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  typographyBlock: {
+    alignItems: 'center',
+    textAlign: 'center',
+    width: '100%',
+    maxWidth: 480,
+    gap: 12,
+  },
+  displayGreeting: {
+    color: colors.onSurface,
+    textAlign: 'center',
+    fontWeight: '300',
+    fontSize: 34,
+    lineHeight: 42,
+  },
+  stateHeading: {
+    color: colors.primary,
+    textAlign: 'center',
+    fontWeight: '300',
+    fontSize: 32,
+    lineHeight: 40,
+  },
+  stateSubtext: {
+    color: colors.onSurfaceVariant,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  glassHintPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
     paddingVertical: 10,
+    borderRadius: rounded.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  contextHintText: {
+    color: colors.onSurfaceVariant,
+    fontSize: 15,
+  },
+  speakingJarvisTag: {
+    color: colors.outlineVariant,
+    fontSize: 12,
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  speakingResponseText: {
+    color: colors.primary,
+    textAlign: 'center',
+    lineHeight: 34,
+    fontSize: 22,
+    fontWeight: '400',
   },
   errorBox: {
-    marginHorizontal: 20,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
     borderWidth: 1,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 12,
+    borderRadius: rounded.md,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 16,
   },
   errorText: {
-    color: '#F87171',
+    color: colors.error,
     fontSize: 13,
-    textAlign: 'center',
-    fontWeight: '600',
   },
-  transcriptBox: {
-    marginHorizontal: 20,
-    backgroundColor: '#1E293B',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 16,
+  bottomControlZone: {
+    width: '100%',
+    alignItems: 'center',
+    paddingBottom: 28,
+    paddingTop: 12,
+    zIndex: 20,
+  },
+  stopButtonPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: rounded.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(125, 244, 255, 0.2)',
     borderWidth: 1,
-    borderColor: '#334155',
   },
-  transcriptLabel: {
-    color: '#38BDF8',
+  stopButtonText: {
+    color: colors.primaryFixed,
     fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginBottom: 2,
+    letterSpacing: 1.5,
   },
-  transcriptText: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontStyle: 'italic',
+  bottomVoiceTrigger: {
+    width: '100%',
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(125, 244, 255, 0.08)',
+    backgroundColor: 'rgba(125, 244, 255, 0.02)',
+    zIndex: 20,
   },
-  recentSection: {
-    marginTop: 12,
-    paddingHorizontal: 10,
+  triggerContent: {
+    alignItems: 'center',
+    gap: 10,
   },
-  sectionTitle: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginLeft: 10,
-    marginBottom: 8,
+  triggerIconRing: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: 'rgba(125, 244, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(125, 244, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyText: {
-    color: '#475569',
-    fontSize: 13,
-    textAlign: 'center',
-    marginVertical: 20,
+  triggerRingActive: {
+    backgroundColor: 'rgba(125, 244, 255, 0.2)',
+    borderColor: colors.primaryFixed,
+  },
+  triggerLabel: {
+    color: colors.primaryFixed,
+    fontSize: 11,
+    letterSpacing: 2,
+    opacity: 0.85,
   },
 });

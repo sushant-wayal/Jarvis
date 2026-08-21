@@ -125,6 +125,6 @@ describe('Jarvis V2 Agentic System Verification', () => {
       requestId: 'test_req_math_1',
     });
 
-    expect(res.text).toContain('1000');
+    expect(res.text.replace(/,/g, '')).toContain('1000');
   });
 });

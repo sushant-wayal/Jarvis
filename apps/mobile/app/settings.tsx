@@ -11,11 +11,16 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { GlassCard } from '../src/components/GlassCard';
+import { Icon } from '../src/components/Icon';
+import { StatusHeader } from '../src/components/StatusHeader';
 import { apiClient } from '../src/services/apiClient';
 import { mobileLocationService } from '../src/services/locationService';
+import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function SettingsScreen(): React.ReactElement {
   const [userName, setUserName] = React.useState<string>('Sushant');
+  const [responseProtocol, setResponseProtocol] = React.useState<string>('Concise');
   const [serverUrl, setServerUrl] = React.useState<string>(apiClient.getBaseUrl());
   const [healthStatus, setHealthStatus] = React.useState<HealthStatus | null>(null);
   const [autoSpeak, setAutoSpeak] = React.useState<boolean>(true);
@@ -33,8 +38,20 @@ export default function SettingsScreen(): React.ReactElement {
     try {
       const list = await apiClient.getMemories();
       setMemories(list);
+      const nameMem = list.find(
+        (m) =>
+          m.content.toLowerCase().includes('name is') ||
+          m.content.toLowerCase().includes('call me') ||
+          m.type === 'PERSON'
+      );
+      if (nameMem) {
+        const match = nameMem.content.match(/(?:name is|call me)\s+([A-Za-z]+)/i);
+        if (match && match[1]) {
+          setUserName(match[1]);
+        }
+      }
     } catch {
-      // Offline fallback
+      // fallback
     }
   };
 
@@ -43,7 +60,7 @@ export default function SettingsScreen(): React.ReactElement {
       const loc = await apiClient.getCurrentLocation();
       setCurrentLocation(loc);
     } catch {
-      // ignore
+      // fallback
     }
   };
 
@@ -53,10 +70,22 @@ export default function SettingsScreen(): React.ReactElement {
     loadLocation();
   }, []);
 
-  const handleSaveConfig = (): void => {
+  const handleSaveConfig = async (): Promise<void> => {
     apiClient.setBaseUrl(serverUrl);
     checkHealth();
-    Alert.alert('Settings Saved', 'Jarvis Brain server configuration has been updated.');
+    if (userName.trim()) {
+      try {
+        await apiClient.createMemory({
+          type: 'PERSON',
+          content: `User's name is ${userName.trim()}`,
+          importance: 5,
+        });
+        loadMemories();
+      } catch {
+        // ignore
+      }
+    }
+    Alert.alert('Configuration Saved', 'Brain server endpoint and identity parameters updated.');
   };
 
   const handleSyncLocation = async (): Promise<void> => {
@@ -64,15 +93,15 @@ export default function SettingsScreen(): React.ReactElement {
       setLoading(true);
       const perm = await mobileLocationService.requestPermission();
       if (perm === 'DENIED') {
-        Alert.alert('Permission Denied', 'Please enable location permissions in your phone settings.');
+        Alert.alert('Permission Denied', 'Please enable location permissions in system settings.');
         return;
       }
       const loc = await mobileLocationService.syncCurrentLocation(true);
       if (loc) {
         setCurrentLocation(loc);
-        Alert.alert('Location Synced', `Updated to ${loc.city || loc.state || 'current area'}`);
+        Alert.alert('Location Synchronized', `Connected to ${loc.city || loc.state || 'current area'}`);
       } else {
-        Alert.alert('Notice', 'Unable to retrieve location or permission not granted.');
+        Alert.alert('Notice', 'Unable to retrieve GPS coordinates.');
       }
     } catch {
       Alert.alert('Error', 'Failed to synchronize GPS location.');
@@ -94,326 +123,425 @@ export default function SettingsScreen(): React.ReactElement {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Jarvis Settings</Text>
-      </View>
+    <View style={styles.container}>
+      <StatusHeader isOnline={true} title="JARVIS" />
 
-      {/* User Profile Section */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>User Profile</Text>
-        <Text style={styles.fieldLabel}>Display Name</Text>
-        <TextInput
-          style={styles.input}
-          value={userName}
-          onChangeText={setUserName}
-          placeholder="Your name"
-          placeholderTextColor="#64748B"
-        />
-      </View>
-
-      {/* Location Awareness Section */}
-      <View style={styles.card}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardTitle}>Location Awareness</Text>
-          <Switch
-            value={locationEnabled}
-            onValueChange={setLocationEnabled}
-            trackColor={{ false: '#334155', true: '#0284C7' }}
-            thumbColor={locationEnabled ? '#38BDF8' : '#94A3B8'}
-          />
-        </View>
-        <Text style={styles.locationSubtext}>
-          Enables contextual and location-triggered reminders (e.g. Goa trip parasailing reminder).
-        </Text>
-
-        <View style={styles.locationInfoBox}>
-          <Text style={styles.locationInfoLabel}>Current Detected Location:</Text>
-          <Text style={styles.locationInfoVal}>
-            {currentLocation
-              ? `${[currentLocation.city, currentLocation.state, currentLocation.country].filter(Boolean).join(', ')}`
-              : 'No location synced yet'}
+      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        {/* Header matching settings and profile.html */}
+        <View style={styles.headerSection}>
+          <Text style={[typography.headlineLg, styles.pageTitle]}>Configuration</Text>
+          <Text style={[typography.bodyMd, styles.pageSubtitle]}>
+            Personalize your interaction matrix.
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.syncLocationBtn, loading && { opacity: 0.6 }]}
-          onPress={handleSyncLocation}
-          disabled={loading}
-        >
-          <Text style={styles.syncLocationBtnText}>Sync Current GPS Location</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Connectivity & Health */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Brain Server</Text>
-        <Text style={styles.fieldLabel}>API Endpoint URL</Text>
-        <TextInput
-          style={styles.input}
-          value={serverUrl}
-          onChangeText={setServerUrl}
-          placeholder="http://192.168.1.71:3000/api/v1"
-          placeholderTextColor="#64748B"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <View style={styles.healthStatusRow}>
-          <Text style={styles.healthLabel}>Status:</Text>
-          <Text
-            style={[
-              styles.healthValue,
-              { color: healthStatus?.status === 'operational' ? '#10B981' : '#EF4444' },
-            ]}
-          >
-            {healthStatus ? `● ${healthStatus.status.toUpperCase()}` : '○ Connecting...'}
-          </Text>
-        </View>
-
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveConfig}>
-          <Text style={styles.saveButtonText}>Save & Test Connection</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Preferences */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Voice Preferences</Text>
-        <View style={styles.preferenceRow}>
-          <View>
-            <Text style={styles.preferenceText}>Auto-play Voice</Text>
-            <Text style={styles.preferenceSubtext}>Automatically speak assistant responses</Text>
+        {/* Identity Parameters Bento Card */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="person" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>IDENTITY PARAMETERS</Text>
           </View>
-          <Switch
-            value={autoSpeak}
-            onValueChange={setAutoSpeak}
-            trackColor={{ false: '#334155', true: '#0284C7' }}
-            thumbColor={autoSpeak ? '#38BDF8' : '#94A3B8'}
-          />
-        </View>
-      </View>
 
-      {/* Long-Term Memory Manager */}
-      <View style={styles.card}>
-        <View style={styles.memoryHeaderRow}>
-          <Text style={styles.cardTitle}>Long-Term Memories ({memories.length})</Text>
-          <TouchableOpacity onPress={loadMemories}>
-            <Text style={styles.refreshLink}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>DESIGNATION</Text>
+            <TextInput
+              style={styles.textInput}
+              value={userName}
+              onChangeText={setUserName}
+              placeholder="Your designation"
+              placeholderTextColor={colors.outline}
+            />
+          </View>
 
-        {memories.length === 0 ? (
-          <Text style={styles.emptyMemoryText}>No long-term memories extracted yet.</Text>
-        ) : (
-          <FlatList
-            data={memories}
-            keyExtractor={(item) => item.id}
-            scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={styles.memoryItem}>
-                <View style={styles.memoryContentCol}>
-                  <Text style={styles.memoryContent}>{item.content}</Text>
-                  <Text style={styles.memoryMeta}>
-                    {item.type} • Importance: {item.importance}/10
-                  </Text>
-                </View>
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>RESPONSE PROTOCOL</Text>
+            <View style={styles.protocolRow}>
+              {['Concise', 'Detailed Analysis', 'Conversational'].map((p) => (
                 <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteMemory(item.id)}
-                  disabled={loading}
+                  key={p}
+                  style={[styles.protocolChip, responseProtocol === p && styles.activeProtocolChip]}
+                  onPress={() => setResponseProtocol(p)}
                 >
-                  <Text style={styles.deleteButtonText}>✕</Text>
+                  <Text
+                    style={[
+                      typography.labelCaps,
+                      styles.protocolText,
+                      responseProtocol === p && styles.activeProtocolText,
+                    ]}
+                  >
+                    {p}
+                  </Text>
                 </TouchableOpacity>
-              </View>
-            )}
-          />
-        )}
-      </View>
-    </ScrollView>
+              ))}
+            </View>
+          </View>
+
+          {/* Voice Signature Box matching settings and profile.html */}
+          <View style={styles.voiceSignatureBox}>
+            <View style={styles.miniOrb}>
+              <Icon name="record_voice_over" size={22} color={colors.primaryContainer} />
+            </View>
+            <View>
+              <Text style={[typography.bodyMd, styles.voiceSignatureTitle]}>
+                Voice Signature Active
+              </Text>
+              <Text style={[typography.bodySm, styles.voiceSignatureSub]}>
+                Primary speaker verified
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
+        {/* Intelligence Link Bento Card */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="hub" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>INTELLIGENCE LINK</Text>
+          </View>
+
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>BRAIN SERVER ENDPOINT</Text>
+            <TextInput
+              style={styles.textInput}
+              value={serverUrl}
+              onChangeText={setServerUrl}
+              placeholder="http://192.168.1.88:3000/api/v1"
+              placeholderTextColor={colors.outline}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </View>
+
+          <View style={styles.statusRow}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>CORE STATUS:</Text>
+            <Text
+              style={[
+                styles.statusValue,
+                {
+                  color:
+                    healthStatus?.status === 'operational'
+                      ? colors.primaryFixed
+                      : colors.error,
+                },
+              ]}
+            >
+              {healthStatus ? `● ${healthStatus.status.toUpperCase()}` : '○ Connecting...'}
+            </Text>
+          </View>
+
+          <TouchableOpacity style={styles.actionBtn} onPress={handleSaveConfig}>
+            <Text style={[typography.labelCaps, styles.actionBtnText]}>
+              TEST & SAVE CONNECTION
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
+        {/* Location Awareness Bento Card */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="location_on" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>LOCATION AWARENESS</Text>
+            <View style={styles.switchRight}>
+              <Switch
+                value={locationEnabled}
+                onValueChange={setLocationEnabled}
+                trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                thumbColor={locationEnabled ? colors.primaryFixed : colors.outline}
+              />
+            </View>
+          </View>
+
+          <Text style={[typography.bodyMd, styles.locationDesc]}>
+            Enables contextual geofenced triggers (e.g. Goa trip reminders).
+          </Text>
+
+          <View style={styles.locationDisplayBox}>
+            <Text style={[typography.labelCaps, styles.locLabel]}>CURRENT DETECTED REGION</Text>
+            <Text style={[typography.bodyMd, styles.locValue]}>
+              {currentLocation
+                ? [currentLocation.city, currentLocation.state, currentLocation.country]
+                    .filter(Boolean)
+                    .join(', ')
+                : 'No GPS position synced yet'}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.actionBtnSecondary, loading && { opacity: 0.6 }]}
+            onPress={handleSyncLocation}
+            disabled={loading}
+          >
+            <Text style={[typography.labelCaps, styles.actionBtnSecondaryText]}>
+              SYNC GPS COORDINATES
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
+        {/* Audio Protocols */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="graphic_eq" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>AUDIO PROTOCOLS</Text>
+            <View style={styles.switchRight}>
+              <Switch
+                value={autoSpeak}
+                onValueChange={setAutoSpeak}
+                trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                thumbColor={autoSpeak ? colors.primaryFixed : colors.outline}
+              />
+            </View>
+          </View>
+          <Text style={[typography.bodyMd, styles.locationDesc]}>
+            Synthesize and speak responses automatically on dialogue completion.
+          </Text>
+        </GlassCard>
+
+        {/* Memory Registry */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="memory" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>
+              MEMORY REGISTRY ({memories.length})
+            </Text>
+          </View>
+
+          {memories.length === 0 ? (
+            <Text style={styles.emptyMemoryText}>No long-term memories registered.</Text>
+          ) : (
+            <FlatList
+              data={memories.slice(0, 5)}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              renderItem={({ item }) => (
+                <View style={styles.memoryRow}>
+                  <View style={styles.memoryInfo}>
+                    <Text style={[typography.bodyMd, styles.memoryText]} numberOfLines={2}>
+                      {item.content}
+                    </Text>
+                    <Text style={styles.memorySub}>
+                      {item.type} · Importance {item.importance}/5
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteMemory(item.id)}
+                    style={styles.delMemoryBtn}
+                  >
+                    <Icon name="delete" size={16} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+          )}
+        </GlassCard>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A0D14',
+    backgroundColor: colors.background,
   },
   contentContainer: {
+    paddingHorizontal: 24,
     paddingBottom: 40,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-    backgroundColor: '#0F172A',
+  headerSection: {
+    paddingTop: 16,
+    paddingBottom: 16,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#F8FAFC',
-    letterSpacing: 0.5,
+  pageTitle: {
+    color: colors.onSurface,
+    fontSize: 28,
   },
-  card: {
-    backgroundColor: '#0F172A',
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#1E293B',
+  pageSubtitle: {
+    color: colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  bentoCard: {
+    padding: 20,
+    backgroundColor: colors.surfaceContainerLow,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: rounded.xl,
+    marginBottom: 16,
+    gap: 14,
   },
   cardHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 8,
+    position: 'relative',
   },
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#38BDF8',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  cardCategory: {
+    color: colors.primaryContainer,
+    fontSize: 10,
+    letterSpacing: 1.5,
   },
-  locationSubtext: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 12,
+  switchRight: {
+    position: 'absolute',
+    right: 0,
   },
-  locationInfoBox: {
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-  },
-  locationInfoLabel: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  locationInfoVal: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  syncLocationBtn: {
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#0284C7',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  syncLocationBtnText: {
-    color: '#38BDF8',
-    fontWeight: '700',
-    fontSize: 13,
+  fieldBlock: {
+    gap: 6,
   },
   fieldLabel: {
-    color: '#94A3B8',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
+    color: colors.outline,
+    fontSize: 9,
+    letterSpacing: 1,
   },
-  input: {
-    backgroundColor: '#1E293B',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#F8FAFC',
+  textInput: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
-    borderColor: '#334155',
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  healthStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  healthLabel: {
-    color: '#94A3B8',
-    fontSize: 13,
-    marginRight: 6,
-  },
-  healthValue: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  saveButton: {
-    backgroundColor: '#0284C7',
+    borderRadius: rounded.md,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 10,
+    color: colors.onSurface,
+    fontSize: 14,
+  },
+  protocolRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  protocolChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: rounded.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
     alignItems: 'center',
   },
-  saveButtonText: {
-    color: '#FFF',
+  activeProtocolChip: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderColor: colors.primaryFixed,
+  },
+  protocolText: {
+    color: colors.outline,
+    fontSize: 9,
+  },
+  activeProtocolText: {
+    color: colors.primaryFixed,
+  },
+  voiceSignatureBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 240, 255, 0.04)',
+    borderColor: 'rgba(0, 240, 255, 0.15)',
+    borderWidth: 1,
+    borderRadius: rounded.lg,
+    padding: 14,
+    gap: 14,
+    marginTop: 4,
+  },
+  miniOrb: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 240, 255, 0.12)',
+    borderColor: 'rgba(0, 240, 255, 0.25)',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceSignatureTitle: {
+    color: colors.primaryFixed,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  voiceSignatureSub: {
+    color: colors.outline,
+    fontSize: 11,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusValue: {
+    fontSize: 12,
     fontWeight: '700',
-    fontSize: 14,
+    letterSpacing: 1,
   },
-  preferenceRow: {
-    flexDirection: 'row',
+  actionBtn: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    borderColor: 'rgba(0, 240, 255, 0.3)',
+    borderWidth: 1,
+    borderRadius: rounded.full,
+    paddingVertical: 14,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginTop: 4,
   },
-  preferenceText: {
-    color: '#F8FAFC',
-    fontSize: 14,
-    fontWeight: '600',
+  actionBtnText: {
+    color: colors.primaryFixed,
+    fontSize: 10,
+    letterSpacing: 2,
   },
-  preferenceSubtext: {
-    color: '#64748B',
-    fontSize: 12,
-    marginTop: 2,
+  locationDesc: {
+    color: colors.onSurfaceVariant,
+    fontSize: 13,
+    lineHeight: 18,
   },
-  memoryHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  locationDisplayBox: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderRadius: rounded.md,
+    padding: 14,
+    gap: 4,
+  },
+  locLabel: {
+    color: colors.outline,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  locValue: {
+    color: colors.onSurface,
+    fontWeight: '500',
+  },
+  actionBtnSecondary: {
+    backgroundColor: colors.surfaceContainerHigh,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderRadius: rounded.full,
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  refreshLink: {
-    color: '#38BDF8',
-    fontSize: 12,
-    fontWeight: '600',
+  actionBtnSecondaryText: {
+    color: colors.onSurfaceVariant,
+    fontSize: 10,
+    letterSpacing: 2,
   },
   emptyMemoryText: {
-    color: '#475569',
-    fontSize: 13,
+    color: colors.outline,
     fontStyle: 'italic',
-    marginTop: 6,
+    fontSize: 12,
+    marginVertical: 6,
   },
-  memoryItem: {
+  memoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1E293B',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: '#334155',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.04)',
+    gap: 12,
   },
-  memoryContentCol: {
+  memoryInfo: {
     flex: 1,
-    marginRight: 10,
+    gap: 2,
   },
-  memoryContent: {
-    color: '#F8FAFC',
+  memoryText: {
+    color: colors.onSurface,
     fontSize: 13,
+    lineHeight: 18,
   },
-  memoryMeta: {
-    color: '#64748B',
-    fontSize: 11,
-    marginTop: 2,
+  memorySub: {
+    color: colors.outline,
+    fontSize: 10,
   },
-  deleteButton: {
+  delMemoryBtn: {
     padding: 6,
-  },
-  deleteButtonText: {
-    color: '#EF4444',
-    fontSize: 14,
-    fontWeight: '700',
   },
 });

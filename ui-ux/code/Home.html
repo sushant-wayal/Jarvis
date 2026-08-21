@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Jarvis - Home Screen</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@500;600&amp;family=Inter:wght@400;600&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#7df4ff",
+                        "surface-container-highest": "#353436",
+                        "outline": "#849495",
+                        "surface-tint": "#00dbe9",
+                        "on-error": "#690005",
+                        "tertiary": "#fff5de",
+                        "on-tertiary-fixed": "#231b00",
+                        "on-primary": "#00363a",
+                        "error": "#ffb4ab",
+                        "primary": "#dbfcff",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-lowest": "#0e0e0f",
+                        "surface-container-high": "#2a2a2b",
+                        "primary-fixed-dim": "#00dbe9",
+                        "secondary-fixed": "#f0dbff",
+                        "on-secondary-fixed": "#2c0051",
+                        "tertiary-fixed": "#ffe179",
+                        "error-container": "#93000a",
+                        "outline-variant": "#3b494b",
+                        "on-background": "#e5e2e3",
+                        "on-surface": "#e5e2e3",
+                        "surface-dim": "#131314",
+                        "surface": "#131314",
+                        "on-secondary-fixed-variant": "#6900b3",
+                        "surface-container": "#201f20",
+                        "inverse-surface": "#e5e2e3",
+                        "on-tertiary-fixed-variant": "#554500",
+                        "tertiary-fixed-dim": "#eac324",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-secondary-container": "#d6a9ff",
+                        "on-tertiary": "#3b2f00",
+                        "on-error-container": "#ffdad6",
+                        "background": "#131314",
+                        "on-primary-fixed": "#002022",
+                        "surface-container-low": "#1c1b1c",
+                        "secondary-fixed-dim": "#ddb7ff",
+                        "surface-bright": "#3a393a",
+                        "inverse-primary": "#006970",
+                        "primary-container": "#00f0ff",
+                        "secondary-container": "#6f00be",
+                        "on-tertiary-container": "#715d00",
+                        "surface-variant": "#353436",
+                        "inverse-on-surface": "#313031",
+                        "on-secondary": "#490080",
+                        "secondary": "#ddb7ff",
+                        "on-primary-container": "#006970",
+                        "tertiary-container": "#fed639"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding": "20px",
+                        "gutter": "16px",
+                        "stack-sm": "8px",
+                        "stack-lg": "48px",
+                        "safe-margin": "24px",
+                        "stack-md": "24px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": [
+                            "Hanken Grotesk"
+                        ],
+                        "display-lg": [
+                            "Hanken Grotesk"
+                        ],
+                        "headline-lg": [
+                            "Hanken Grotesk"
+                        ],
+                        "body-xl": [
+                            "Inter"
+                        ],
+                        "body-md": [
+                            "Inter"
+                        ],
+                        "label-caps": [
+                            "Inter"
+                        ]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": [
+                            "28px",
+                            {
+                                "lineHeight": "36px",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "display-lg": [
+                            "48px",
+                            {
+                                "lineHeight": "56px",
+                                "letterSpacing": "-0.02em",
+                                "fontWeight": "600"
+                            }
+                        ],
+                        "headline-lg": [
+                            "32px",
+                            {
+                                "lineHeight": "40px",
+                                "letterSpacing": "-0.01em",
+                                "fontWeight": "500"
+                            }
+                        ],
+                        "body-xl": [
+                            "20px",
+                            {
+                                "lineHeight": "32px",
+                                "letterSpacing": "0.01em",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "body-md": [
+                            "16px",
+                            {
+                                "lineHeight": "24px",
+                                "fontWeight": "400"
+                            }
+                        ],
+                        "label-caps": [
+                            "12px",
+                            {
+                                "lineHeight": "16px",
+                                "letterSpacing": "0.1em",
+                                "fontWeight": "600"
+                            }
+                        ]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            background-color: #000000;
+            background-image: radial-gradient(circle at center, rgba(13, 13, 14, 1) 0%, rgba(0, 0, 0, 1) 100%);
+            color: #e5e2e3;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        .orb-glow {
+            box-shadow: 0 0 100px 30px rgba(125, 244, 255, 0.15);
+            animation: pulse-glow 4s infinite alternate ease-in-out;
+        }
+
+        @keyframes pulse-glow {
+            0% {
+                box-shadow: 0 0 80px 20px rgba(125, 244, 255, 0.1);
+            }
+
+            100% {
+                box-shadow: 0 0 120px 40px rgba(125, 244, 255, 0.2);
+            }
+        }
+
+        .glass-hint {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .voice-trigger {
+            background: linear-gradient(180deg, rgba(125, 244, 255, 0.05) 0%, rgba(125, 244, 255, 0.01) 100%);
+            border-top: 1px solid rgba(125, 244, 255, 0.1);
+        }
+    </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col items-center justify-between relative">
+    <!-- Top Status Indicators -->
+    <header class="w-full px-safe-margin pt-12 flex justify-between items-center z-10">
+        <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-primary-fixed animate-pulse"></span>
+            <span
+                class="font-label-caps text-label-caps text-on-surface-variant tracking-widest uppercase">Online</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary-fixed text-sm"
+                style="font-variation-settings: 'FILL' 1;">mic</span>
+            <span class="font-label-caps text-label-caps text-primary-fixed tracking-widest uppercase">Voice
+                Ready</span>
+        </div>
+    </header>
+    <!-- Center Content -->
+    <main class="flex-1 flex flex-col items-center justify-center w-full z-10 -mt-20">
+        <!-- Ambient Orb -->
+        <div
+            class="relative w-[280px] h-[280px] md:w-[400px] md:h-[400px] rounded-full flex items-center justify-center orb-glow mb-stack-lg transition-transform duration-700 ease-in-out hover:scale-105">
+            <div class="absolute inset-0 rounded-full overflow-hidden mix-blend-screen opacity-80">
+                <!-- STITCH_SHADER_START:ANIMATION_8 class="w-full h-full object-cover" -->
+                <div class="w-full h-full object-cover" style="display:block;">
+                    <canvas id="shader-canvas-ANIMATION_8" style="display:block;width:100%;height:100%"></canvas>
+                    <script>
+                            (function () {
+                                const canvas = document.getElementById('shader-canvas-ANIMATION_8');
+
+                                // Sync the WebGL drawing-buffer size with the CSS-driven layout size.
+                                // This fires on initial layout and whenever the element is resized.
+                                function syncSize() {
+                                    const w = canvas.clientWidth || 1280;
+                                    const h = canvas.clientHeight || 720;
+                                    if (canvas.width !== w || canvas.height !== h) {
+                                        canvas.width = w;
+                                        canvas.height = h;
+                                    }
+                                }
+                                if (typeof ResizeObserver !== 'undefined') {
+                                    new ResizeObserver(syncSize).observe(canvas);
+                                }
+                                syncSize();
+
+                                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                                if (!gl) return;
+                                const vs = `attribute vec2 a_position;
+varying vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+                                const fs = `precision highp float;
+varying vec2 v_texCoord;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+
+void main() {
+    vec2 uv = v_texCoord;
+    vec2 center = vec2(0.5, 0.5);
+    float dist = distance(uv, center);
+    
+    // Smooth pulse for the 'orb'
+    float pulse = 0.05 * sin(u_time * 1.5) + 0.95;
+    float orb = smoothstep(0.3 * pulse, 0.28 * pulse, dist);
+    
+    // Inner glow
+    float glow = smoothstep(0.4, 0.0, dist);
+    
+    // Ethereal color shift
+    vec3 color1 = vec3(0.0, 0.94, 1.0); // Cyan
+    vec3 color2 = vec3(0.66, 0.33, 0.97); // Purple
+    vec3 finalColor = mix(color1, color2, 0.5 + 0.5 * sin(u_time * 0.8 + dist * 5.0));
+    
+    gl_FragColor = vec4(finalColor * (orb + glow * 0.4), (orb + glow * 0.2) * 0.8);
+}`;
+                                function cs(type, src) {
+                                    const s = gl.createShader(type);
+                                    gl.shaderSource(s, src);
+                                    gl.compileShader(s);
+                                    return s;
+                                }
+                                const prog = gl.createProgram();
+                                gl.attachShader(prog, cs(gl.VERTEX_SHADER, vs));
+                                gl.attachShader(prog, cs(gl.FRAGMENT_SHADER, fs));
+                                gl.linkProgram(prog);
+                                gl.useProgram(prog);
+                                const buf = gl.createBuffer();
+                                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+                                const pos = gl.getAttribLocation(prog, 'a_position');
+                                gl.enableVertexAttribArray(pos);
+                                gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+                                const uTime = gl.getUniformLocation(prog, 'u_time');
+                                const uRes = gl.getUniformLocation(prog, 'u_resolution');
+                                const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+
+                                // u_mouse is in pixel coordinates matching u_resolution (ShaderToy convention).
+                                // Shaders that need normalized coords should use: u_mouse / u_resolution.
+                                let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+                                window.addEventListener('mousemove', (event) => {
+                                    const rect = canvas.getBoundingClientRect();
+                                    if (rect.width && rect.height) {
+                                        const nx = (event.clientX - rect.left) / rect.width;
+                                        const ny = 1.0 - (event.clientY - rect.top) / rect.height;
+                                        mouse.x = nx * canvas.width;
+                                        mouse.y = ny * canvas.height;
+                                    }
+                                });
+
+                                function render(t) {
+                                    if (typeof ResizeObserver === 'undefined') syncSize();
+                                    gl.viewport(0, 0, canvas.width, canvas.height);
+                                    if (uTime) gl.uniform1f(uTime, t * 0.001);
+                                    if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
+                                    if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+                                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                                    requestAnimationFrame(render);
+                                }
+                                render(0);
+                            })();
+                    </script>
+                </div>
+                <!-- STITCH_SHADER_END:ANIMATION_8 -->
+            </div>
+            <!-- Core Highlight -->
+            <div class="absolute w-1/3 h-1/3 bg-primary-fixed rounded-full blur-[60px] opacity-30"></div>
+        </div>
+        <!-- Typography & Context -->
+        <div class="text-center flex flex-col items-center gap-stack-sm px-safe-margin max-w-2xl">
+            <h1 class="font-display-lg text-display-lg text-on-surface mb-2 font-light">
+                Good evening, Sushant.
+            </h1>
+            <div class="glass-hint px-6 py-3 rounded-full flex items-center gap-3 mt-4">
+                <span class="material-symbols-outlined text-primary-fixed opacity-80"
+                    style="font-variation-settings: 'FILL' 1;">flight_takeoff</span>
+                <p class="font-body-md text-body-md text-on-surface-variant">
+                    Your Goa trip is coming up.
+                </p>
+            </div>
+        </div>
+    </main>
+    <!-- Bottom Voice Interaction Trigger -->
+    <footer
+        class="w-full h-32 voice-trigger flex flex-col items-center justify-center z-10 pb-8 cursor-pointer group transition-all duration-300 hover:bg-primary-fixed/5">
+        <div class="flex flex-col items-center gap-2 group-active:scale-95 transition-transform duration-200">
+            <div
+                class="w-16 h-16 rounded-full flex items-center justify-center bg-primary-fixed/10 group-hover:bg-primary-fixed/20 transition-colors border border-primary-fixed/20">
+                <span
+                    class="material-symbols-outlined text-primary-fixed text-3xl group-hover:scale-110 transition-transform"
+                    style="font-variation-settings: 'FILL' 1;">graphic_eq</span>
+            </div>
+            <span
+                class="font-label-caps text-label-caps text-primary-fixed opacity-70 tracking-[0.2em] uppercase mt-2">Tap
+                to speak</span>
+        </div>
+    </footer>
+    <!-- Background Atmospheric Elements -->
+    <div class="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary-fixed/5 blur-[120px] rounded-full"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-primary-fixed/5 blur-[120px] rounded-full">
+        </div>
+    </div>
+</body>
+
+</html>

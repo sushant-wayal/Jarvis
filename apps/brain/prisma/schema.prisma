@@ -32,9 +32,13 @@ model Conversation {
   title          String          @default("New Conversation")
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  expiresAt      DateTime?
   messages       Message[]
   toolExecutions ToolExecution[]
   agentRuns      AgentRun[]
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Message {
@@ -63,6 +67,7 @@ model Memory {
   updatedAt        DateTime  @updatedAt
 
   @@index([userId, type])
+  @@index([expiresAt])
 }
 
 model ToolExecution {

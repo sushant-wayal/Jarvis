@@ -2,6 +2,7 @@ import { CreateConversationSchema } from '@jarvis/shared';
 import { NextRequest } from 'next/server';
 import { errorResponse, generateRequestId, successResponse } from '@/lib/api/response';
 import { prisma } from '@/lib/db/prisma';
+import { ttlEngine } from '@/modules/brain/ttl-engine';
 
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();
@@ -9,8 +10,15 @@ export async function GET(req: NextRequest) {
   const userId = searchParams.get('userId') || 'default-user';
 
   try {
+    const now = new Date();
     const conversations = await prisma.conversation.findMany({
-      where: { userId },
+      where: {
+        userId,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } },
+        ],
+      },
       orderBy: { updatedAt: 'desc' },
       include: {
         messages: {
@@ -20,12 +28,13 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    const summaries = conversations.map((c: Record<string, unknown> & { createdAt: Date; updatedAt: Date; messages: Array<{ content: string }> }) => ({
+    const summaries = conversations.map((c: Record<string, unknown> & { createdAt: Date; updatedAt: Date; expiresAt: Date | null; messages: Array<{ content: string }> }) => ({
       id: c.id,
       userId: c.userId,
       title: c.title,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
+      expiresAt: c.expiresAt ? c.expiresAt.toISOString() : undefined,
       lastMessage: c.messages[0]?.content || '',
     }));
 
@@ -42,14 +51,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const parseResult = CreateConversationSchema.safeParse(body);
 
-    const { title, userId } = parseResult.success
+    const { title, userId, ttlDays, expiresAt } = parseResult.success
       ? parseResult.data
-      : { title: 'New Conversation', userId: 'default-user' };
+      : { title: 'New Conversation', userId: 'default-user', ttlDays: undefined, expiresAt: undefined };
+
+    let finalExpiresAt: Date;
+    if (expiresAt) {
+      finalExpiresAt = new Date(expiresAt);
+    } else if (ttlDays !== undefined && ttlDays > 0) {
+      finalExpiresAt = ttlEngine.calculateExpiryDate(ttlDays);
+    } else {
+      const suggestedDays = await ttlEngine.suggestConversationTtl(title || 'New Conversation');
+      finalExpiresAt = ttlEngine.calculateExpiryDate(suggestedDays);
+    }
 
     const conversation = await prisma.conversation.create({
       data: {
         userId,
         title,
+        expiresAt: finalExpiresAt,
       },
     });
 
@@ -60,6 +80,7 @@ export async function POST(req: NextRequest) {
         title: conversation.title,
         createdAt: conversation.createdAt.toISOString(),
         updatedAt: conversation.updatedAt.toISOString(),
+        expiresAt: conversation.expiresAt?.toISOString(),
       },
       requestId,
       201

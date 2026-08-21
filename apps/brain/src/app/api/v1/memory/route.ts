@@ -28,8 +28,15 @@ export async function POST(req: NextRequest) {
       return errorResponse('INVALID_MEMORY', 'Validation failed for memory creation', requestId, 400, parseResult.error.format());
     }
 
-    const { userId, type, content, importance } = parseResult.data;
-    const memory = await memoryService.saveMemory(userId, type, content, importance);
+    const { userId, type, content, importance, ttlDays, expiresAt } = parseResult.data;
+    const memory = await memoryService.saveMemory(
+      userId,
+      type,
+      content,
+      importance,
+      ttlDays,
+      expiresAt ? new Date(expiresAt) : undefined
+    );
 
     return successResponse(memory, requestId, 201);
   } catch (err) {

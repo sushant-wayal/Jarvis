@@ -5,6 +5,7 @@ import { agentPlanner } from './agent-planner';
 import { contextEngine } from './context-engine';
 import { intentEngine } from './intent-engine';
 import { memoryExtractor } from './memory-extractor';
+import { ttlEngine } from './ttl-engine';
 
 export interface ProcessMessageInput {
   message: string;
@@ -68,7 +69,10 @@ export class BrainOrchestrator {
 
     brainResponse.shouldSpeak = Boolean(input.speakResponse);
 
-    // 6. Non-blocking Database storage & async memory extraction
+    // 6. Non-blocking Database storage, sliding TTL renewal & async memory extraction
+    const userCreatedAt = new Date();
+    const assistantCreatedAt = new Date(userCreatedAt.getTime() + 100);
+
     Promise.all([
       prisma.message.create({
         data: {
@@ -76,6 +80,7 @@ export class BrainOrchestrator {
           role: 'USER',
           content: input.message,
           inputType: input.inputType || 'TEXT',
+          createdAt: userCreatedAt,
         },
       }),
       prisma.message.create({
@@ -84,6 +89,7 @@ export class BrainOrchestrator {
           role: 'ASSISTANT',
           content: brainResponse.text,
           inputType: input.inputType || 'TEXT',
+          createdAt: assistantCreatedAt,
           metadata: JSON.stringify({
             executedToolCalls: brainResponse.toolCalls,
             executedToolResults: brainResponse.toolResults,
@@ -92,7 +98,8 @@ export class BrainOrchestrator {
           }),
         },
       }),
-    ]).catch((e: unknown) => logger.warn('Background message save warning', { error: String(e) }));
+      this.renewConversationTtl(conversationId, input.message, brainResponse.text),
+    ]).catch((e: unknown) => logger.warn('Background message save/TTL renewal warning', { error: String(e) }));
 
     // 7. Extract long-term memories in background without blocking response
     memoryExtractor
@@ -121,14 +128,37 @@ export class BrainOrchestrator {
     }
 
     const title = initialMessage ? initialMessage.slice(0, 30) + (initialMessage.length > 30 ? '...' : '') : 'New Conversation';
+    const initialTtlDays = await ttlEngine.suggestConversationTtl(initialMessage || title);
+    const expiresAt = ttlEngine.calculateExpiryDate(initialTtlDays);
+
     const newConv = await prisma.conversation.create({
       data: {
         userId,
         title,
+        expiresAt,
       },
     });
 
     return newConv.id;
+  }
+
+  private async renewConversationTtl(conversationId: string, userMessage: string, assistantResponse: string): Promise<void> {
+    try {
+      const ttlDays = await ttlEngine.suggestConversationTtl(userMessage, assistantResponse);
+      const expiresAt = ttlEngine.calculateExpiryDate(ttlDays);
+
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          expiresAt,
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info('Renewed conversation sliding TTL with LLM suggestion', { conversationId, ttlDays, expiresAt });
+    } catch (err) {
+      logger.warn('Failed to renew conversation TTL', { conversationId, error: String(err) });
+    }
   }
 }
 

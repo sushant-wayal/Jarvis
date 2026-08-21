@@ -1,10 +1,10 @@
 import { ChatMessage } from '@jarvis/shared';
-import React from 'react';
+import * as React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { colors, typography } from '../theme/tokens';
 
 export interface MessageBubbleProps {
   message: ChatMessage;
-  key?: string;
 }
 
 export function MessageBubble({ message }: MessageBubbleProps): React.ReactElement {
@@ -12,105 +12,120 @@ export function MessageBubble({ message }: MessageBubbleProps): React.ReactEleme
   const toolCalls = message.metadata?.executedToolCalls as Array<{ name: string }> | undefined;
 
   return (
-    <View style={[styles.wrapper, isUser ? styles.userWrapper : styles.jarvisWrapper]}>
-      <View style={[styles.bubble, isUser ? styles.userBubble : styles.jarvisBubble]}>
-        <View style={styles.headerRow}>
-          <Text style={styles.roleLabel}>{isUser ? 'You' : 'Jarvis'}</Text>
-          <Text style={styles.typeBadge}>{message.inputType === 'VOICE' ? '🎤 Voice' : '💬 Text'}</Text>
-        </View>
-
-        <Text style={styles.messageContent}>{message.content}</Text>
-
-        {toolCalls && toolCalls.length > 0 && (
-          <View style={styles.toolBadgeRow}>
-            {toolCalls.map((t, idx) => (
-              <View key={idx} style={styles.toolBadge}>
-                <Text style={styles.toolBadgeText}>⚙️ Tool: {t.name}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <Text style={styles.timestamp}>
+    <View style={[styles.container, isUser ? styles.userAlign : styles.jarvisAlign]}>
+      {/* Sender Tag Header */}
+      <View style={[styles.headerRow, isUser ? styles.userHeader : styles.jarvisHeader]}>
+        {!isUser && <View style={styles.inlineOrb} />}
+        <Text style={[typography.labelCaps, isUser ? styles.userLabel : styles.jarvisLabel]}>
+          {isUser ? 'Sushant' : 'JARVIS'}
+        </Text>
+        <Text style={styles.timeLabel}>
           {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
+
+      {/* Typography-First Content (Spacious & Clean) */}
+      <Text style={[typography.bodyXl, isUser ? styles.userText : styles.jarvisText]}>
+        {message.content}
+      </Text>
+
+      {/* Tool executions summary */}
+      {toolCalls && toolCalls.length > 0 && (
+        <View style={styles.toolCallsContainer}>
+          {toolCalls.map((t, idx) => (
+            <View key={idx} style={styles.toolPill}>
+              <Text style={styles.toolIcon}>⚙</Text>
+              <Text style={styles.toolName}>{t.name}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    marginVertical: 6,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
+  container: {
+    marginVertical: 14,
+    paddingHorizontal: 20,
+    width: '100%',
   },
-  userWrapper: {
-    justifyContent: 'flex-end',
+  userAlign: {
+    alignItems: 'flex-end',
   },
-  jarvisWrapper: {
-    justifyContent: 'flex-start',
-  },
-  bubble: {
-    maxWidth: '82%',
-    padding: 12,
-    borderRadius: 16,
-  },
-  userBubble: {
-    backgroundColor: '#0284C7',
-    borderBottomRightRadius: 4,
-  },
-  jarvisBubble: {
-    backgroundColor: '#1E293B',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: '#334155',
+  jarvisAlign: {
+    alignItems: 'flex-start',
   },
   headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    gap: 8,
+    marginBottom: 6,
   },
-  roleLabel: {
-    color: '#94A3B8',
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  userHeader: {
+    justifyContent: 'flex-end',
   },
-  typeBadge: {
-    color: '#CBD5E1',
+  jarvisHeader: {
+    justifyContent: 'flex-start',
+  },
+  inlineOrb: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primaryContainer,
+    shadowColor: colors.primaryContainer,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+  },
+  userLabel: {
+    color: colors.onSurfaceVariant,
+    opacity: 0.7,
+  },
+  jarvisLabel: {
+    color: colors.primaryFixed,
+  },
+  timeLabel: {
+    color: colors.outlineVariant,
     fontSize: 10,
-    fontWeight: '500',
   },
-  messageContent: {
-    color: '#F8FAFC',
-    fontSize: 15,
-    lineHeight: 21,
+  userText: {
+    color: colors.onSurface,
+    textAlign: 'right',
+    maxWidth: '90%',
+    lineHeight: 26,
   },
-  toolBadgeRow: {
+  jarvisText: {
+    color: colors.primary,
+    textAlign: 'left',
+    maxWidth: '94%',
+    lineHeight: 28,
+  },
+  toolCallsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginTop: 8,
+    gap: 6,
+    marginTop: 10,
   },
-  toolBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+  toolPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 240, 255, 0.08)',
+    borderColor: 'rgba(0, 240, 255, 0.2)',
+    borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    marginRight: 6,
-    marginBottom: 4,
+    gap: 4,
   },
-  toolBadgeText: {
-    color: '#38BDF8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  timestamp: {
-    color: '#64748B',
+  toolIcon: {
+    color: colors.primaryFixed,
     fontSize: 10,
-    textAlign: 'right',
-    marginTop: 4,
+  },
+  toolName: {
+    color: colors.primaryFixed,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
   },
 });

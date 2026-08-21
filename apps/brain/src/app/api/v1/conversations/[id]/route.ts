@@ -16,8 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
 
-    if (!conversation) {
-      return errorResponse('NOT_FOUND', 'Conversation not found', requestId, 404);
+    if (!conversation || (conversation.expiresAt && conversation.expiresAt <= new Date())) {
+      return errorResponse('NOT_FOUND', 'Conversation not found or expired', requestId, 404);
     }
 
     return successResponse(
@@ -27,6 +27,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         title: conversation.title,
         createdAt: conversation.createdAt.toISOString(),
         updatedAt: conversation.updatedAt.toISOString(),
+        expiresAt: conversation.expiresAt ? conversation.expiresAt.toISOString() : undefined,
         messages: conversation.messages.map((m: { id: string; conversationId: string; role: string; content: string; inputType: string; createdAt: Date; metadata: string | null }) => ({
           id: m.id,
           conversationId: m.conversationId,
