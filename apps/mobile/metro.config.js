@@ -15,12 +15,16 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3. Force React & React Native to resolve from the mobile workspace's
-//    node_modules to prevent version mismatches in a monorepo.
+// 3. Force React, React Native, Reanimated and Skia to resolve from workspace root
 config.resolver.extraNodeModules = {
   'react': path.resolve(workspaceRoot, 'node_modules', 'react'),
   'react-dom': path.resolve(workspaceRoot, 'node_modules', 'react-dom'),
   'react-native': path.resolve(workspaceRoot, 'node_modules', 'react-native'),
+  'react-native-reanimated': path.resolve(workspaceRoot, 'node_modules', 'react-native-reanimated'),
+  '@shopify/react-native-skia': path.resolve(workspaceRoot, 'node_modules', '@shopify/react-native-skia'),
 };
 
 module.exports = config;
+
+
+

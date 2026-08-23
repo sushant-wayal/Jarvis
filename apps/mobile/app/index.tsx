@@ -10,7 +10,7 @@ import { ConfirmationModal } from '../src/components/ConfirmationModal';
 import { GlassCard } from '../src/components/GlassCard';
 import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
-import { VoiceOrb } from '../src/components/VoiceOrb';
+import { EtherealOrb } from '../src/components/EtherealOrb';
 import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
 import { useVoiceRecorder } from '../src/hooks/useVoiceRecorder';
 import { apiClient } from '../src/services/apiClient';
@@ -228,9 +228,9 @@ export default function HomeScreen(): React.ReactElement {
 
       {/* Main Immersive Canvas */}
       <View style={styles.mainCanvas}>
-        {/* Living Voice Orb */}
+        {/* Living Ethereal Voice Orb */}
         <View style={styles.orbWrapper}>
-          <VoiceOrb
+          <EtherealOrb
             state={jarvisState}
             onPress={handleOrbPress}
             audioLevel={recordingLevel}
