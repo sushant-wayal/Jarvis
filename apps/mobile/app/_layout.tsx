@@ -4,14 +4,16 @@ import * as React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../src/components/Icon';
+import { EarbudProvider } from '../src/hooks/useEarbudManager';
 import { colors } from '../src/theme/tokens';
 
 export default function RootLayout(): React.ReactElement {
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
-        <StatusBar style="light" backgroundColor="#131314" />
-        <Tabs
+      <EarbudProvider>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+          <StatusBar style="light" backgroundColor="#131314" />
+          <Tabs
           screenOptions={{
             headerShown: false,
             tabBarStyle: styles.tabBar,
@@ -103,6 +105,7 @@ export default function RootLayout(): React.ReactElement {
           />
         </Tabs>
       </SafeAreaView>
+      </EarbudProvider>
     </SafeAreaProvider>
   );
 }

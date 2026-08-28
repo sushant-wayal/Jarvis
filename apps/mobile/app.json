@@ -13,11 +13,19 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Jarvis needs access to your microphone to process voice commands and talk with you."
+        "NSMicrophoneUsageDescription": "Jarvis needs access to your microphone to process voice commands and talk with you.",
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
-      "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "BLUETOOTH",
+        "BLUETOOTH_CONNECT",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "plugins": ["expo-router"]
   }

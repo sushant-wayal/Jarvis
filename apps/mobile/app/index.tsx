@@ -11,18 +11,26 @@ import { GlassCard } from '../src/components/GlassCard';
 import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { EtherealOrb } from '../src/components/EtherealOrb';
-import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
-import { useVoiceRecorder } from '../src/hooks/useVoiceRecorder';
+import { useEarbudManager } from '../src/hooks/useEarbudManager';
 import { apiClient } from '../src/services/apiClient';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function HomeScreen(): React.ReactElement {
-  const [jarvisState, setJarvisState] = React.useState<JarvisState>('IDLE');
+  const {
+    jarvisState,
+    setJarvisState,
+    settings: earbudSettings,
+    status: earbudStatus,
+    isRecording,
+    recordingLevel,
+    isPlaying,
+    assistantSpokenText,
+    errorMessage: earbudError,
+    toggleVoiceInteraction,
+    triggerSimulatedTap,
+  } = useEarbudManager();
+
   const [isOnline, setIsOnline] = React.useState<boolean>(true);
-  const [conversationId, setConversationId] = React.useState<string | undefined>(undefined);
-  const [lastTranscript, setLastTranscript] = React.useState<string>('');
-  const [assistantSpokenText, setAssistantSpokenText] = React.useState<string>('');
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
   // Dynamic context info
   const [userName, setUserName] = React.useState<string>('Sir');
@@ -48,9 +56,6 @@ export default function HomeScreen(): React.ReactElement {
     riskLevel: 'SAFE',
     summary: '',
   });
-
-  const { isRecording, recordingLevel, startRecording, stopRecording } = useVoiceRecorder();
-  const { isPlaying, playBase64Audio, stopAudio } = useAudioPlayer();
 
   const getGreeting = (): string => {
     const hour = new Date().getHours();
@@ -134,67 +139,8 @@ export default function HomeScreen(): React.ReactElement {
     return () => clearInterval(interval);
   }, []);
 
-  React.useEffect(() => {
-    if (isRecording) {
-      setJarvisState('LISTENING');
-    } else if (isPlaying) {
-      setJarvisState('SPEAKING');
-    } else if (!isRecording && !isPlaying && jarvisState === 'SPEAKING') {
-      setJarvisState('IDLE');
-    }
-  }, [isRecording, isPlaying, jarvisState]);
-
   const handleOrbPress = async (): Promise<void> => {
-    setErrorMsg(null);
-
-    // If currently speaking, interrupt audio
-    if (isPlaying) {
-      await stopAudio();
-      setJarvisState('IDLE');
-      return;
-    }
-
-    if (isRecording) {
-      setJarvisState('PROCESSING');
-      const audioData = await stopRecording();
-
-      if (!audioData) {
-        setJarvisState('ERROR');
-        setErrorMsg("Couldn't capture audio. Please try again.");
-        return;
-      }
-
-      setJarvisState('THINKING');
-
-      try {
-        const response = await apiClient.sendVoiceAudio(
-          audioData.audioBase64,
-          audioData.mimeType,
-          conversationId
-        );
-
-        setConversationId(response.conversationId);
-        setLastTranscript(response.transcript);
-        setAssistantSpokenText(response.response);
-
-        if (response.audioBase64) {
-          setJarvisState('SPEAKING');
-          await playBase64Audio(response.audioBase64, 'audio/mp3', () => {
-            setJarvisState('IDLE');
-          });
-        } else {
-          setJarvisState('IDLE');
-        }
-      } catch (err: unknown) {
-        setJarvisState('ERROR');
-        setErrorMsg(err instanceof Error ? err.message : 'No connection to Jarvis brain.');
-      }
-    } else {
-      setJarvisState('LISTENING');
-      setAssistantSpokenText('');
-      setLastTranscript('');
-      await startRecording();
-    }
+    await toggleVoiceInteraction();
   };
 
   const handleConfirmAction = async (confirmed: boolean) => {
@@ -210,6 +156,7 @@ export default function HomeScreen(): React.ReactElement {
   const isSpeakingState = jarvisState === 'SPEAKING' && Boolean(assistantSpokenText);
   const isListeningState = jarvisState === 'LISTENING';
   const isThinkingState = jarvisState === 'THINKING' || jarvisState === 'PROCESSING';
+
 
   return (
     <View style={styles.screenContainer}>
@@ -287,14 +234,25 @@ export default function HomeScreen(): React.ReactElement {
                 {contextHint.text}
               </Text>
             </GlassCard>
+
+            {/* Earbud Standby Active Status Pill */}
+            {earbudSettings.enabled ? (
+              <View style={styles.earbudIndicatorBadge}>
+                <View style={styles.earbudDotActive} />
+                <Icon name="hearing" size={13} color={colors.primaryFixed} />
+                <Text style={[typography.labelCaps, styles.earbudIndicatorText]}>
+                  EARBUD LINK ACTIVE · SINGLE TAP READY
+                </Text>
+              </View>
+            ) : null}
           </View>
         )}
 
         {/* Transient Error Notification */}
-        {errorMsg ? (
+        {earbudError ? (
           <GlassCard style={styles.errorBox}>
             <Icon name="error" size={16} color={colors.error} />
-            <Text style={styles.errorText}>{errorMsg}</Text>
+            <Text style={styles.errorText}>{earbudError}</Text>
           </GlassCard>
         ) : null}
       </View>
@@ -525,4 +483,31 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     opacity: 0.85,
   },
+  earbudIndicatorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0, 240, 255, 0.04)',
+    borderColor: 'rgba(0, 240, 255, 0.15)',
+    borderWidth: 1,
+    borderRadius: rounded.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginTop: 4,
+  },
+  earbudDotActive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primaryFixed,
+    shadowColor: colors.primaryFixed,
+    shadowRadius: 6,
+    shadowOpacity: 0.8,
+  },
+  earbudIndicatorText: {
+    color: colors.primaryFixed,
+    fontSize: 9,
+    letterSpacing: 1.5,
+  },
 });
+

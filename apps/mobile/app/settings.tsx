@@ -14,11 +14,19 @@ import {
 import { GlassCard } from '../src/components/GlassCard';
 import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
+import { useEarbudManager } from '../src/hooks/useEarbudManager';
 import { apiClient } from '../src/services/apiClient';
 import { mobileLocationService } from '../src/services/locationService';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function SettingsScreen(): React.ReactElement {
+  const {
+    settings: earbudSettings,
+    updateSettings: updateEarbudSettings,
+    status: earbudStatus,
+    triggerSimulatedTap,
+  } = useEarbudManager();
+
   const [userName, setUserName] = React.useState<string>('Sushant');
   const [responseProtocol, setResponseProtocol] = React.useState<string>('Concise');
   const [serverUrl, setServerUrl] = React.useState<string>(apiClient.getBaseUrl());
@@ -296,6 +304,97 @@ export default function SettingsScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
+        {/* Earbud & Headset Neural Interface */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="hearing" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>
+              EARBUD & HEADSET PROTOCOL
+            </Text>
+            <View style={styles.switchRight}>
+              <Switch
+                value={earbudSettings.enabled}
+                onValueChange={(val) => updateEarbudSettings({ enabled: val })}
+                trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                thumbColor={earbudSettings.enabled ? colors.primaryFixed : colors.outline}
+              />
+            </View>
+          </View>
+
+          <Text style={[typography.bodyMd, styles.locationDesc]}>
+            Single-tap on any Bluetooth or wired earbud/headphone media button activates Jarvis and starts listening immediately, even when the screen is off or app is running in background.
+          </Text>
+
+          <View style={styles.earbudSettingRow}>
+            <View style={styles.settingTextCol}>
+              <Text style={[typography.bodyMd, styles.settingLabel]}>Audio Feedback Chimes</Text>
+              <Text style={[typography.bodySm, styles.settingSub]}>
+                Play subtle futuristic earbud wake/process sound cues
+              </Text>
+            </View>
+            <Switch
+              value={earbudSettings.playFeedbackChimes}
+              onValueChange={(val) => updateEarbudSettings({ playFeedbackChimes: val })}
+              trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+              thumbColor={earbudSettings.playFeedbackChimes ? colors.primaryFixed : colors.outline}
+            />
+          </View>
+
+          <View style={styles.earbudSettingRow}>
+            <View style={styles.settingTextCol}>
+              <Text style={[typography.bodyMd, styles.settingLabel]}>Background Standby Link</Text>
+              <Text style={[typography.bodySm, styles.settingSub]}>
+                Maintains low-power OS audio anchor for instant earbud capture
+              </Text>
+            </View>
+            <Switch
+              value={earbudSettings.backgroundStandby}
+              onValueChange={(val) => updateEarbudSettings({ backgroundStandby: val })}
+              trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+              thumbColor={earbudSettings.backgroundStandby ? colors.primaryFixed : colors.outline}
+            />
+          </View>
+
+          <View style={styles.earbudStatusBox}>
+            <View style={styles.statusIndicatorRow}>
+              <View
+                style={[
+                  styles.earbudDot,
+                  {
+                    backgroundColor: earbudStatus.isStandbyActive
+                      ? colors.primaryFixed
+                      : colors.outline,
+                  },
+                ]}
+              />
+              <Text style={[typography.labelCaps, styles.earbudStatusText]}>
+                STATUS:{' '}
+                {earbudStatus.isStandbyActive
+                  ? 'STANDBY CARRIER ACTIVE (MEDIA SESSION BOUND)'
+                  : 'STANDBY IDLE'}
+              </Text>
+            </View>
+            {earbudStatus.lastEvent ? (
+              <Text style={styles.lastEventSub}>
+                Last Event: {earbudStatus.lastEvent} (
+                {new Date(earbudStatus.lastEventTimestamp || 0).toLocaleTimeString()})
+              </Text>
+            ) : null}
+          </View>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => {
+              triggerSimulatedTap('SINGLE_TAP');
+              Alert.alert('Earbud Single-Tap Triggered', 'Jarvis awakened & listening.');
+            }}
+          >
+            <Text style={[typography.labelCaps, styles.actionBtnText]}>
+              SIMULATE EARBUD SINGLE TAP (TEST WAKE)
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
         {/* Memory Registry */}
         <GlassCard style={styles.bentoCard}>
           <View style={styles.cardHeaderRow}>
@@ -544,4 +643,56 @@ const styles = StyleSheet.create({
   delMemoryBtn: {
     padding: 6,
   },
+  earbudSettingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.04)',
+    gap: 12,
+  },
+  settingTextCol: {
+    flex: 1,
+    gap: 2,
+  },
+  settingLabel: {
+    color: colors.onSurface,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  settingSub: {
+    color: colors.outline,
+    fontSize: 11,
+  },
+  earbudStatusBox: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderRadius: rounded.md,
+    padding: 12,
+    gap: 4,
+    marginTop: 4,
+  },
+  statusIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  earbudDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  earbudStatusText: {
+    color: colors.primaryFixed,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  lastEventSub: {
+    color: colors.outline,
+    fontSize: 10,
+    marginTop: 2,
+  },
 });
+

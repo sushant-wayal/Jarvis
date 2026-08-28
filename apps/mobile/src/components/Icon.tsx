@@ -46,6 +46,8 @@ export type IconName =
   | 'chat_bubble'
   | 'home'
   | 'error'
+  | 'hearing'
+  | 'headset'
   | 'insights';
 
 export interface IconProps {
@@ -146,6 +148,10 @@ export function Icon({
       return <MaterialIcons name="error-outline" size={size} color={color} style={style} />;
     case 'home':
       return <MaterialIcons name="home" size={size} color={color} style={style} />;
+    case 'hearing':
+      return <MaterialIcons name="hearing" size={size} color={color} style={style} />;
+    case 'headset':
+      return <MaterialIcons name="headset" size={size} color={color} style={style} />;
     default:
       return <MaterialIcons name="blur-on" size={size} color={color} style={style} />;
   }

@@ -372,3 +372,38 @@ export interface ToolContext {
   agentRunId?: string;
   stepNumber?: number;
 }
+
+export type EarbudEventType =
+  | 'SINGLE_TAP'
+  | 'DOUBLE_TAP'
+  | 'TRIPLE_TAP'
+  | 'LONG_PRESS'
+  | 'MEDIA_PLAY'
+  | 'MEDIA_PAUSE'
+  | 'MEDIA_NEXT'
+  | 'MEDIA_PREV';
+
+export type EarbudAction =
+  | 'TOGGLE_VOICE'
+  | 'ACTIVATE_LISTENING'
+  | 'STOP_OR_INTERRUPT'
+  | 'READ_NOTIFICATIONS'
+  | 'NONE';
+
+export interface EarbudSettings {
+  enabled: boolean;
+  singleTapAction: EarbudAction;
+  doubleTapAction: EarbudAction;
+  playFeedbackChimes: boolean;
+  autoSilenceStop: boolean;
+  silenceThresholdSeconds: number;
+  backgroundStandby: boolean;
+}
+
+export interface EarbudStatus {
+  isStandbyActive: boolean;
+  isConnected: boolean;
+  lastEvent?: EarbudEventType;
+  lastEventTimestamp?: number;
+}
+
