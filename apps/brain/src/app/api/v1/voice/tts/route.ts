@@ -3,6 +3,10 @@ import { errorResponse, generateRequestId, successResponse } from '@/lib/api/res
 import { logger } from '@/lib/logging/logger';
 import { ttsProvider } from '@/modules/voice/tts-provider';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const requestId = generateRequestId();
 

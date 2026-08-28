@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { UpdateUserEventSchema } from '@jarvis/shared';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/response';
+import { errorResponse, handleApiError, successResponse } from '@/lib/api/response';
 import { eventService } from '@/modules/events/event-service';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,10 +16,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await eventService.updateEvent(id, userId, validated);
     if (!updated) {
-      return NextResponse.json(createErrorResponse('NOT_FOUND', 'Event not found', requestId), { status: 404 });
+      return errorResponse('NOT_FOUND', 'Event not found', requestId, 404);
     }
 
-    return NextResponse.json(createSuccessResponse(updated, requestId));
+    return successResponse(updated, requestId);
   } catch (err) {
     return handleApiError(err, requestId);
   }
@@ -31,11 +34,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const deleted = await eventService.deleteEvent(id, userId);
     if (!deleted) {
-      return NextResponse.json(createErrorResponse('NOT_FOUND', 'Event not found', requestId), { status: 404 });
+      return errorResponse('NOT_FOUND', 'Event not found', requestId, 404);
     }
 
-    return NextResponse.json(createSuccessResponse({ deleted: true }, requestId));
+    return successResponse({ deleted: true }, requestId);
   } catch (err) {
     return handleApiError(err, requestId);
   }
 }
+

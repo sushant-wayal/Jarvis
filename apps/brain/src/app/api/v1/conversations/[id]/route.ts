@@ -2,6 +2,9 @@ import { NextRequest } from 'next/server';
 import { errorResponse, generateRequestId, successResponse } from '@/lib/api/response';
 import { prisma } from '@/lib/db/prisma';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const requestId = generateRequestId();
   const { id } = await params;

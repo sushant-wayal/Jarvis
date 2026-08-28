@@ -5,6 +5,10 @@ import { logger } from '@/lib/logging/logger';
 import { brainOrchestrator } from '@/modules/brain/orchestrator';
 import { ttsProvider } from '@/modules/voice/tts-provider';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const requestId = generateRequestId();
   const startTime = Date.now();

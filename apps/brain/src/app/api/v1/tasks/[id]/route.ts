@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { UpdateTaskSchema } from '@jarvis/shared';
-import { createErrorResponse, createSuccessResponse, handleApiError } from '@/lib/api/response';
+import { errorResponse, handleApiError, successResponse } from '@/lib/api/response';
 import { taskService } from '@/modules/tasks/task-service';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -12,10 +15,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const task = await taskService.getTask(id, userId);
     if (!task) {
-      return NextResponse.json(createErrorResponse('NOT_FOUND', 'Task not found', requestId), { status: 404 });
+      return errorResponse('NOT_FOUND', 'Task not found', requestId, 404);
     }
 
-    return NextResponse.json(createSuccessResponse(task, requestId));
+    return successResponse(task, requestId);
   } catch (err) {
     return handleApiError(err, requestId);
   }
@@ -31,10 +34,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await taskService.updateTask(id, userId, validated);
     if (!updated) {
-      return NextResponse.json(createErrorResponse('NOT_FOUND', 'Task not found', requestId), { status: 404 });
+      return errorResponse('NOT_FOUND', 'Task not found', requestId, 404);
     }
 
-    return NextResponse.json(createSuccessResponse(updated, requestId));
+    return successResponse(updated, requestId);
   } catch (err) {
     return handleApiError(err, requestId);
   }
@@ -49,11 +52,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const deleted = await taskService.deleteTask(id, userId);
     if (!deleted) {
-      return NextResponse.json(createErrorResponse('NOT_FOUND', 'Task not found', requestId), { status: 404 });
+      return errorResponse('NOT_FOUND', 'Task not found', requestId, 404);
     }
 
-    return NextResponse.json(createSuccessResponse({ deleted: true }, requestId));
+    return successResponse({ deleted: true }, requestId);
   } catch (err) {
     return handleApiError(err, requestId);
   }
 }
+

@@ -3,6 +3,9 @@ import { NextRequest } from 'next/server';
 import { errorResponse, generateRequestId, successResponse } from '@/lib/api/response';
 import { memoryService } from '@/modules/memory/memory-service';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();
   const { searchParams } = new URL(req.url);

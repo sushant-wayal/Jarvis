@@ -4,6 +4,9 @@ import { errorResponse, generateRequestId, successResponse } from '@/lib/api/res
 import { prisma } from '@/lib/db/prisma';
 import { ttlEngine } from '@/modules/brain/ttl-engine';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();
   const { searchParams } = new URL(req.url);
