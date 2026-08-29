@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { errorResponse, generateRequestId, successResponse } from '@/lib/api/response';
 import { prisma } from '@/lib/db/prisma';
 
+import { getGeminiPoolStats } from '@/lib/ai/gemini';
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
@@ -17,7 +19,8 @@ export async function GET() {
     dbHealthy = false;
   }
 
-  const aiHealthy = Boolean(process.env.GEMINI_API_KEY);
+  const poolStats = getGeminiPoolStats();
+  const aiHealthy = poolStats.totalKeys > 0;
 
   const healthData: HealthStatus = {
     status: dbHealthy && aiHealthy ? 'operational' : 'degraded',

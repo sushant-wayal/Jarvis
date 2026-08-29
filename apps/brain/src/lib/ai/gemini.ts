@@ -1,10 +1,18 @@
-import { GoogleGenAI } from '@google/genai';
+import { geminiPool } from './gemini-pool';
 
-const apiKey = process.env.GEMINI_API_KEY || 'demo-api-key';
+export { geminiPool } from './gemini-pool';
 
-export const aiClient = new GoogleGenAI({
-  apiKey,
-});
+/**
+ * Drop-in GoogleGenAI proxy that automatically rotates across the 10-key Gemini pool
+ * and handles transparent 429/quota cooldowns and retries.
+ */
+export const aiClient = {
+  models: {
+    generateContent: (params: Parameters<typeof geminiPool.generateContent>[0]) => {
+      return geminiPool.generateContent(params);
+    },
+  },
+};
 
 export const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
 
@@ -15,3 +23,7 @@ export const FAST_FALLBACK_MODELS = [
   'gemini-3.7-flash',
   'gemini-flash-latest',
 ];
+
+export function getGeminiPoolStats() {
+  return geminiPool.getStats();
+}
