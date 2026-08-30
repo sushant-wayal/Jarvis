@@ -18,6 +18,7 @@
       }
     },
     "android": {
+      "package": "com.jarvis.app",
       "adaptiveIcon": {
         "backgroundColor": "#0A0D14"
       },
