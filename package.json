@@ -13,7 +13,7 @@
     "vercel-build": "npm run build:shared && npm run build:brain",
     "build:brain": "npm run build --workspace=apps/brain",
     "build:shared": "npm run build --workspace=packages/shared",
-    "postinstall": "npm run prisma:generate --workspace=apps/brain --if-present",
+    "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"

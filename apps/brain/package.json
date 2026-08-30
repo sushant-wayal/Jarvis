@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "prisma generate && next dev -p 3000",
-    "build": "prisma generate && next build",
+    "build": "npm --prefix ../../packages/shared run build && prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start -p 3000",
     "lint": "next lint",
