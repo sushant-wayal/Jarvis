@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       inputType: 'TEXT',
       speakResponse: input.speakResponse,
       requestId,
+      phoneContext: input.phoneContext,
     });
 
     let audioBase64: string | undefined;

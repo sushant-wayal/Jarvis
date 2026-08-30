@@ -319,6 +319,139 @@ export interface EventReminderItem {
   updatedAt: string;
 }
 
+// ─── Phone Integration Types ────────────────────────────────────────────────
+
+/** Normalized notification event captured from a messaging app */
+export interface PhoneNotificationEvent {
+  /** Unique ID (notification ID from OS or generated) */
+  id: string;
+  /** Friendly app name: 'whatsapp', 'instagram', 'telegram', 'sms', 'gmail', etc. */
+  app: string;
+  /** Android package name: 'com.whatsapp', etc. */
+  packageName: string;
+  /** Sender display name */
+  sender: string;
+  /** Message text — only populated when user permits content storage */
+  content?: string;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Key identifying the conversation thread within the app */
+  conversationKey?: string;
+  /** Whether a direct reply action is available */
+  canReply: boolean;
+  /** Internal key for the RemoteInput reply action (native use only) */
+  replyActionKey?: string;
+  /** Thread / group ID if applicable */
+  threadId?: string;
+}
+
+/** A contact resolved from the device address book */
+export interface ResolvedContact {
+  id: string;
+  name: string;
+  displayName: string;
+  phoneNumbers: Array<{ number: string; label: string }>;
+  emails?: Array<{ email: string; label: string }>;
+}
+
+/** Result of a contact lookup — may be a single match or ambiguous */
+export interface ContactResolutionResult {
+  /** Definite single match */
+  contact?: ResolvedContact;
+  /** Multiple candidates when the query is ambiguous */
+  candidates?: ResolvedContact[];
+  /** True when more than one contact matched */
+  ambiguous: boolean;
+  /** Human-readable error, if any */
+  error?: string;
+}
+
+/** What the integration layer can do on this device right now */
+export interface IntegrationCapabilities {
+  contacts: boolean;
+  phoneCall: boolean;
+  sms: boolean;
+  /** Requires APK build — not available in Expo Go */
+  notificationListener: boolean;
+  /** Requires APK build — not available in Expo Go */
+  notificationReply: boolean;
+  openApp: boolean;
+}
+
+/** Lightweight snapshot of phone context sent from mobile to brain with every request */
+export interface PhoneContext {
+  /** Recent notifications captured since last sync (max 20) */
+  recentNotifications: PhoneNotificationEvent[];
+  capabilities: IntegrationCapabilities;
+  timestamp: string;
+}
+
+// ─── Jarvis Phone Action Descriptors ───────────────────────────────────────
+// The brain generates these; the mobile app executes them natively.
+
+export interface JarvisCallAction {
+  type: 'CALL_CONTACT';
+  contactName: string;
+  /** Pre-resolved number if available from phone context */
+  phoneNumber?: string;
+}
+
+export interface JarvisSendSmsAction {
+  type: 'SEND_SMS';
+  contactName: string;
+  phoneNumber?: string;
+  message: string;
+}
+
+export interface JarvisReplyToNotificationAction {
+  type: 'REPLY_TO_NOTIFICATION';
+  app: string;
+  sender: string;
+  conversationKey?: string;
+  message: string;
+  /** Original notification id for RemoteInput targeting */
+  notificationId?: string;
+}
+
+export interface JarvisOpenAppAction {
+  type: 'OPEN_APP';
+  /** Friendly app name: 'whatsapp', 'instagram', etc. */
+  app: string;
+}
+
+export interface JarvisOpenConversationAction {
+  type: 'OPEN_CONVERSATION';
+  app: string;
+  conversationKey?: string;
+  contactName?: string;
+}
+
+export type JarvisPhoneAction =
+  | JarvisCallAction
+  | JarvisSendSmsAction
+  | JarvisReplyToNotificationAction
+  | JarvisOpenAppAction
+  | JarvisOpenConversationAction;
+
+/** Result of executing a JarvisPhoneAction on the mobile side */
+export interface ActionResult {
+  success: boolean;
+  /** True if a fallback strategy was used instead of the primary action */
+  fallbackUsed?: boolean;
+  /** Human-readable reason for fallback */
+  fallbackReason?: string;
+  /** Short message Jarvis can speak to confirm the result */
+  message?: string;
+  /** Error description if success is false */
+  error?: string;
+  /** True when capability requires APK build (not available in Expo Go) */
+  requiresApkBuild?: boolean;
+  /** When contact lookup is ambiguous, caller names for clarification */
+  ambiguousCandidates?: string[];
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 export interface BrainResponse {
   text: string;
   shouldSpeak: boolean;
@@ -337,6 +470,8 @@ export interface BrainResponse {
     summary: string;
     payload: Record<string, unknown>;
   };
+  /** Phone action for the mobile app to execute after speaking the response */
+  pendingPhoneAction?: JarvisPhoneAction;
 }
 
 export interface VoiceResponse {
@@ -371,6 +506,8 @@ export interface ToolContext {
   location?: LocationContext;
   agentRunId?: string;
   stepNumber?: number;
+  /** Phone context from the mobile device — injected per request */
+  phoneContext?: PhoneContext;
 }
 
 export type EarbudEventType =

@@ -1,5 +1,33 @@
 import { z } from 'zod';
 
+export const PhoneNotificationEventSchema = z.object({
+  id: z.string(),
+  app: z.string(),
+  packageName: z.string(),
+  sender: z.string(),
+  content: z.string().optional(),
+  timestamp: z.string(),
+  conversationKey: z.string().optional(),
+  canReply: z.boolean(),
+  replyActionKey: z.string().optional(),
+  threadId: z.string().optional(),
+});
+
+export const IntegrationCapabilitiesSchema = z.object({
+  contacts: z.boolean(),
+  phoneCall: z.boolean(),
+  sms: z.boolean(),
+  notificationListener: z.boolean(),
+  notificationReply: z.boolean(),
+  openApp: z.boolean(),
+});
+
+export const PhoneContextSchema = z.object({
+  recentNotifications: z.array(PhoneNotificationEventSchema).max(20),
+  capabilities: IntegrationCapabilitiesSchema,
+  timestamp: z.string(),
+}).optional();
+
 export const ChatRequestSchema = z.object({
   message: z.string().min(1, 'Message cannot be empty').max(4000),
   conversationId: z.string().optional(),
@@ -8,6 +36,8 @@ export const ChatRequestSchema = z.object({
   locale: z.string().optional().default('en-US'),
   speakResponse: z.boolean().optional().default(false),
   deviceId: z.string().optional(),
+  /** Phone context snapshot from the mobile device */
+  phoneContext: PhoneContextSchema,
 });
 
 export type ChatRequest = z.input<typeof ChatRequestSchema>;
@@ -20,6 +50,8 @@ export const VoiceUploadSchema = z.object({
   timezone: z.string().optional().default('UTC'),
   locale: z.string().optional().default('en-US'),
   deviceId: z.string().optional(),
+  /** Phone context snapshot from the mobile device */
+  phoneContext: PhoneContextSchema,
 });
 
 export type VoiceUploadRequest = z.input<typeof VoiceUploadSchema>;

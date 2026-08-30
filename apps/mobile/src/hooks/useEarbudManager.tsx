@@ -4,6 +4,7 @@ import { earbudService } from '../services/earbudService';
 import { apiClient } from '../services/apiClient';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { useAudioPlayer } from './useAudioPlayer';
+import { integrationManager } from '../integrations/IntegrationManager';
 
 export interface EarbudManagerContextValue {
   jarvisState: JarvisState;
@@ -106,6 +107,34 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [isPlaying, stopAudio, startRecording]);
 
+  /**
+   * After Jarvis finishes speaking a response, check if the brain attached a
+   * pending phone action and execute it natively.
+   */
+  const handlePendingPhoneAction = React.useCallback(
+    async (response: { pendingPhoneAction?: unknown; conversationId?: string }) => {
+      const action = response.pendingPhoneAction as import('@jarvis/shared').JarvisPhoneAction | undefined;
+      if (!action) return;
+
+      const convId = stateRef.current.conversationId || '';
+      const result = await integrationManager.executeAction(action);
+
+      // Handle ambiguous contact — send follow-up text to brain so it can ask
+      if (result.ambiguousCandidates?.length) {
+        const candidates = result.ambiguousCandidates.join(', ');
+        const followUp = `Contact "${(action as { contactName?: string }).contactName}" is ambiguous. Found: ${candidates}. Which one should I use?`;
+        await apiClient.sendChatMessage(followUp, convId, false);
+        return;
+      }
+
+      // Report result to brain for awareness in future turns
+      if (convId) {
+        void apiClient.reportPhoneActionResult({ conversationId: convId, action, result });
+      }
+    },
+    []
+  );
+
   const stopAndProcessVoice = React.useCallback(async (): Promise<void> => {
     try {
       setJarvisState('PROCESSING');
@@ -122,10 +151,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       setJarvisState('THINKING');
 
+      // Build phone context snapshot to send alongside the voice request
+      const phoneContext = await integrationManager.buildPhoneContext().catch(() => undefined);
+
       const response = await apiClient.sendVoiceAudio(
         audioData.audioBase64,
         audioData.mimeType,
-        stateRef.current.conversationId
+        stateRef.current.conversationId,
+        phoneContext
       );
 
       setConversationId(response.conversationId);
@@ -134,11 +167,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       if (response.audioBase64) {
         setJarvisState('SPEAKING');
-        await playBase64Audio(response.audioBase64, 'audio/mp3', () => {
+        await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
           setJarvisState('IDLE');
+          // After Jarvis finishes speaking, execute any pending phone action
+          await handlePendingPhoneAction(response);
         });
       } else {
         setJarvisState('IDLE');
+        await handlePendingPhoneAction(response);
       }
     } catch (err: unknown) {
       setJarvisState('ERROR');

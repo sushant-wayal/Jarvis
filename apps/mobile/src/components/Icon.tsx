@@ -48,6 +48,8 @@ export type IconName =
   | 'error'
   | 'hearing'
   | 'headset'
+  | 'phone_android'
+  | 'close'
   | 'insights';
 
 export interface IconProps {
@@ -152,6 +154,10 @@ export function Icon({
       return <MaterialIcons name="hearing" size={size} color={color} style={style} />;
     case 'headset':
       return <MaterialIcons name="headset" size={size} color={color} style={style} />;
+    case 'phone_android':
+      return <MaterialIcons name="phone-android" size={size} color={color} style={style} />;
+    case 'close':
+      return <MaterialIcons name="close" size={size} color={color} style={style} />;
     default:
       return <MaterialIcons name="blur-on" size={size} color={color} style={style} />;
   }

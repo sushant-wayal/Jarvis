@@ -15,6 +15,7 @@ import { createTaskTool, listTasksTool } from './task-tools';
 import { JarvisTool, RegisteredTool } from './types';
 import { weatherTool } from './weather';
 import { webSearchTool } from './web-search';
+import { phoneTools } from './phone-tools';
 
 class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
@@ -38,6 +39,11 @@ class ToolRegistry {
     this.register(createEventReminderTool as unknown as JarvisTool);
     this.register(placeSaveTool as unknown as JarvisTool);
     this.register(locationGetTool as unknown as JarvisTool);
+
+    // V3 Phone Integration Layer
+    for (const tool of phoneTools) {
+      this.register(tool as unknown as JarvisTool);
+    }
   }
 
   public register<TInput>(tool: JarvisTool<TInput>): void {

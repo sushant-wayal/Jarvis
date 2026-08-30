@@ -18,15 +18,26 @@
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0D14"
+      },
       "permissions": [
         "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "BLUETOOTH",
         "BLUETOOTH_CONNECT",
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "READ_CONTACTS",
+        "CALL_PHONE",
+        "SEND_SMS",
+        "READ_SMS",
+        "BIND_NOTIFICATION_LISTENER_SERVICE"
       ]
     },
-    "plugins": ["expo-router"]
+    "plugins": [
+      "expo-router",
+      "./plugins/withNotificationListener"
+    ]
   }
 }

@@ -17,6 +17,8 @@ export interface ProcessMessageInput {
   speakResponse?: boolean;
   requestId: string;
   deviceId?: string;
+  /** Phone context snapshot from the mobile device */
+  phoneContext?: import('@jarvis/shared').PhoneContext;
 }
 
 export class BrainOrchestrator {
@@ -42,6 +44,7 @@ export class BrainOrchestrator {
         timezone,
         locale,
         deviceId: input.deviceId,
+        phoneContext: input.phoneContext,
       }),
     ]);
 
@@ -58,6 +61,7 @@ export class BrainOrchestrator {
       requestId,
       timezone,
       locale,
+      phoneContext: input.phoneContext,
     };
 
     // 5. Execute Agent Planner ReAct Loop

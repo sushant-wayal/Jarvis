@@ -15,6 +15,11 @@ import { GlassCard } from '../src/components/GlassCard';
 import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
+import { useIntegrationBridge } from '../src/hooks/useIntegrationBridge';
+import { contactsIntegration } from '../src/integrations/ContactsIntegration';
+import { notificationContextStore, NotificationStoreSettings } from '../src/integrations/NotificationContextStore';
+import { notificationIntegration } from '../src/integrations/NotificationIntegration';
+import { OBSERVABLE_APPS } from '../src/integrations/constants';
 import { apiClient } from '../src/services/apiClient';
 import { mobileLocationService } from '../src/services/locationService';
 import { colors, rounded, typography } from '../src/theme/tokens';
@@ -36,6 +41,13 @@ export default function SettingsScreen(): React.ReactElement {
   const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
   const [memories, setMemories] = React.useState<MemoryItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
+
+  // Phone & Integration state
+  const { capabilities, requestContactsPermission } = useIntegrationBridge();
+  const [notifSettings, setNotifSettings] = React.useState<NotificationStoreSettings>(notificationContextStore.getSettings());
+  const [aliases, setAliases] = React.useState<Record<string, string>>(contactsIntegration.getAliases());
+  const [newAliasKey, setNewAliasKey] = React.useState<string>('');
+  const [newAliasValue, setNewAliasValue] = React.useState<string>('');
 
   const checkHealth = async (): Promise<void> => {
     const res = await apiClient.checkHealth();
@@ -76,7 +88,37 @@ export default function SettingsScreen(): React.ReactElement {
     checkHealth();
     loadMemories();
     loadLocation();
+    setNotifSettings(notificationContextStore.getSettings());
+    setAliases(contactsIntegration.getAliases());
   }, []);
+
+  const handleToggleAppNotif = async (appId: string, enabled: boolean): Promise<void> => {
+    const updated = {
+      ...notifSettings.enabledApps,
+      [appId]: enabled,
+    };
+    await notificationContextStore.updateSettings({ enabledApps: updated });
+    setNotifSettings(notificationContextStore.getSettings());
+  };
+
+  const handleToggleStoreContent = async (val: boolean): Promise<void> => {
+    await notificationContextStore.updateSettings({ storeContent: val });
+    setNotifSettings(notificationContextStore.getSettings());
+  };
+
+  const handleAddAlias = async (): Promise<void> => {
+    if (!newAliasKey.trim() || !newAliasValue.trim()) return;
+    await contactsIntegration.saveAlias(newAliasKey.trim(), newAliasValue.trim());
+    setAliases(contactsIntegration.getAliases());
+    setNewAliasKey('');
+    setNewAliasValue('');
+    Alert.alert('Alias Saved', `"${newAliasKey.trim()}" is now linked to "${newAliasValue.trim()}".`);
+  };
+
+  const handleRemoveAlias = async (key: string): Promise<void> => {
+    await contactsIntegration.removeAlias(key);
+    setAliases(contactsIntegration.getAliases());
+  };
 
   const handleSaveConfig = async (): Promise<void> => {
     apiClient.setBaseUrl(serverUrl);
@@ -404,6 +446,137 @@ export default function SettingsScreen(): React.ReactElement {
           </TouchableOpacity>
         </GlassCard>
 
+        {/* Phone, Messaging & Notification Integration Control */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="phone_android" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>
+              PHONE & MESSAGING MATRIX
+            </Text>
+          </View>
+
+          <Text style={[typography.bodyMd, styles.locationDesc]}>
+            Allows Jarvis to identify contacts, initiate calls, compose SMS, and understand incoming notifications across supported messaging channels.
+          </Text>
+
+          {/* Permission Status Indicators */}
+          <View style={styles.permMatrixRow}>
+            <View style={styles.permChip}>
+              <View style={[styles.earbudDot, { backgroundColor: capabilities?.contacts ? colors.primaryFixed : colors.error }]} />
+              <Text style={[typography.bodySm, styles.permChipText]}>
+                Contacts: {capabilities?.contacts ? 'Active' : 'Missing'}
+              </Text>
+            </View>
+            <View style={styles.permChip}>
+              <View style={[styles.earbudDot, { backgroundColor: capabilities?.phoneCall ? colors.primaryFixed : colors.outline }]} />
+              <Text style={[typography.bodySm, styles.permChipText]}>
+                Dialer: Ready
+              </Text>
+            </View>
+            <View style={styles.permChip}>
+              <View style={[styles.earbudDot, { backgroundColor: capabilities?.notificationListener ? colors.primaryFixed : colors.tertiaryFixed }]} />
+              <Text style={[typography.bodySm, styles.permChipText]}>
+                Listener: {capabilities?.notificationListener ? 'Active' : 'APK Mode'}
+              </Text>
+            </View>
+          </View>
+
+          {!capabilities?.contacts && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { marginTop: 12 }]}
+              onPress={async () => {
+                const res = await requestContactsPermission();
+                if (res === 'granted') {
+                  Alert.alert('Granted', 'Contacts access authorized.');
+                } else {
+                  Alert.alert('Denied', 'Contacts access was not granted.');
+                }
+              }}
+            >
+              <Text style={styles.actionBtnText}>GRANT CONTACTS ACCESS</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Privacy & Storage Control */}
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>PRIVACY & RETENTION</Text>
+            <View style={styles.earbudSettingRow}>
+              <View style={styles.settingTextCol}>
+                <Text style={[typography.bodyMd, styles.settingLabel]}>Store Message Content</Text>
+                <Text style={[typography.bodySm, styles.settingSub]}>
+                  Keep local text for context reasoning (disabled = sender metadata only)
+                </Text>
+              </View>
+              <Switch
+                value={notifSettings.storeContent}
+                onValueChange={handleToggleStoreContent}
+                trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                thumbColor={notifSettings.storeContent ? colors.primaryFixed : colors.outline}
+              />
+            </View>
+          </View>
+
+          {/* Per-App Notification Listening Matrix */}
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>OBSERVED MESSAGING APPS</Text>
+            <View style={styles.appGrid}>
+              {OBSERVABLE_APPS.map((app) => {
+                const isEnabled = notifSettings.enabledApps[app.id] ?? false;
+                return (
+                  <TouchableOpacity
+                    key={app.id}
+                    style={[styles.appToggleChip, isEnabled && styles.activeAppToggleChip]}
+                    onPress={() => handleToggleAppNotif(app.id, !isEnabled)}
+                  >
+                    <Text style={[styles.appToggleText, isEnabled && styles.activeAppToggleText]}>
+                      {app.label} {isEnabled ? '✓' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Contact Aliases Section */}
+          <View style={styles.fieldBlock}>
+            <Text style={[typography.labelCaps, styles.fieldLabel]}>CONTACT ALIAS MATRIX</Text>
+            <Text style={[typography.bodySm, styles.settingSub, { marginBottom: 8 }]}>
+              Map colloquial terms (e.g. &quot;Mom&quot;) to real contact names or numbers.
+            </Text>
+
+            {Object.entries(aliases).map(([key, val]) => (
+              <View key={key} style={styles.aliasRow}>
+                <Text style={[typography.bodyMd, styles.aliasKey]}>{key.toUpperCase()}</Text>
+                <Text style={[typography.bodySm, styles.aliasArrow]}>→</Text>
+                <Text style={[typography.bodyMd, styles.aliasVal]}>{val}</Text>
+                <TouchableOpacity onPress={() => handleRemoveAlias(key)} style={styles.delAliasBtn}>
+                  <Icon name="close" size={14} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            <View style={styles.addAliasRow}>
+              <TextInput
+                style={[styles.textInput, styles.aliasInput]}
+                value={newAliasKey}
+                onChangeText={setNewAliasKey}
+                placeholder="Alias (Mom)"
+                placeholderTextColor={colors.outline}
+              />
+              <TextInput
+                style={[styles.textInput, styles.aliasInput]}
+                value={newAliasValue}
+                onChangeText={setNewAliasValue}
+                placeholder="Contact / Name"
+                placeholderTextColor={colors.outline}
+              />
+              <TouchableOpacity style={styles.addAliasBtn} onPress={handleAddAlias}>
+                <Icon name="add" size={18} color={colors.onPrimary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </GlassCard>
+
         {/* Memory Registry */}
         <GlassCard style={styles.bentoCard}>
           <View style={styles.cardHeaderRow}>
@@ -722,6 +895,99 @@ const styles = StyleSheet.create({
     color: colors.outline,
     fontSize: 10,
     marginTop: 2,
+  },
+  permMatrixRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginVertical: 4,
+  },
+  permChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: rounded.full,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+  },
+  permChipText: {
+    color: colors.onSurfaceVariant,
+    fontSize: 11,
+  },
+  appGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  appToggleChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: rounded.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+  },
+  activeAppToggleChip: {
+    backgroundColor: 'rgba(0, 240, 255, 0.12)',
+    borderColor: colors.primaryFixed,
+  },
+  appToggleText: {
+    color: colors.outline,
+    fontSize: 12,
+  },
+  activeAppToggleText: {
+    color: colors.primaryFixed,
+    fontWeight: '600',
+  },
+  aliasRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: rounded.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    marginBottom: 6,
+    gap: 8,
+  },
+  aliasKey: {
+    color: colors.primaryFixed,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  aliasArrow: {
+    color: colors.outline,
+  },
+  aliasVal: {
+    flex: 1,
+    color: colors.onSurface,
+    fontSize: 12,
+  },
+  delAliasBtn: {
+    padding: 4,
+  },
+  addAliasRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  aliasInput: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 12,
+  },
+  addAliasBtn: {
+    backgroundColor: colors.primaryContainer,
+    borderRadius: rounded.md,
+    padding: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

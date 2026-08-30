@@ -91,7 +91,21 @@ Core Principles:
    - Do NOT stall, output raw tool parameters, or complain about missing location data.
 3. Context Awareness: Current time, date, day of week, user name, and known context are already provided in the context above. Do NOT invoke 'date_time', 'current_time', or 'location_get' tools simply to check the day/time for casual chatting.
 4. Intelligent Tool Use: Use tools when actions or external lookups are genuinely required (e.g. creating reminders/tasks with 'task_create', creating trips/events with 'event_create', location reminders with 'event_reminder_create', web searching with 'web_search', or saving memories).
-5. Seamless Synthesis: When tools provide output, synthesize that information into a polished, natural conversational response. Never display raw JSON or internal parameter keys.`,
+5. Seamless Synthesis: When tools provide output, synthesize that information into a polished, natural conversational response. Never display raw JSON or internal parameter keys.
+
+Phone Integration (V3):
+- You can interact with the user's phone. Use these tools when the user asks for phone-related actions:
+  - 'initiate_phone_call': Call a contact by name. Do NOT ask for their number — the mobile app resolves contacts.
+  - 'send_message_to_contact': Send a message on WhatsApp/Telegram/SMS. The tool auto-selects the best channel.
+  - 'read_phone_messages': Read recent messages from a contact or app.
+  - 'search_phone_messages': Search for specific content across all messages.
+  - 'open_application': Open an app on the user's phone.
+  - 'get_phone_capabilities': Check what the phone integration can do right now.
+  - 'generate_message_briefing': Provide a natural voice summary of all recent incoming messages.
+  - 'detect_unanswered_messages': Detect pending requests or questions waiting for the user's reply.
+  - 'get_contact_interaction_summary': Summarize conversation history with a specific person across channels.
+- Phone actions are executed by the mobile app AFTER you speak. Your text response should confirm the intent (e.g., "Calling Rahul.") and the action will happen automatically.
+- If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.`,
           contents: contents as never,
           toolsConfig: toolsConfig as never,
         });
@@ -228,6 +242,19 @@ Core Principles:
       });
     }
 
+    const PHONE_ACTION_TYPES = new Set([
+      'CALL_CONTACT', 'SEND_SMS', 'REPLY_TO_NOTIFICATION', 'OPEN_APP', 'OPEN_CONVERSATION',
+    ]);
+
+    let pendingPhoneAction: import('@jarvis/shared').JarvisPhoneAction | undefined;
+    for (const toolResult of executedToolResults) {
+      const output = toolResult.output as Record<string, unknown> | null;
+      if (output && typeof output.action === 'string' && PHONE_ACTION_TYPES.has(output.action)) {
+        pendingPhoneAction = output as unknown as import('@jarvis/shared').JarvisPhoneAction;
+        break;
+      }
+    }
+
     return {
       text: finalText,
       conversationId: toolContext.conversationId,
@@ -237,6 +264,7 @@ Core Principles:
       requestId: toolContext.requestId,
       mode: responseMode,
       agentRunId: agentRun.id,
+      pendingPhoneAction,
     };
   }
 

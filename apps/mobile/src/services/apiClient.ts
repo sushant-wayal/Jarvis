@@ -1,5 +1,6 @@
 import {
   AgentRun,
+  ActionResult,
   ApiResponse,
   BrainResponse,
   ChatMessage,
@@ -10,10 +11,12 @@ import {
   CreateUserEventRequest,
   EventReminderItem,
   HealthStatus,
+  JarvisPhoneAction,
   LocationContext,
   LocationUpdate,
   MemoryItem,
   NotificationItem,
+  PhoneContext,
   TaskItem,
   UpdateEventReminderRequest,
   UpdateTaskRequest,
@@ -57,7 +60,8 @@ export class JarvisApiClient {
   async sendChatMessage(
     message: string,
     conversationId?: string,
-    speakResponse = false
+    speakResponse = false,
+    phoneContext?: PhoneContext
   ): Promise<BrainResponse> {
     const res = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
@@ -67,6 +71,7 @@ export class JarvisApiClient {
         conversationId,
         speakResponse,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        phoneContext,
       }),
     });
 
@@ -82,14 +87,21 @@ export class JarvisApiClient {
     message: string;
     conversationId?: string;
     speakResponse?: boolean;
+    phoneContext?: PhoneContext;
   }): Promise<BrainResponse> {
-    return this.sendChatMessage(params.message, params.conversationId, params.speakResponse);
+    return this.sendChatMessage(
+      params.message,
+      params.conversationId,
+      params.speakResponse,
+      params.phoneContext
+    );
   }
 
   async sendVoiceAudio(
     audioBase64: string,
     mimeType = 'audio/m4a',
-    conversationId?: string
+    conversationId?: string,
+    phoneContext?: PhoneContext
   ): Promise<VoiceResponse> {
     const res = await fetch(`${this.baseUrl}/voice`, {
       method: 'POST',
@@ -99,6 +111,7 @@ export class JarvisApiClient {
         mimeType,
         conversationId,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        phoneContext,
       }),
     });
 
@@ -255,6 +268,23 @@ export class JarvisApiClient {
     });
     const json = (await res.json()) as ApiResponse<AgentRun>;
     return json.data || null;
+  }
+
+  /** Report result of a phone action back to the brain for conversational recovery. */
+  async reportPhoneActionResult(params: {
+    conversationId: string;
+    action: JarvisPhoneAction;
+    result: ActionResult;
+  }): Promise<void> {
+    try {
+      await fetch(`${this.baseUrl}/phone/action-result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } catch {
+      // Non-critical — brain will handle next message without result context
+    }
   }
 
   async confirmAction(actionId: string, confirmed: boolean): Promise<boolean> {

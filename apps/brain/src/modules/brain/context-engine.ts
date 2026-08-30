@@ -1,4 +1,4 @@
-import { ChatMessage, LocationContext, MemoryItem, TaskItem, UserEventItem } from '@jarvis/shared';
+import { ChatMessage, LocationContext, MemoryItem, PhoneContext, TaskItem, UserEventItem } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { memoryService } from '@/modules/memory/memory-service';
 import { workingMemoryService } from '@/modules/memory/working-memory';
@@ -10,6 +10,7 @@ export interface ContextParams {
   timezone: string;
   locale: string;
   deviceId?: string;
+  phoneContext?: PhoneContext;
 }
 
 export interface AssembledContext {
@@ -24,6 +25,7 @@ export interface AssembledContext {
   recentHistory: ChatMessage[];
   activeTasks: TaskItem[];
   upcomingEvents: UserEventItem[];
+  phoneContext?: PhoneContext;
   systemContextString: string;
 }
 
@@ -147,6 +149,20 @@ export class ContextEngine {
         memories.map((m) => `- [${m.type}] ${m.content}`).join('\n') + '\n';
     }
 
+    if (params.phoneContext) {
+      const { capabilities, recentNotifications } = params.phoneContext;
+      contextStr += `\n[Phone & Messaging Context]:\n`;
+      contextStr += `- Device Capabilities: Calls=${capabilities.phoneCall ? 'Yes' : 'No'}, SMS=${capabilities.sms ? 'Yes' : 'No'}, Contacts=${capabilities.contacts ? 'Yes' : 'No'}, NotificationListener=${capabilities.notificationListener ? 'Active' : 'Inactive (Expo Go)'}\n`;
+      
+      if (recentNotifications.length > 0) {
+        contextStr += `- Recent Notifications / Messages:\n`;
+        for (const notif of recentNotifications.slice(0, 10)) {
+          const time = new Date(notif.timestamp).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+          contextStr += `  • [${notif.app}] from "${notif.sender}" (${time}): ${notif.content || '[content hidden]'}\n`;
+        }
+      }
+    }
+
     return {
       userProfile,
       location: locationContext,
@@ -155,6 +171,7 @@ export class ContextEngine {
       recentHistory,
       activeTasks,
       upcomingEvents,
+      phoneContext: params.phoneContext,
       systemContextString: contextStr,
     };
   }

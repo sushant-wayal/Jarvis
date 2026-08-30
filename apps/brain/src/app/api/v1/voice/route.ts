@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return errorResponse('INVALID_VOICE_REQUEST', 'Validation failed for voice payload', requestId, 400, parseResult.error.format());
     }
 
-    const { audioBase64, mimeType, conversationId, userId, timezone, locale } = parseResult.data;
+    const { audioBase64, mimeType, conversationId, userId, timezone, locale, phoneContext } = parseResult.data;
     logger.info('Processing Voice API request', { requestId, userId });
 
     // 1. Transcribe voice audio
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       inputType: 'VOICE',
       speakResponse: true,
       requestId,
+      phoneContext,
     });
 
     // 3. Synthesize audio response for earbud playback
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
         conversationId: brainResult.conversationId,
         requestId,
         shouldSpeak: true,
+        pendingPhoneAction: brainResult.pendingPhoneAction,
       },
       requestId
     );
