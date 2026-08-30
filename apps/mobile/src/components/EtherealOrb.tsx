@@ -64,12 +64,17 @@ const STATE_LABEL: Record<string, string> = {
 
 const VERT = `
   attribute vec2 a_pos;
-  void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
+  varying vec2 v_pos;
+  void main() {
+    v_pos = a_pos;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+  }
 `;
 
 const FRAG = `
 precision highp float;
 
+varying vec2 v_pos;
 uniform float u_time;
 uniform float u_state;   // 0=idle 1=listening 2=thinking 3=speaking
 uniform float u_audio;   // 0..1 amplitude
@@ -115,8 +120,12 @@ vec2 rot2(vec2 p, float a) {
 // ── Main ───────────────────────────────────────────────────────────────────
 void main() {
 
-  // Aspect-corrected UV, origin at centre
-  vec2 uv = (gl_FragCoord.xy - u_res*0.5) / min(u_res.x, u_res.y);
+  // Aspect-corrected UV with origin guaranteed at the exact center
+  vec2 uv = v_pos * 0.5;
+  if (u_res.x > 0.0 && u_res.y > 0.0) {
+    float minDim = min(u_res.x, u_res.y);
+    uv = vec2(v_pos.x * (u_res.x / minDim) * 0.5, v_pos.y * (u_res.y / minDim) * 0.5);
+  }
   float d  = length(uv);
 
   // ── State weights ────────────────────────────────────────────────────
@@ -433,6 +442,7 @@ export function EtherealOrb({
       g.uniform1f(u.state,      smoothStateRef.current);
       g.uniform1f(u.audio,      smoothAudioRef.current);
       g.uniform1f(u.pulsePhase, phaseRef.current);
+      g.uniform2f(u.res,        g.drawingBufferWidth, g.drawingBufferHeight);
       g.viewport(0, 0, g.drawingBufferWidth, g.drawingBufferHeight);
       g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
       g.endFrameEXP();
@@ -449,13 +459,13 @@ export function EtherealOrb({
   }, []);
 
   const label = STATE_LABEL[normState] ?? 'Ready';
-  const glSize = size * 1.5;
+  const glSize = Math.round(size * 1.35);
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
-      style={[styles.wrapper, { width: glSize, height: glSize }]}
+      style={[styles.wrapper, { width: size, height: size }]}
     >
       <GLView
         style={[styles.gl, { width: glSize, height: glSize }]}
@@ -477,13 +487,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+    overflow: 'visible',
+    position: 'relative',
   },
   gl: {
     backgroundColor: 'transparent',
+    position: 'absolute',
   },
   labelRow: {
     position: 'absolute',
-    bottom: 8,
+    bottom: -16,
     left: 0,
     right: 0,
     alignItems: 'center',

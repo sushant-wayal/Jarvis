@@ -164,20 +164,29 @@ export default function SettingsScreen(): React.ReactElement {
           <View style={styles.fieldBlock}>
             <Text style={[typography.labelCaps, styles.fieldLabel]}>RESPONSE PROTOCOL</Text>
             <View style={styles.protocolRow}>
-              {['Concise', 'Detailed Analysis', 'Conversational'].map((p) => (
+              {[
+                { id: 'Concise', label: 'Concise' },
+                { id: 'Detailed Analysis', label: 'Detailed' },
+                { id: 'Conversational', label: 'Dialogue' },
+              ].map((p) => (
                 <TouchableOpacity
-                  key={p}
-                  style={[styles.protocolChip, responseProtocol === p && styles.activeProtocolChip]}
-                  onPress={() => setResponseProtocol(p)}
+                  key={p.id}
+                  style={[
+                    styles.protocolChip,
+                    responseProtocol === p.id && styles.activeProtocolChip,
+                  ]}
+                  onPress={() => setResponseProtocol(p.id)}
                 >
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
                     style={[
-                      typography.labelCaps,
                       styles.protocolText,
-                      responseProtocol === p && styles.activeProtocolText,
+                      responseProtocol === p.id && styles.activeProtocolText,
                     ]}
                   >
-                    {p}
+                    {p.label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -238,7 +247,7 @@ export default function SettingsScreen(): React.ReactElement {
           </View>
 
           <TouchableOpacity style={styles.actionBtn} onPress={handleSaveConfig}>
-            <Text style={[typography.labelCaps, styles.actionBtnText]}>
+            <Text style={styles.actionBtnText}>
               TEST & SAVE CONNECTION
             </Text>
           </TouchableOpacity>
@@ -279,7 +288,7 @@ export default function SettingsScreen(): React.ReactElement {
             onPress={handleSyncLocation}
             disabled={loading}
           >
-            <Text style={[typography.labelCaps, styles.actionBtnSecondaryText]}>
+            <Text style={styles.actionBtnSecondaryText}>
               SYNC GPS COORDINATES
             </Text>
           </TouchableOpacity>
@@ -389,7 +398,7 @@ export default function SettingsScreen(): React.ReactElement {
               Alert.alert('Earbud Single-Tap Triggered', 'Jarvis awakened & listening.');
             }}
           >
-            <Text style={[typography.labelCaps, styles.actionBtnText]}>
+            <Text style={styles.actionBtnText}>
               SIMULATE EARBUD SINGLE TAP (TEST WAKE)
             </Text>
           </TouchableOpacity>
@@ -501,16 +510,19 @@ const styles = StyleSheet.create({
   },
   protocolRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   protocolChip: {
     flex: 1,
     paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: rounded.md,
     backgroundColor: colors.surfaceContainerLowest,
     borderColor: 'rgba(255, 255, 255, 0.06)',
     borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 42,
   },
   activeProtocolChip: {
     backgroundColor: 'rgba(0, 240, 255, 0.1)',
@@ -518,10 +530,14 @@ const styles = StyleSheet.create({
   },
   protocolText: {
     color: colors.outline,
-    fontSize: 9,
+    fontSize: 10.5,
+    fontWeight: '500',
+    letterSpacing: 0,
+    textAlign: 'center',
   },
   activeProtocolText: {
     color: colors.primaryFixed,
+    fontWeight: '600',
   },
   voiceSignatureBox: {
     flexDirection: 'row',
@@ -564,18 +580,24 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   actionBtn: {
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderColor: 'rgba(0, 240, 255, 0.3)',
+    backgroundColor: 'rgba(0, 240, 255, 0.08)',
+    borderColor: 'rgba(0, 240, 255, 0.25)',
     borderWidth: 1,
     borderRadius: rounded.full,
-    paddingVertical: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    marginTop: 4,
+    justifyContent: 'center',
+    marginTop: 6,
+    minHeight: 46,
   },
   actionBtnText: {
     color: colors.primaryFixed,
-    fontSize: 10,
-    letterSpacing: 2,
+    fontSize: 10.5,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   locationDesc: {
     color: colors.onSurfaceVariant,
@@ -604,13 +626,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.08)',
     borderWidth: 1,
     borderRadius: rounded.full,
-    paddingVertical: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    minHeight: 46,
   },
   actionBtnSecondaryText: {
     color: colors.onSurfaceVariant,
-    fontSize: 10,
-    letterSpacing: 2,
+    fontSize: 10.5,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textAlign: 'center',
+    lineHeight: 16,
   },
   emptyMemoryText: {
     color: colors.outline,
