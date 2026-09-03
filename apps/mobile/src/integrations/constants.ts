@@ -1,24 +1,54 @@
 /**
  * Integration Constants
  * Central registry of app identifiers, deep-link schemes, and storage keys.
- * Add new apps here — nowhere else.
  */
 
 /** Android package → friendly app name mapping */
 export const PACKAGE_TO_APP: Record<string, string> = {
+  // Messaging & Social
   'com.whatsapp': 'whatsapp',
   'com.whatsapp.w4b': 'whatsapp_business',
   'com.instagram.android': 'instagram',
   'org.telegram.messenger': 'telegram',
+  'com.facebook.orca': 'messenger',
+  'com.discord': 'discord',
+  'com.Slack': 'slack',
+  'com.snapchat.android': 'snapchat',
+  'com.twitter.android': 'twitter',
+  'com.linkedin.android': 'linkedin',
+  
+  // Media & Video
+  'com.google.android.youtube': 'youtube',
+  'com.spotify.music': 'spotify',
+  'com.netflix.mediaclient': 'netflix',
+  'com.amazon.avod.thirdpartyclient': 'prime_video',
+
+  // Google & Tools
+  'com.android.chrome': 'chrome',
+  'com.google.android.gm': 'gmail',
+  'com.google.android.apps.maps': 'maps',
+  'com.google.android.calculator': 'calculator',
+  'com.google.android.deskclock': 'clock',
+  'com.google.android.calendar': 'calendar',
+  'com.google.android.apps.photos': 'photos',
+  
+  // System / SMS
   'com.android.mms': 'sms',
   'com.google.android.apps.messaging': 'sms',
   'com.samsung.android.messaging': 'sms',
-  'com.google.android.gm': 'gmail',
-  'com.discord': 'discord',
-  'com.Slack': 'slack',
-  'com.facebook.orca': 'messenger',
-  'com.snapchat.android': 'snapchat',
-  'com.twitter.android': 'twitter',
+
+  // Rides & Food & Shopping
+  'com.ubercab': 'uber',
+  'com.olacabs.customer': 'ola',
+  'in.swiggy.android': 'swiggy',
+  'com.application.zomato': 'zomato',
+  'in.amazon.mShop.android.shopping': 'amazon',
+  'com.flipkart.android': 'flipkart',
+
+  // Payments & Finance
+  'com.phonepe.app': 'phonepe',
+  'com.google.android.apps.nbu.paisa.user': 'gpay',
+  'net.one97.paytm': 'paytm',
 };
 
 /** Friendly app name → Android package name */
@@ -27,43 +57,104 @@ export const APP_TO_PACKAGE: Record<string, string> = Object.fromEntries(
 );
 
 /** Deep-link schemes for opening apps (Android + iOS where applicable) */
-export const APP_DEEP_LINKS: Record<string, {
-  android: string;
-  ios?: string;
-  /** Deep-link pattern for opening a specific conversation. {phone} will be replaced. */
-  conversation?: string;
-}> = {
+export const APP_DEEP_LINKS: Record<
+  string,
+  {
+    android: string;
+    ios?: string;
+    fallbacks?: string[];
+    conversation?: string;
+  }
+> = {
   whatsapp: {
-    android: 'whatsapp://send',
-    ios: 'whatsapp://send',
+    android: 'whatsapp://',
+    ios: 'whatsapp://',
+    fallbacks: ['whatsapp://send', 'intent:#Intent;package=com.whatsapp;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   whatsapp_business: {
-    android: 'whatsapp://send',
+    android: 'whatsapp://',
+    fallbacks: ['whatsapp://send', 'intent:#Intent;package=com.whatsapp.w4b;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   instagram: {
     android: 'instagram://direct-inbox',
     ios: 'instagram://direct-inbox',
+    fallbacks: ['instagram://app', 'intent:#Intent;package=com.instagram.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
   },
   telegram: {
-    android: 'tg://resolve?domain={username}',
-    ios: 'tg://resolve?domain={username}',
+    android: 'tg://',
+    ios: 'tg://',
+    fallbacks: ['intent:#Intent;package=org.telegram.messenger;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
     conversation: 'tg://resolve?domain={username}',
   },
+  youtube: {
+    android: 'vnd.youtube://',
+    ios: 'youtube://',
+    fallbacks: ['intent:#Intent;package=com.google.android.youtube;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end', 'https://youtube.com'],
+  },
+  spotify: {
+    android: 'spotify://',
+    ios: 'spotify://',
+    fallbacks: ['intent:#Intent;package=com.spotify.music;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
   gmail: {
-    android: 'googlegmail://co',
-    ios: 'googlegmail://co',
+    android: 'googlegmail://',
+    ios: 'googlegmail://',
+    fallbacks: ['mailto:', 'intent:#Intent;package=com.google.android.gm;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  chrome: {
+    android: 'googlechrome://',
+    ios: 'googlechrome://',
+    fallbacks: ['intent:#Intent;package=com.android.chrome;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end', 'https://google.com'],
+  },
+  maps: {
+    android: 'geo:0,0',
+    ios: 'maps://',
+    fallbacks: ['intent:#Intent;package=com.google.android.apps.maps;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end', 'https://maps.google.com'],
+  },
+  uber: {
+    android: 'uber://',
+    ios: 'uber://',
+    fallbacks: ['intent:#Intent;package=com.ubercab;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  swiggy: {
+    android: 'swiggy://',
+    fallbacks: ['intent:#Intent;package=in.swiggy.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  zomato: {
+    android: 'zomato://',
+    fallbacks: ['intent:#Intent;package=com.application.zomato;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  netflix: {
+    android: 'nflx://',
+    ios: 'nflx://',
+    fallbacks: ['intent:#Intent;package=com.netflix.mediaclient;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
   },
   discord: {
     android: 'discord://',
+    ios: 'discord://',
+    fallbacks: ['intent:#Intent;package=com.discord;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
   },
   slack: {
     android: 'slack://',
+    ios: 'slack://',
+    fallbacks: ['intent:#Intent;package=com.Slack;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
   },
   messenger: {
     android: 'fb-messenger://',
     ios: 'fb-messenger://',
+    fallbacks: ['intent:#Intent;package=com.facebook.orca;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  twitter: {
+    android: 'twitter://',
+    ios: 'twitter://',
+    fallbacks: ['intent:#Intent;package=com.twitter.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+  },
+  x: {
+    android: 'twitter://',
+    ios: 'twitter://',
+    fallbacks: ['intent:#Intent;package=com.twitter.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
   },
 };
 

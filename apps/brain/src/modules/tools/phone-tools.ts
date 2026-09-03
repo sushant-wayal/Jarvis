@@ -241,13 +241,13 @@ export const searchPhoneMessagesTool: JarvisTool<{
 export const openApplicationTool: JarvisTool<{ appName: string }> = {
   name: 'open_application',
   description:
-    'Open an app on the user\'s phone. Use when user says "open WhatsApp", "open Instagram", etc. Returns an action descriptor for the mobile app to execute.',
+    'Open any app on the user\'s phone (e.g. WhatsApp, YouTube, Spotify, Uber, Swiggy, Camera, Calculator, Chrome, Settings, etc.). Returns an action descriptor for the mobile app to execute.',
   category: 'SYSTEM',
   riskLevel: 'SAFE',
   requiresConfirmation: false,
   inputSchema: z.object({
     appName: z.string().describe(
-      'Friendly app name: "whatsapp", "instagram", "telegram", "gmail", "discord", "slack", "messenger", "spotify", "maps".'
+      'The name of the application to open, e.g. "WhatsApp", "YouTube", "Spotify", "Calculator", "Camera", "Uber", etc.'
     ),
   }),
   execute: async (input) => {
@@ -362,9 +362,100 @@ export const getContactInteractionSummaryTool: JarvisTool<{ contactName: string 
   },
 };
 
+export const lookupContactTool: JarvisTool<{ nameOrQuery: string }> = {
+  name: 'lookup_contact',
+  description:
+    'Search for a contact\'s phone number, details, or relation (e.g. "mom", "dad", "Rahul", "Priya") in the user\'s phone contacts. Use when user asks "what is mom\'s number?", "tell me my mom\'s number", "find contact for Rahul", or needs someone\'s phone number or contact details.',
+  category: 'COMMUNICATION',
+  riskLevel: 'SAFE',
+  requiresConfirmation: false,
+  inputSchema: z.object({
+    nameOrQuery: z.string().describe('The name, relationship, or alias of the contact to look up, e.g. "mom", "dad", "Rahul", "Priya"'),
+  }),
+  execute: async (input, context) => {
+    const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
+    if (!phone) {
+      return {
+        found: false,
+        message: 'Phone context is not available. Please ensure the mobile app is connected.',
+      };
+    }
+
+    if (!phone.capabilities.contacts) {
+      return {
+        found: false,
+        message: 'Contacts permission has not been granted on the mobile device. Please grant Contacts permission in Settings.',
+      };
+    }
+
+    const query = input.nameOrQuery.toLowerCase().trim();
+    const aliases = phone.aliases || {};
+
+    // Check configured aliases (e.g. mom -> "Mom" or mom -> "+919876543210")
+    const targetName = aliases[query] || query;
+
+    // Search in phone.contacts
+    const contacts = phone.contacts || [];
+
+    // Exact or case-insensitive match
+    let matched = contacts.find((c) => c.name.toLowerCase() === targetName.toLowerCase());
+
+    // Partial match
+    if (!matched) {
+      matched = contacts.find((c) => c.name.toLowerCase().includes(targetName.toLowerCase()));
+    }
+
+    // Common relation nicknames
+    if (!matched) {
+      const relationSynonyms: Record<string, string[]> = {
+        mom: ['mother', 'maa', 'aai', 'mummy', 'mommy', 'ammi', 'amma'],
+        mother: ['mom', 'maa', 'aai', 'mummy', 'mommy'],
+        dad: ['father', 'papa', 'baba', 'appa', 'daddy'],
+        father: ['dad', 'papa', 'baba', 'appa', 'daddy'],
+        bro: ['brother', 'bhai'],
+        sis: ['sister', 'didi'],
+      };
+
+      const synonyms = relationSynonyms[query] || [];
+      for (const syn of synonyms) {
+        matched = contacts.find((c) => c.name.toLowerCase().includes(syn));
+        if (matched) break;
+      }
+    }
+
+    if (matched) {
+      return {
+        found: true,
+        contactName: matched.name,
+        phoneNumber: matched.number,
+        label: matched.label || 'mobile',
+        formatted: `${matched.name}: ${matched.number}`,
+      };
+    }
+
+    // If alias is a phone number directly
+    if (/^\+?[\d\s\-]{7,15}$/.test(targetName)) {
+      return {
+        found: true,
+        contactName: input.nameOrQuery,
+        phoneNumber: targetName,
+        label: 'alias',
+        formatted: `${input.nameOrQuery}: ${targetName}`,
+      };
+    }
+
+    return {
+      found: false,
+      message: `I looked through your contacts but couldn't find anyone matching "${input.nameOrQuery}". You can configure contact aliases in Settings if the name differs in your address book.`,
+      availableContactCount: contacts.length,
+    };
+  },
+};
+
 export const phoneTools = [
   initiatePhoneCallTool,
   sendMessageToContactTool,
+  lookupContactTool,
   readPhoneMessagesTool,
   searchPhoneMessagesTool,
   openApplicationTool,
@@ -373,3 +464,4 @@ export const phoneTools = [
   detectUnansweredMessagesTool,
   getContactInteractionSummaryTool,
 ];
+

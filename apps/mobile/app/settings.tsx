@@ -1,8 +1,10 @@
-import { HealthStatus, LocationContext, MemoryItem } from '@jarvis/shared';
+import { HealthStatus, KnownPlaceItem, LocationContext, MemoryItem } from '@jarvis/shared';
 import * as React from 'react';
 import {
   Alert,
   FlatList,
+  Linking,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -39,8 +41,10 @@ export default function SettingsScreen(): React.ReactElement {
   const [autoSpeak, setAutoSpeak] = React.useState<boolean>(true);
   const [locationEnabled, setLocationEnabled] = React.useState<boolean>(true);
   const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
+  const [knownPlaces, setKnownPlaces] = React.useState<KnownPlaceItem[]>([]);
   const [memories, setMemories] = React.useState<MemoryItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
+  const [refreshing, setRefreshing] = React.useState<boolean>(false);
 
   // Phone & Integration state
   const { capabilities, requestContactsPermission } = useIntegrationBridge();
@@ -84,13 +88,39 @@ export default function SettingsScreen(): React.ReactElement {
     }
   };
 
+  const loadKnownPlaces = async (): Promise<void> => {
+    try {
+      const places = await apiClient.getKnownPlaces();
+      setKnownPlaces(places);
+    } catch {
+      // fallback
+    }
+  };
+
   React.useEffect(() => {
     checkHealth();
     loadMemories();
     loadLocation();
+    loadKnownPlaces();
     setNotifSettings(notificationContextStore.getSettings());
     setAliases(contactsIntegration.getAliases());
   }, []);
+
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        checkHealth(),
+        loadMemories(),
+        loadLocation(),
+        loadKnownPlaces(),
+        notificationContextStore.initialize().then(() => setNotifSettings(notificationContextStore.getSettings())),
+        contactsIntegration.initialize().then(() => setAliases(contactsIntegration.getAliases())),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleToggleAppNotif = async (appId: string, enabled: boolean): Promise<void> => {
     const updated = {
@@ -141,23 +171,74 @@ export default function SettingsScreen(): React.ReactElement {
   const handleSyncLocation = async (): Promise<void> => {
     try {
       setLoading(true);
-      const perm = await mobileLocationService.requestPermission();
-      if (perm === 'DENIED') {
-        Alert.alert('Permission Denied', 'Please enable location permissions in system settings.');
-        return;
-      }
-      const loc = await mobileLocationService.syncCurrentLocation(true);
-      if (loc) {
-        setCurrentLocation(loc);
-        Alert.alert('Location Synchronized', `Connected to ${loc.city || loc.state || 'current area'}`);
+      const result = await mobileLocationService.syncCurrentLocation(true);
+      if (result.success) {
+        setCurrentLocation(result.context);
+        await loadKnownPlaces();
+        Alert.alert(
+          'Location Synchronized',
+          `Connected to ${result.context.city || result.context.state || 'current area'}${
+            result.context.knownPlace ? ` (${result.context.knownPlace.name})` : ''
+          }`
+        );
+      } else if (result.error === 'SERVICES_DISABLED') {
+        Alert.alert(
+          'Location Services Disabled',
+          'Device GPS is turned off. Please turn on Location in system settings to sync your coordinates.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
+      } else if (result.error === 'PERMISSION_DENIED') {
+        Alert.alert(
+          'Permission Denied',
+          'Please enable location permissions in system settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ]
+        );
       } else {
-        Alert.alert('Notice', 'Unable to retrieve GPS coordinates.');
+        Alert.alert('Notice', result.message || 'Unable to retrieve GPS coordinates.');
       }
     } catch {
       Alert.alert('Error', 'Failed to synchronize GPS location.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteKnownPlace = async (id: string, name: string): Promise<void> => {
+    Alert.alert(
+      'Delete Saved Place',
+      `Are you sure you want to remove "${name}" from your saved locations?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await apiClient.deleteKnownPlace(id);
+              setKnownPlaces((prev) => prev.filter((p) => p.id !== id));
+              await loadLocation();
+            } catch {
+              Alert.alert('Error', 'Failed to delete place.');
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDeleteMemory = async (id: string): Promise<void> => {
@@ -176,7 +257,18 @@ export default function SettingsScreen(): React.ReactElement {
     <View style={styles.container}>
       <StatusHeader isOnline={true} title="JARVIS" />
 
-      <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primaryFixed}
+            colors={[colors.primaryFixed]}
+          />
+        }
+      >
         {/* Header matching settings and profile.html */}
         <View style={styles.headerSection}>
           <Text style={[typography.headlineLg, styles.pageTitle]}>Configuration</Text>
@@ -323,6 +415,43 @@ export default function SettingsScreen(): React.ReactElement {
                     .join(', ')
                 : 'No GPS position synced yet'}
             </Text>
+            {currentLocation?.latitude && currentLocation?.longitude ? (
+              <Text style={styles.locCoordsSub}>
+                Coordinates: {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+                {currentLocation.knownPlace ? ` • Place: ${currentLocation.knownPlace.name}` : ''}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Saved Semantic Places / Geofences */}
+          <View style={styles.savedPlacesContainer}>
+            <View style={styles.savedPlacesHeader}>
+              <Icon name="bookmark" size={14} color={colors.primaryFixed} />
+              <Text style={[typography.labelCaps, styles.savedPlacesTitle]}>SAVED PLACES & GEOFENCES</Text>
+            </View>
+
+            {knownPlaces.length > 0 ? (
+              knownPlaces.map((place) => (
+                <View key={place.id} style={styles.placeRow}>
+                  <View style={styles.placeInfo}>
+                    <Text style={[typography.bodyMd, styles.placeName]}>{place.name}</Text>
+                    <Text style={styles.placeCoords}>
+                      {place.latitude.toFixed(4)}, {place.longitude.toFixed(4)} • {place.radiusMeters}m radius
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.delPlaceBtn}
+                    onPress={() => handleDeleteKnownPlace(place.id, place.name)}
+                  >
+                    <Icon name="delete" size={16} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyPlacesText}>
+                No saved places yet. Say "Jarvis, save my current location as PG" to pin a place.
+              </Text>
+            )}
           </View>
 
           <TouchableOpacity
@@ -793,6 +922,61 @@ const styles = StyleSheet.create({
   locValue: {
     color: colors.onSurface,
     fontWeight: '500',
+  },
+  locCoordsSub: {
+    color: colors.primaryFixed,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  savedPlacesContainer: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderRadius: rounded.md,
+    padding: 12,
+    gap: 8,
+    marginTop: 2,
+  },
+  savedPlacesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  savedPlacesTitle: {
+    color: colors.outline,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  placeInfo: {
+    flex: 1,
+    gap: 1,
+  },
+  placeName: {
+    color: colors.onSurface,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  placeCoords: {
+    color: colors.outline,
+    fontSize: 11,
+  },
+  delPlaceBtn: {
+    padding: 6,
+  },
+  emptyPlacesText: {
+    color: colors.outline,
+    fontSize: 12,
+    fontStyle: 'italic',
+    paddingVertical: 4,
   },
   actionBtnSecondary: {
     backgroundColor: colors.surfaceContainerHigh,

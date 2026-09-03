@@ -12,6 +12,7 @@ import {
   EventReminderItem,
   HealthStatus,
   JarvisPhoneAction,
+  KnownPlaceItem,
   LocationContext,
   LocationUpdate,
   MemoryItem,
@@ -399,6 +400,31 @@ export class JarvisApiClient {
     });
     const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
     return Boolean(json.data?.deleted);
+  }
+
+  async getKnownPlaces(): Promise<KnownPlaceItem[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/location/places`, {
+        headers: { Accept: 'application/json' },
+      });
+      const json = (await res.json()) as ApiResponse<KnownPlaceItem[]>;
+      return json.data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async deleteKnownPlace(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/location/places/${id}`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json' },
+      });
+      const json = (await res.json()) as ApiResponse<{ deleted: boolean }>;
+      return Boolean(json.data?.deleted);
+    } catch {
+      return false;
+    }
   }
 }
 

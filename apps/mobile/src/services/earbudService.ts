@@ -1,5 +1,5 @@
 import { EarbudEventType, EarbudSettings, EarbudStatus } from '@jarvis/shared';
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import {
   ERROR_CHIME_BASE64,
   PROCESS_CHIME_BASE64,
@@ -16,6 +16,8 @@ class EarbudService {
   private isStandbyRunning = false;
   private lastTapTimestamp = 0;
   private tapTimeout: ReturnType<typeof setTimeout> | null = null;
+  private wasPlayingBefore = true;
+  private isInternalPause = false;
 
   private settings: EarbudSettings = {
     enabled: true,
@@ -66,6 +68,8 @@ class EarbudService {
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: false,
+        interruptionModeAndroid: 1, // DoNotMix
+        interruptionModeIOS: 1, // DoNotMix
       });
 
       this.setupMediaSession();
@@ -79,7 +83,7 @@ class EarbudService {
   }
 
   /**
-   * Configures MediaSession API for hardware earbud media button taps
+   * Configures MediaSession API for web / browser runtimes where available
    */
   private setupMediaSession(): void {
     if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
@@ -167,12 +171,14 @@ class EarbudService {
   }
 
   /**
-   * Starts inaudible looped background carrier to anchor MediaSession in OS
+   * Starts inaudible looped background carrier to anchor audio focus in Android/iOS.
+   * Attaches playback status listener to intercept Bluetooth earbud Play/Pause hardware taps.
    */
   public async startStandby(): Promise<void> {
     if (this.isStandbyRunning) return;
 
     try {
+      this.isInternalPause = true;
       if (this.carrierSound) {
         await this.carrierSound.unloadAsync().catch(() => {});
         this.carrierSound = null;
@@ -186,9 +192,27 @@ class EarbudService {
       this.carrierSound = sound;
       this.isStandbyRunning = true;
       this.status.isStandbyActive = true;
+      this.wasPlayingBefore = true;
+      this.isInternalPause = false;
+
+      // Intercept Bluetooth earbud hardware Play/Pause triggers
+      sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+        if (!status.isLoaded) return;
+
+        if (this.isStandbyRunning && !this.isInternalPause) {
+          // When user taps their Bluetooth earbud, Android pauses the active audio track
+          if (this.wasPlayingBefore && !status.isPlaying) {
+            this.handleRawMediaButton('PLAY_PAUSE');
+            // Resume carrier playback so it stays primed for future taps
+            sound.playAsync().catch(() => {});
+          }
+        }
+        this.wasPlayingBefore = status.isPlaying;
+      });
     } catch {
       this.isStandbyRunning = false;
       this.status.isStandbyActive = false;
+      this.isInternalPause = false;
     }
   }
 
@@ -196,6 +220,7 @@ class EarbudService {
    * Stops background audio standby
    */
   public async stopStandby(): Promise<void> {
+    this.isInternalPause = true;
     if (this.carrierSound) {
       try {
         await this.carrierSound.stopAsync();
@@ -207,6 +232,7 @@ class EarbudService {
     }
     this.isStandbyRunning = false;
     this.status.isStandbyActive = false;
+    this.isInternalPause = false;
   }
 
   /**

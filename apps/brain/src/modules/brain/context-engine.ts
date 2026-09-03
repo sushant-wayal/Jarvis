@@ -154,6 +154,13 @@ export class ContextEngine {
       contextStr += `\n[Phone & Messaging Context]:\n`;
       contextStr += `- Device Capabilities: Calls=${capabilities.phoneCall ? 'Yes' : 'No'}, SMS=${capabilities.sms ? 'Yes' : 'No'}, Contacts=${capabilities.contacts ? 'Yes' : 'No'}, NotificationListener=${capabilities.notificationListener ? 'Active' : 'Inactive (Expo Go)'}\n`;
       
+      if (params.phoneContext.aliases && Object.keys(params.phoneContext.aliases).length > 0) {
+        contextStr += `- Contact Aliases Configured: ${JSON.stringify(params.phoneContext.aliases)}\n`;
+      }
+      if (params.phoneContext.contacts && params.phoneContext.contacts.length > 0) {
+        contextStr += `- Contacts Loaded: ${params.phoneContext.contacts.length} contacts synchronized from device (use 'lookup_contact' to query).\n`;
+      }
+
       if (recentNotifications.length > 0) {
         contextStr += `- Recent Notifications / Messages:\n`;
         for (const notif of recentNotifications.slice(0, 10)) {

@@ -116,7 +116,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       const action = response.pendingPhoneAction as import('@jarvis/shared').JarvisPhoneAction | undefined;
       if (!action) return;
 
-      const convId = stateRef.current.conversationId || '';
+      const convId = stateRef.current.conversationId || response.conversationId || '';
       const result = await integrationManager.executeAction(action);
 
       // Handle ambiguous contact — send follow-up text to brain so it can ask

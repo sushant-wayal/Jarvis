@@ -22,10 +22,18 @@ export const IntegrationCapabilitiesSchema = z.object({
   openApp: z.boolean(),
 });
 
+export const PhoneContactSummarySchema = z.object({
+  name: z.string(),
+  number: z.string(),
+  label: z.string().optional(),
+});
+
 export const PhoneContextSchema = z.object({
-  recentNotifications: z.array(PhoneNotificationEventSchema).max(20),
+  recentNotifications: z.array(PhoneNotificationEventSchema).max(20).default([]),
   capabilities: IntegrationCapabilitiesSchema,
   timestamp: z.string(),
+  contacts: z.array(PhoneContactSummarySchema).optional(),
+  aliases: z.record(z.string(), z.string()).optional(),
 }).optional();
 
 export const ChatRequestSchema = z.object({

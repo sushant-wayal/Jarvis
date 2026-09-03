@@ -50,6 +50,7 @@ export type IconName =
   | 'headset'
   | 'phone_android'
   | 'close'
+  | 'bookmark'
   | 'insights';
 
 export interface IconProps {
@@ -150,6 +151,8 @@ export function Icon({
       return <MaterialIcons name="error-outline" size={size} color={color} style={style} />;
     case 'home':
       return <MaterialIcons name="home" size={size} color={color} style={style} />;
+    case 'bookmark':
+      return <MaterialIcons name="bookmark-border" size={size} color={color} style={style} />;
     case 'hearing':
       return <MaterialIcons name="hearing" size={size} color={color} style={style} />;
     case 'headset':

@@ -144,7 +144,10 @@ export class LocationService {
   }
 
   async listKnownPlaces(userId: string): Promise<KnownPlaceItem[]> {
-    const places = await prisma.knownPlace.findMany({ where: { userId } });
+    const places = await prisma.knownPlace.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
     return places.map((p) => ({
       id: p.id,
       userId: p.userId,
@@ -155,6 +158,15 @@ export class LocationService {
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     }));
+  }
+
+  async deleteKnownPlace(id: string, userId: string): Promise<boolean> {
+    try {
+      await prisma.knownPlace.deleteMany({ where: { id, userId } });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 

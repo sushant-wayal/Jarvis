@@ -378,12 +378,22 @@ export interface IntegrationCapabilities {
   openApp: boolean;
 }
 
+export interface PhoneContactSummary {
+  name: string;
+  number: string;
+  label?: string;
+}
+
 /** Lightweight snapshot of phone context sent from mobile to brain with every request */
 export interface PhoneContext {
   /** Recent notifications captured since last sync (max 20) */
   recentNotifications: PhoneNotificationEvent[];
   capabilities: IntegrationCapabilities;
   timestamp: string;
+  /** Lightweight list of phone contacts for contact resolution */
+  contacts?: PhoneContactSummary[];
+  /** Custom contact aliases configured by user (e.g. mom -> "Mom") */
+  aliases?: Record<string, string>;
 }
 
 // ─── Jarvis Phone Action Descriptors ───────────────────────────────────────

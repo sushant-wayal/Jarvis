@@ -77,10 +77,32 @@ export class IntegrationManager {
       MAX_CONTEXT_EVENTS
     );
 
+    let contactsList: import('@jarvis/shared').PhoneContactSummary[] | undefined;
+    let aliasesMap: Record<string, string> | undefined;
+
+    if (capabilities.contacts) {
+      try {
+        const rawContacts = await contactsIntegration.getAllContacts();
+        contactsList = rawContacts
+          .filter((c) => Boolean(c.name && c.phoneNumbers.length > 0))
+          .map((c) => ({
+            name: c.name,
+            number: c.phoneNumbers[0].number,
+            label: c.phoneNumbers[0].label,
+          }))
+          .slice(0, 150);
+        aliasesMap = contactsIntegration.getAliases();
+      } catch {
+        // Safe fallback
+      }
+    }
+
     return {
       recentNotifications,
       capabilities,
       timestamp: new Date().toISOString(),
+      contacts: contactsList,
+      aliases: aliasesMap,
     };
   }
 

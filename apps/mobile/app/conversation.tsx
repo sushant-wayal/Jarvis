@@ -5,6 +5,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   StyleSheet,
   Switch,
   Text,
@@ -18,6 +19,7 @@ import { Icon } from '../src/components/Icon';
 import { MessageBubble } from '../src/components/MessageBubble';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
+import { integrationManager } from '../src/integrations/IntegrationManager';
 import { apiClient } from '../src/services/apiClient';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
@@ -29,6 +31,7 @@ export default function ConversationScreen(): React.ReactElement {
   const [speakResponse, setSpeakResponse] = React.useState<boolean>(true);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [sending, setSending] = React.useState<boolean>(false);
+  const [refreshing, setRefreshing] = React.useState<boolean>(false);
 
   const { playBase64Audio } = useAudioPlayer();
 
@@ -69,6 +72,18 @@ export default function ConversationScreen(): React.ReactElement {
     loadConversations(true);
   }, []);
 
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true);
+    try {
+      await loadConversations(false);
+      if (activeConvId) {
+        await loadMessages(activeConvId);
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleSelectConversation = (id: string): void => {
     setActiveConvId(id);
     loadMessages(id);
@@ -92,10 +107,13 @@ export default function ConversationScreen(): React.ReactElement {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
+      const phoneContext = await integrationManager.buildPhoneContext().catch(() => undefined);
+
       const res = await apiClient.sendMessage({
         message: textToSend,
         conversationId: activeConvId || undefined,
         speakResponse,
+        phoneContext,
       });
 
       if (!activeConvId) {
@@ -116,6 +134,11 @@ export default function ConversationScreen(): React.ReactElement {
       };
 
       setMessages((prev) => [...prev, jarvisMsg]);
+
+      // Execute pending phone action (e.g. open app, make call, send sms)
+      if (res.pendingPhoneAction) {
+        integrationManager.executeAction(res.pendingPhoneAction).catch(() => {});
+      }
 
       if (res.shouldSpeak && res.text) {
         const ttsRes = await apiClient.synthesizeSpeech(res.text);
@@ -242,6 +265,14 @@ export default function ConversationScreen(): React.ReactElement {
         <FlatList
           data={messages}
           keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primaryFixed}
+              colors={[colors.primaryFixed]}
+            />
+          }
           renderItem={({ item, index }) => {
             const contextData =
               item.role === 'ASSISTANT' && index === messages.length - 1

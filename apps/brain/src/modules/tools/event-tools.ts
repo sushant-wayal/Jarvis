@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { prisma } from '@/lib/db/prisma';
 import { eventService } from '@/modules/events/event-service';
 import { locationService } from '@/modules/location/location-service';
 import { JarvisTool } from './types';
@@ -78,9 +79,20 @@ const PlaceSaveInputSchema = z.object({
   radiusMeters: z.number().optional().default(200),
 });
 
-export const placeSaveTool: JarvisTool<z.infer<typeof PlaceSaveInputSchema>, { success: boolean; placeId: string; name: string }> = {
+export const placeSaveTool: JarvisTool<
+  z.infer<typeof PlaceSaveInputSchema>,
+  {
+    success: boolean;
+    placeId: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    radiusMeters: number;
+    message: string;
+  }
+> = {
   name: 'place_save',
-  description: 'Saves the current or specified coordinates as a named semantic place (e.g. Home, Office, Gym).',
+  description: 'Saves the current or specified coordinates as a named semantic place (e.g. Home, Office, Gym, PG).',
   category: 'LOCATION',
   riskLevel: 'LOW_RISK',
   inputSchema: PlaceSaveInputSchema,
@@ -102,10 +114,24 @@ export const placeSaveTool: JarvisTool<z.infer<typeof PlaceSaveInputSchema>, { s
       radiusMeters: input.radiusMeters || 200,
     });
 
+    // Automatically associate current location with this known place
+    try {
+      await prisma.userLocationState.updateMany({
+        where: { userId: context.userId },
+        data: { knownPlaceId: place.id },
+      });
+    } catch {
+      // ignore
+    }
+
     return {
       success: true,
       placeId: place.id,
       name: place.name,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      radiusMeters: place.radiusMeters,
+      message: `Saved "${place.name}" at coordinates (${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)}) with a ${place.radiusMeters}m geofence.`,
     };
   },
 };
