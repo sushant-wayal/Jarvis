@@ -5,7 +5,7 @@
  */
 
 import { AppState, AppStateStatus } from 'react-native';
-import { KnownPlaceItem, LocationContext } from '@jarvis/shared';
+import { EventReminderItem, KnownPlaceItem, LocationContext } from '@jarvis/shared';
 import { apiClient } from './apiClient';
 import { mobileLocationService } from './locationService';
 
@@ -186,16 +186,20 @@ export class AdaptiveLocationEngine {
           timestamp: Date.now(),
         };
 
-        // 2. Fetch known places for proximity check
+        // 2. Fetch known places and pending event reminders for proximity check
         let knownPlaces: KnownPlaceItem[] = [];
+        let pendingReminders: EventReminderItem[] = [];
         try {
-          knownPlaces = await apiClient.getKnownPlaces();
+          [knownPlaces, pendingReminders] = await Promise.all([
+            apiClient.getKnownPlaces().catch(() => [] as KnownPlaceItem[]),
+            apiClient.getEventReminders('PENDING').catch(() => [] as EventReminderItem[]),
+          ]);
         } catch {
           // fallback to empty
         }
 
         // 3. Compute adaptive interval
-        this.computeCadence(currentSample, knownPlaces);
+        this.computeCadence(currentSample, knownPlaces, pendingReminders);
       } else {
         // If GPS is disabled or permission denied, back off to 15 mins to avoid battery spin
         this.currentIntervalMs = Math.max(this.currentIntervalMs, 15 * 60 * 1000);
@@ -221,9 +225,15 @@ export class AdaptiveLocationEngine {
    * Core Adaptive Algorithm:
    * 1. Displacement & Velocity evaluation
    * 2. Ladder backoff (Stationary) vs Snap-back (Moving)
-   * 3. Target Proximity Scaling (< 1.5km to destination clamps to 3m)
+   * 3. Target Proximity Scaling:
+   *    ONLY triggers when there is a PENDING reminder for a place within 1.5km.
+   *    If no reminders are pending for that place, standard moving/stationary cadence applies.
    */
-  private computeCadence(current: CoordinateSample, knownPlaces: KnownPlaceItem[]): void {
+  private computeCadence(
+    current: CoordinateSample,
+    knownPlaces: KnownPlaceItem[],
+    pendingReminders: EventReminderItem[]
+  ): void {
     if (!this.lastSample) {
       this.lastSample = current;
       this.currentIntervalMs = MIN_INTERVAL_MS;
@@ -273,21 +283,45 @@ export class AdaptiveLocationEngine {
     }
 
     // Destination Proximity Scaling:
-    // If user is within 1.5km of ANY known place / target, clamp interval to 3 minutes
+    // ONLY activates if the user has a PENDING reminder for a nearby location!
     this.proximityDestination = undefined;
-    for (const place of knownPlaces) {
-      const distToPlace = calculateDistanceMeters(
-        current.latitude,
-        current.longitude,
-        place.latitude,
-        place.longitude
-      );
 
-      if (distToPlace <= PROXIMITY_RADIUS_METERS) {
-        this.proximityDestination = `${place.name} (${Math.round(distToPlace)}m away)`;
-        this.movementState = 'PROXIMITY_ALERT';
-        this.currentIntervalMs = Math.min(this.currentIntervalMs, PROXIMITY_INTERVAL_MS);
-        break;
+    if (pendingReminders.length > 0) {
+      for (const reminder of pendingReminders) {
+        let targetLat: number | undefined = reminder.targetLatitude ?? undefined;
+        let targetLon: number | undefined = reminder.targetLongitude ?? undefined;
+        let locationName = reminder.targetLocation || reminder.title;
+
+        // If reminder doesn't have direct coordinates, match against known places
+        if ((targetLat === undefined || targetLon === undefined) && reminder.targetLocation) {
+          const normTarget = reminder.targetLocation.toLowerCase().trim();
+          const matchedPlace = knownPlaces.find(
+            (p) =>
+              p.name.toLowerCase().includes(normTarget) ||
+              normTarget.includes(p.name.toLowerCase())
+          );
+          if (matchedPlace) {
+            targetLat = matchedPlace.latitude;
+            targetLon = matchedPlace.longitude;
+            locationName = matchedPlace.name;
+          }
+        }
+
+        if (targetLat !== undefined && targetLon !== undefined) {
+          const distToTarget = calculateDistanceMeters(
+            current.latitude,
+            current.longitude,
+            targetLat,
+            targetLon
+          );
+
+          if (distToTarget <= PROXIMITY_RADIUS_METERS) {
+            this.proximityDestination = `"${reminder.title}" at ${locationName} (${Math.round(distToTarget)}m away)`;
+            this.movementState = 'PROXIMITY_ALERT';
+            this.currentIntervalMs = Math.min(this.currentIntervalMs, PROXIMITY_INTERVAL_MS);
+            break;
+          }
+        }
       }
     }
 
