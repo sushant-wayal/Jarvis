@@ -14,7 +14,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Jarvis needs access to your microphone to process voice commands and talk with you.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -39,6 +41,13 @@
     "plugins": [
       "expo-router",
       "./plugins/withNotificationListener"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ca864547-142c-47c6-a8d3-a660251a66df"
+      }
+    },
+    "owner": "sushant_wayal"
   }
 }
