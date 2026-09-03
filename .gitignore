@@ -36,10 +36,10 @@ dev.db-journal
 *.aab
 *.ipa
 *.app
-android/app/build/
-android/.gradle/
-ios/Pods/
-ios/build/
+/apps/mobile/android/
+/apps/mobile/ios/
+android/
+ios/
 
 # Logs
 logs

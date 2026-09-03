@@ -25,9 +25,9 @@ import {
   VoiceResponse,
 } from '@jarvis/shared';
 
-// Direct IP address of the local Jarvis Brain backend
+// Production Jarvis Brain backend on Vercel (overridable via EXPO_PUBLIC_JARVIS_API_URL)
 const DEFAULT_API_URL =
-  process.env.EXPO_PUBLIC_JARVIS_API_URL || 'http://192.168.1.88:3000/api/v1';
+  process.env.EXPO_PUBLIC_JARVIS_API_URL || 'https://brainofjarvis.vercel.app/api/v1';
 
 export class JarvisApiClient {
   private baseUrl: string = DEFAULT_API_URL;

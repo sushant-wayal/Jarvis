@@ -24,7 +24,8 @@ config.resolver.extraNodeModules = {
   '@shopify/react-native-skia': path.resolve(workspaceRoot, 'node_modules', '@shopify/react-native-skia'),
 };
 
+// 4. Ensure unstable_serverRoot points to projectRoot so entry-file resolves correctly
+config.server = config.server || {};
+config.server.unstable_serverRoot = projectRoot;
+
 module.exports = config;
-
-
-
