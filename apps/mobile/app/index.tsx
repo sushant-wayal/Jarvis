@@ -12,6 +12,7 @@ import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { EtherealOrb } from '../src/components/EtherealOrb';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
+import { adaptiveLocationEngine } from '../src/services/adaptiveLocationEngine';
 import { apiClient } from '../src/services/apiClient';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
@@ -131,12 +132,16 @@ export default function HomeScreen(): React.ReactElement {
   React.useEffect(() => {
     runHealthCheck();
     loadDynamicContext();
+    adaptiveLocationEngine.start();
 
     const interval = setInterval(() => {
       runHealthCheck();
     }, 15000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      adaptiveLocationEngine.stop();
+    };
   }, []);
 
   const handleOrbPress = async (): Promise<void> => {

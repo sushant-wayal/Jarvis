@@ -23,6 +23,7 @@ import { notificationContextStore, NotificationStoreSettings } from '../src/inte
 import { notificationIntegration } from '../src/integrations/NotificationIntegration';
 import { OBSERVABLE_APPS } from '../src/integrations/constants';
 import { apiClient } from '../src/services/apiClient';
+import { adaptiveLocationEngine, AdaptiveEngineMetrics } from '../src/services/adaptiveLocationEngine';
 import { mobileLocationService } from '../src/services/locationService';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
@@ -42,6 +43,9 @@ export default function SettingsScreen(): React.ReactElement {
   const [locationEnabled, setLocationEnabled] = React.useState<boolean>(true);
   const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
   const [knownPlaces, setKnownPlaces] = React.useState<KnownPlaceItem[]>([]);
+  const [adaptiveMetrics, setAdaptiveMetrics] = React.useState<AdaptiveEngineMetrics>(
+    adaptiveLocationEngine.getMetrics()
+  );
   const [memories, setMemories] = React.useState<MemoryItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
@@ -104,6 +108,11 @@ export default function SettingsScreen(): React.ReactElement {
     loadKnownPlaces();
     setNotifSettings(notificationContextStore.getSettings());
     setAliases(contactsIntegration.getAliases());
+
+    const unsubAdaptive = adaptiveLocationEngine.subscribe((metrics) => {
+      setAdaptiveMetrics(metrics);
+    });
+    return () => unsubAdaptive();
   }, []);
 
   const handleRefresh = async (): Promise<void> => {
@@ -114,6 +123,7 @@ export default function SettingsScreen(): React.ReactElement {
         loadMemories(),
         loadLocation(),
         loadKnownPlaces(),
+        adaptiveLocationEngine.triggerNow(),
         notificationContextStore.initialize().then(() => setNotifSettings(notificationContextStore.getSettings())),
         contactsIntegration.initialize().then(() => setAliases(contactsIntegration.getAliases())),
       ]);
@@ -452,6 +462,63 @@ export default function SettingsScreen(): React.ReactElement {
                 No saved places yet. Say "Jarvis, save my current location as PG" to pin a place.
               </Text>
             )}
+          </View>
+
+          {/* Adaptive Cadence & Battery Optimization Box */}
+          <View style={styles.adaptiveBox}>
+            <View style={styles.adaptiveHeader}>
+              <View style={styles.adaptiveHeaderLeft}>
+                <View
+                  style={[
+                    styles.stateDot,
+                    adaptiveMetrics.movementState === 'IN_TRANSIT' && { backgroundColor: colors.primaryFixed },
+                    adaptiveMetrics.movementState === 'PROXIMITY_ALERT' && { backgroundColor: colors.tertiaryFixed },
+                    adaptiveMetrics.movementState === 'STATIONARY' && { backgroundColor: colors.outline },
+                  ]}
+                />
+                <Text style={[typography.labelCaps, styles.adaptiveTitle]}>
+                  ADAPTIVE CADENCE: {adaptiveMetrics.currentIntervalMinutes}m
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.adaptiveStateBadge,
+                  adaptiveMetrics.movementState === 'IN_TRANSIT' && { color: colors.primaryFixed },
+                  adaptiveMetrics.movementState === 'PROXIMITY_ALERT' && { color: colors.tertiaryFixed },
+                  adaptiveMetrics.movementState === 'STATIONARY' && { color: colors.outline },
+                ]}
+              >
+                {adaptiveMetrics.movementState === 'PROXIMITY_ALERT'
+                  ? 'PROXIMITY'
+                  : adaptiveMetrics.movementState === 'IN_TRANSIT'
+                  ? 'MOVING'
+                  : 'STATIONARY'}
+              </Text>
+            </View>
+
+            <View style={styles.adaptiveMetricsRow}>
+              <View style={styles.metricCol}>
+                <Text style={styles.metricLabel}>DISPLACEMENT</Text>
+                <Text style={styles.metricVal}>{adaptiveMetrics.lastDisplacementMeters}m</Text>
+              </View>
+              <View style={styles.metricCol}>
+                <Text style={styles.metricLabel}>SPEED</Text>
+                <Text style={styles.metricVal}>{adaptiveMetrics.estimatedSpeedMps} m/s</Text>
+              </View>
+              <View style={styles.metricCol}>
+                <Text style={styles.metricLabel}>STATIONARY</Text>
+                <Text style={styles.metricVal}>{adaptiveMetrics.stationaryStreak} checks</Text>
+              </View>
+            </View>
+
+            {adaptiveMetrics.proximityDestination ? (
+              <View style={styles.proximityBox}>
+                <Icon name="bolt" size={12} color={colors.tertiaryFixed} />
+                <Text style={styles.proximityText}>
+                  Clamped to 3m: Near {adaptiveMetrics.proximityDestination}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           <TouchableOpacity
@@ -977,6 +1044,78 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontStyle: 'italic',
     paddingVertical: 4,
+  },
+  adaptiveBox: {
+    backgroundColor: colors.surfaceContainerLowest,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderRadius: rounded.md,
+    padding: 12,
+    gap: 10,
+    marginTop: 2,
+  },
+  adaptiveHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  adaptiveHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stateDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  adaptiveTitle: {
+    color: colors.outline,
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  adaptiveStateBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  adaptiveMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: rounded.sm,
+  },
+  metricCol: {
+    gap: 2,
+  },
+  metricLabel: {
+    color: colors.outline,
+    fontSize: 8.5,
+    letterSpacing: 0.8,
+  },
+  metricVal: {
+    color: colors.onSurface,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  proximityBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 215, 0, 0.08)',
+    borderColor: 'rgba(255, 215, 0, 0.2)',
+    borderWidth: 1,
+    borderRadius: rounded.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  proximityText: {
+    color: colors.tertiaryFixed,
+    fontSize: 11,
+    fontWeight: '500',
   },
   actionBtnSecondary: {
     backgroundColor: colors.surfaceContainerHigh,
