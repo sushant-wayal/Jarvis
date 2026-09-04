@@ -140,8 +140,8 @@ export class ContextEngine {
     }
 
     if (activeTasks.length > 0) {
-      contextStr += `\n[Upcoming / Active Tasks]:\n` +
-        activeTasks.map((t) => `- [${t.type}] ${t.title}${t.nextRunAt ? ` (Due: ${t.nextRunAt})` : ''}`).join('\n') + '\n';
+      contextStr += `\n[Upcoming / Active Tasks & Reminders]:\n` +
+        activeTasks.map((t) => `- [${t.type}] "${t.title}" (ID: ${t.id})${t.nextRunAt ? ` Due: ${t.nextRunAt}` : ''}`).join('\n') + '\n';
     }
 
     if (memories.length > 0) {

@@ -11,7 +11,13 @@ import {
   placeSaveTool,
 } from './event-tools';
 import { createMemoryTool, searchMemoryTool } from './memory-tools';
-import { createTaskTool, listTasksTool } from './task-tools';
+import {
+  createTaskTool,
+  listTasksTool,
+  updateTaskTool,
+  completeTaskTool,
+  deleteTaskTool,
+} from './task-tools';
 import { JarvisTool, RegisteredTool } from './types';
 import { weatherTool } from './weather';
 import { webSearchTool } from './web-search';
@@ -31,6 +37,9 @@ class ToolRegistry {
     // V2 Core Tasks & Memory
     this.register(createTaskTool as unknown as JarvisTool);
     this.register(listTasksTool as unknown as JarvisTool);
+    this.register(updateTaskTool as unknown as JarvisTool);
+    this.register(completeTaskTool as unknown as JarvisTool);
+    this.register(deleteTaskTool as unknown as JarvisTool);
     this.register(createMemoryTool as unknown as JarvisTool);
     this.register(searchMemoryTool as unknown as JarvisTool);
 
