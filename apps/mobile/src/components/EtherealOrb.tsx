@@ -468,6 +468,7 @@ export function EtherealOrb({
       style={[styles.wrapper, { width: size, height: size }]}
     >
       <GLView
+        key={`gl-orb-${size}`}
         style={[styles.gl, { width: glSize, height: glSize }]}
         onContextCreate={onContextCreate}
       />

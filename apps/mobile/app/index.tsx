@@ -239,6 +239,7 @@ export default function HomeScreen(): React.ReactElement {
         {/* Living Ethereal Voice Orb */}
         <View style={[styles.orbWrapper, hasActiveResponse && styles.orbWrapperCompact]}>
           <EtherealOrb
+            key={hasActiveResponse ? 'orb-compact' : 'orb-expanded'}
             state={jarvisState}
             onPress={handleOrbPress}
             audioLevel={recordingLevel}
