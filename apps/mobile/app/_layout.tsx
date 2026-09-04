@@ -5,11 +5,13 @@ import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../src/components/Icon';
 import { EarbudProvider } from '../src/hooks/useEarbudManager';
+import { appSettingsService } from '../src/services/appSettingsService';
 import { integrationManager } from '../src/integrations/IntegrationManager';
 import { colors } from '../src/theme/tokens';
 
 export default function RootLayout(): React.ReactElement {
   React.useEffect(() => {
+    appSettingsService.initialize().catch(() => {});
     integrationManager.initialize().catch(() => {});
   }, []);
 

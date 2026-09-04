@@ -1,4 +1,5 @@
 import { EarbudEventType, EarbudSettings, EarbudStatus } from '@jarvis/shared';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import {
   ERROR_CHIME_BASE64,
@@ -8,6 +9,8 @@ import {
 } from '../utils/audioChimes';
 
 type EarbudListener = (event: EarbudEventType) => void;
+
+const EARBUD_STORAGE_KEY = 'jarvis:earbud_settings';
 
 class EarbudService {
   private listeners: Set<EarbudListener> = new Set();
@@ -38,8 +41,14 @@ class EarbudService {
     return { ...this.settings };
   }
 
-  public updateSettings(partial: Partial<EarbudSettings>): void {
+  public async updateSettings(partial: Partial<EarbudSettings>): Promise<void> {
     this.settings = { ...this.settings, ...partial };
+    try {
+      await AsyncStorage.setItem(EARBUD_STORAGE_KEY, JSON.stringify(this.settings));
+    } catch {
+      // Non-critical persistence error
+    }
+
     if (this.settings.enabled && this.settings.backgroundStandby) {
       this.startStandby();
     } else {
@@ -62,6 +71,16 @@ class EarbudService {
    * Initializes audio session for background listening and sets up MediaSession action handlers
    */
   public async initialize(): Promise<void> {
+    try {
+      const raw = await AsyncStorage.getItem(EARBUD_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<EarbudSettings>;
+        this.settings = { ...this.settings, ...parsed };
+      }
+    } catch {
+      // Fallback to defaults
+    }
+
     try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,

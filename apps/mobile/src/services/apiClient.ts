@@ -26,15 +26,34 @@ import {
   VoiceResponse,
 } from '@jarvis/shared';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 // Production Jarvis Brain backend on Vercel (overridable via EXPO_PUBLIC_JARVIS_API_URL)
 const DEFAULT_API_URL =
   process.env.EXPO_PUBLIC_JARVIS_API_URL || 'https://brainofjarvis.vercel.app/api/v1';
+const SERVER_URL_STORAGE_KEY = 'jarvis:brain_server_url';
 
 export class JarvisApiClient {
   private baseUrl: string = DEFAULT_API_URL;
+  private urlLoaded = false;
+
+  public async initializeUrl(): Promise<string> {
+    if (this.urlLoaded) return this.baseUrl;
+    try {
+      const saved = await AsyncStorage.getItem(SERVER_URL_STORAGE_KEY);
+      if (saved && saved.trim()) {
+        this.baseUrl = saved.trim().endsWith('/') ? saved.trim().slice(0, -1) : saved.trim();
+      }
+    } catch {
+      // Fallback to default
+    }
+    this.urlLoaded = true;
+    return this.baseUrl;
+  }
 
   public setBaseUrl(url: string): void {
     this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+    void AsyncStorage.setItem(SERVER_URL_STORAGE_KEY, this.baseUrl).catch(() => {});
   }
 
   public getBaseUrl(): string {

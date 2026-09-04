@@ -22,6 +22,7 @@ import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
 import { integrationManager } from '../src/integrations/IntegrationManager';
 import { apiClient } from '../src/services/apiClient';
 import { reminderScheduler } from '../src/services/reminderScheduler';
+import { appSettingsService } from '../src/services/appSettingsService';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function ConversationScreen(): React.ReactElement {
@@ -29,10 +30,20 @@ export default function ConversationScreen(): React.ReactElement {
   const [activeConvId, setActiveConvId] = React.useState<string | null>(null);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [inputText, setInputText] = React.useState<string>('');
-  const [speakResponse, setSpeakResponse] = React.useState<boolean>(true);
+  const [speakResponse, setSpeakResponse] = React.useState<boolean>(
+    appSettingsService.getSettings().autoSpeak
+  );
   const [loading, setLoading] = React.useState<boolean>(false);
   const [sending, setSending] = React.useState<boolean>(false);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setSpeakResponse(appSettingsService.getSettings().autoSpeak);
+    const unsub = appSettingsService.subscribe((s) => {
+      setSpeakResponse(s.autoSpeak);
+    });
+    return () => unsub();
+  }, []);
 
   const { playBase64Audio } = useAudioPlayer();
 

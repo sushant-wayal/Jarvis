@@ -14,6 +14,7 @@ import { EtherealOrb } from '../src/components/EtherealOrb';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
 import { adaptiveLocationEngine } from '../src/services/adaptiveLocationEngine';
 import { apiClient } from '../src/services/apiClient';
+import { appSettingsService } from '../src/services/appSettingsService';
 import { integrationManager } from '../src/integrations/IntegrationManager';
 import { reminderScheduler } from '../src/services/reminderScheduler';
 import { colors, rounded, typography } from '../src/theme/tokens';
@@ -137,6 +138,13 @@ export default function HomeScreen(): React.ReactElement {
     adaptiveLocationEngine.start();
     reminderScheduler.syncPendingTasks();
     integrationManager.initialize().catch(() => {});
+    appSettingsService.initialize().then((s) => {
+      if (s.userName) setUserName(s.userName);
+    }).catch(() => {});
+
+    const unsubSettings = appSettingsService.subscribe((s) => {
+      if (s.userName) setUserName(s.userName);
+    });
 
     const interval = setInterval(() => {
       runHealthCheck();
@@ -145,6 +153,7 @@ export default function HomeScreen(): React.ReactElement {
     return () => {
       clearInterval(interval);
       adaptiveLocationEngine.stop();
+      unsubSettings();
     };
   }, []);
 

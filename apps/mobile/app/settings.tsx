@@ -22,8 +22,9 @@ import { contactsIntegration } from '../src/integrations/ContactsIntegration';
 import { notificationContextStore, NotificationStoreSettings } from '../src/integrations/NotificationContextStore';
 import { notificationIntegration } from '../src/integrations/NotificationIntegration';
 import { OBSERVABLE_APPS } from '../src/integrations/constants';
-import { apiClient } from '../src/services/apiClient';
 import { adaptiveLocationEngine, AdaptiveEngineMetrics } from '../src/services/adaptiveLocationEngine';
+import { apiClient } from '../src/services/apiClient';
+import { appSettingsService, ResponseProtocol } from '../src/services/appSettingsService';
 import { mobileLocationService } from '../src/services/locationService';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
@@ -35,12 +36,13 @@ export default function SettingsScreen(): React.ReactElement {
     triggerSimulatedTap,
   } = useEarbudManager();
 
-  const [userName, setUserName] = React.useState<string>('Sushant');
-  const [responseProtocol, setResponseProtocol] = React.useState<string>('Concise');
-  const [serverUrl, setServerUrl] = React.useState<string>(apiClient.getBaseUrl());
+  const initialSettings = appSettingsService.getSettings();
+  const [userName, setUserName] = React.useState<string>(initialSettings.userName);
+  const [responseProtocol, setResponseProtocol] = React.useState<ResponseProtocol>(initialSettings.responseProtocol);
+  const [serverUrl, setServerUrl] = React.useState<string>(initialSettings.serverUrl);
   const [healthStatus, setHealthStatus] = React.useState<HealthStatus | null>(null);
-  const [autoSpeak, setAutoSpeak] = React.useState<boolean>(true);
-  const [locationEnabled, setLocationEnabled] = React.useState<boolean>(true);
+  const [autoSpeak, setAutoSpeak] = React.useState<boolean>(initialSettings.autoSpeak);
+  const [locationEnabled, setLocationEnabled] = React.useState<boolean>(initialSettings.locationEnabled);
   const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
   const [knownPlaces, setKnownPlaces] = React.useState<KnownPlaceItem[]>([]);
   const [adaptiveMetrics, setAdaptiveMetrics] = React.useState<AdaptiveEngineMetrics>(
@@ -113,6 +115,13 @@ export default function SettingsScreen(): React.ReactElement {
     loadKnownPlaces();
 
     const loadLocalStores = async () => {
+      const appSettings = await appSettingsService.initialize();
+      setUserName(appSettings.userName);
+      setResponseProtocol(appSettings.responseProtocol);
+      setServerUrl(appSettings.serverUrl);
+      setAutoSpeak(appSettings.autoSpeak);
+      setLocationEnabled(appSettings.locationEnabled);
+
       await Promise.all([
         notificationContextStore.initialize(),
         contactsIntegration.initialize(),
@@ -131,7 +140,8 @@ export default function SettingsScreen(): React.ReactElement {
   const handleRefresh = async (): Promise<void> => {
     setRefreshing(true);
     try {
-      await Promise.all([
+      const [appSettings] = await Promise.all([
+        appSettingsService.initialize(),
         checkHealth(),
         loadMemories(),
         loadLocation(),
@@ -142,8 +152,52 @@ export default function SettingsScreen(): React.ReactElement {
         refreshCapabilities(),
         notificationIntegration.syncActiveNotifications(),
       ]);
+      setUserName(appSettings.userName);
+      setResponseProtocol(appSettings.responseProtocol);
+      setServerUrl(appSettings.serverUrl);
+      setAutoSpeak(appSettings.autoSpeak);
+      setLocationEnabled(appSettings.locationEnabled);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleSelectProtocol = async (proto: ResponseProtocol): Promise<void> => {
+    setResponseProtocol(proto);
+    await appSettingsService.updateSettings({ responseProtocol: proto });
+    try {
+      await apiClient.createMemory({
+        type: 'PREFERENCE',
+        content: `User prefers ${proto} response protocol style.`,
+        importance: 4,
+      });
+    } catch {
+      // Safe fallback
+    }
+  };
+
+  const handleToggleAutoSpeak = async (val: boolean): Promise<void> => {
+    setAutoSpeak(val);
+    await appSettingsService.updateSettings({ autoSpeak: val });
+  };
+
+  const handleToggleLocation = async (val: boolean): Promise<void> => {
+    setLocationEnabled(val);
+    await appSettingsService.updateSettings({ locationEnabled: val });
+    if (!val) {
+      adaptiveLocationEngine.stop();
+    } else {
+      adaptiveLocationEngine.start();
+    }
+  };
+
+  const handleChangeUserName = (text: string): void => {
+    setUserName(text);
+  };
+
+  const handleBlurUserName = async (): Promise<void> => {
+    if (userName.trim()) {
+      await appSettingsService.updateSettings({ userName: userName.trim() });
     }
   };
 
@@ -180,13 +234,16 @@ export default function SettingsScreen(): React.ReactElement {
   };
 
   const handleSaveConfig = async (): Promise<void> => {
-    apiClient.setBaseUrl(serverUrl);
+    const trimmedUrl = serverUrl.trim();
+    const trimmedName = userName.trim();
+    await appSettingsService.updateSettings({ serverUrl: trimmedUrl, userName: trimmedName });
+    apiClient.setBaseUrl(trimmedUrl);
     checkHealth();
-    if (userName.trim()) {
+    if (trimmedName) {
       try {
         await apiClient.createMemory({
           type: 'PERSON',
-          content: `User's name is ${userName.trim()}`,
+          content: `User's name is ${trimmedName}`,
           importance: 5,
         });
         loadMemories();
@@ -194,7 +251,7 @@ export default function SettingsScreen(): React.ReactElement {
         // ignore
       }
     }
-    Alert.alert('Configuration Saved', 'Brain server endpoint and identity parameters updated.');
+    Alert.alert('Configuration Saved', 'Brain server endpoint and identity parameters updated and saved.');
   };
 
   const handleSyncLocation = async (): Promise<void> => {
@@ -318,7 +375,8 @@ export default function SettingsScreen(): React.ReactElement {
             <TextInput
               style={styles.textInput}
               value={userName}
-              onChangeText={setUserName}
+              onChangeText={handleChangeUserName}
+              onBlur={handleBlurUserName}
               placeholder="Your designation"
               placeholderTextColor={colors.outline}
             />
@@ -338,7 +396,7 @@ export default function SettingsScreen(): React.ReactElement {
                     styles.protocolChip,
                     responseProtocol === p.id && styles.activeProtocolChip,
                   ]}
-                  onPress={() => setResponseProtocol(p.id)}
+                  onPress={() => handleSelectProtocol(p.id as ResponseProtocol)}
                 >
                   <Text
                     numberOfLines={1}
@@ -424,7 +482,7 @@ export default function SettingsScreen(): React.ReactElement {
             <View style={styles.switchRight}>
               <Switch
                 value={locationEnabled}
-                onValueChange={setLocationEnabled}
+                onValueChange={handleToggleLocation}
                 trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
                 thumbColor={locationEnabled ? colors.primaryFixed : colors.outline}
               />
@@ -559,7 +617,7 @@ export default function SettingsScreen(): React.ReactElement {
             <View style={styles.switchRight}>
               <Switch
                 value={autoSpeak}
-                onValueChange={setAutoSpeak}
+                onValueChange={handleToggleAutoSpeak}
                 trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
                 thumbColor={autoSpeak ? colors.primaryFixed : colors.outline}
               />
