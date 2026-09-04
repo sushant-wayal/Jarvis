@@ -21,6 +21,7 @@ import { StatusHeader } from '../src/components/StatusHeader';
 import { useAudioPlayer } from '../src/hooks/useAudioPlayer';
 import { integrationManager } from '../src/integrations/IntegrationManager';
 import { apiClient } from '../src/services/apiClient';
+import { reminderScheduler } from '../src/services/reminderScheduler';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function ConversationScreen(): React.ReactElement {
@@ -138,6 +139,18 @@ export default function ConversationScreen(): React.ReactElement {
       // Execute pending phone action (e.g. open app, make call, send sms)
       if (res.pendingPhoneAction) {
         integrationManager.executeAction(res.pendingPhoneAction).catch(() => {});
+      }
+
+      // Schedule native hardware alarm for time-based reminder
+      if (res.scheduledReminder) {
+        reminderScheduler
+          .scheduleTaskReminder(
+            res.scheduledReminder.taskId,
+            res.scheduledReminder.title,
+            res.scheduledReminder.scheduledFor,
+            res.scheduledReminder.description
+          )
+          .catch(() => {});
       }
 
       if (res.shouldSpeak && res.text) {

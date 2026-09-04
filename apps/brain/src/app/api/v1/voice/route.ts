@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
         requestId,
         shouldSpeak: true,
         pendingPhoneAction: brainResult.pendingPhoneAction,
+        scheduledReminder: brainResult.scheduledReminder,
       },
       requestId
     );

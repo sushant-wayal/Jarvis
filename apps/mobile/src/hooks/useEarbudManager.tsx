@@ -2,6 +2,7 @@ import { EarbudEventType, EarbudSettings, EarbudStatus, JarvisState } from '@jar
 import * as React from 'react';
 import { earbudService } from '../services/earbudService';
 import { apiClient } from '../services/apiClient';
+import { reminderScheduler } from '../services/reminderScheduler';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { useAudioPlayer } from './useAudioPlayer';
 import { integrationManager } from '../integrations/IntegrationManager';
@@ -164,6 +165,18 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       setConversationId(response.conversationId);
       setLastTranscript(response.transcript);
       setAssistantSpokenText(response.response);
+
+      // Schedule native hardware alarm if voice command created a reminder
+      if (response.scheduledReminder) {
+        reminderScheduler
+          .scheduleTaskReminder(
+            response.scheduledReminder.taskId,
+            response.scheduledReminder.title,
+            response.scheduledReminder.scheduledFor,
+            response.scheduledReminder.description
+          )
+          .catch(() => {});
+      }
 
       if (response.audioBase64) {
         setJarvisState('SPEAKING');

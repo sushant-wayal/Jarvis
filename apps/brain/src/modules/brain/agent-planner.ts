@@ -249,11 +249,21 @@ Phone Integration (V3):
     ]);
 
     let pendingPhoneAction: import('@jarvis/shared').JarvisPhoneAction | undefined;
+    let scheduledReminder: import('@jarvis/shared').ScheduledReminder | undefined;
+
     for (const toolResult of executedToolResults) {
       const output = toolResult.output as Record<string, unknown> | null;
       if (output && typeof output.action === 'string' && PHONE_ACTION_TYPES.has(output.action)) {
         pendingPhoneAction = output as unknown as import('@jarvis/shared').JarvisPhoneAction;
-        break;
+      }
+      if (toolResult.toolName === 'task_create' && toolResult.success && output) {
+        if (output.taskId && output.title && output.scheduledFor) {
+          scheduledReminder = {
+            taskId: String(output.taskId),
+            title: String(output.title),
+            scheduledFor: String(output.scheduledFor),
+          };
+        }
       }
     }
 
@@ -267,6 +277,7 @@ Phone Integration (V3):
       mode: responseMode,
       agentRunId: agentRun.id,
       pendingPhoneAction,
+      scheduledReminder,
     };
   }
 

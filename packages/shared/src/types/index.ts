@@ -482,6 +482,15 @@ export interface BrainResponse {
   };
   /** Phone action for the mobile app to execute after speaking the response */
   pendingPhoneAction?: JarvisPhoneAction;
+  /** Scheduled time-based reminder for the phone's native AlarmManager */
+  scheduledReminder?: ScheduledReminder;
+}
+
+export interface ScheduledReminder {
+  taskId: string;
+  title: string;
+  scheduledFor: string;
+  description?: string;
 }
 
 export interface VoiceResponse {
@@ -493,6 +502,8 @@ export interface VoiceResponse {
   requestId: string;
   shouldSpeak: boolean;
   agentRunId?: string;
+  pendingPhoneAction?: JarvisPhoneAction;
+  scheduledReminder?: ScheduledReminder;
 }
 
 export interface HealthStatus {

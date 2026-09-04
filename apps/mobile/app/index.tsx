@@ -14,6 +14,7 @@ import { EtherealOrb } from '../src/components/EtherealOrb';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
 import { adaptiveLocationEngine } from '../src/services/adaptiveLocationEngine';
 import { apiClient } from '../src/services/apiClient';
+import { reminderScheduler } from '../src/services/reminderScheduler';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
 export default function HomeScreen(): React.ReactElement {
@@ -133,6 +134,7 @@ export default function HomeScreen(): React.ReactElement {
     runHealthCheck();
     loadDynamicContext();
     adaptiveLocationEngine.start();
+    reminderScheduler.syncPendingTasks();
 
     const interval = setInterval(() => {
       runHealthCheck();
