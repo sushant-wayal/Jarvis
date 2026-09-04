@@ -338,17 +338,6 @@ export default function HomeScreen(): React.ReactElement {
               </TouchableOpacity>
             ) : null}
 
-            {/* Sample UI Preview Button */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => setActiveResponse(SAMPLE_PREVIEW_RESPONSE)}
-              style={styles.samplePreviewTrigger}
-            >
-              <Icon name="chat_bubble" size={12} color={colors.primaryFixed} />
-              <Text style={[typography.labelCaps, styles.samplePreviewText]}>
-                PREVIEW RESPONSE CARD
-              </Text>
-            </TouchableOpacity>
           </View>
         )}
 
