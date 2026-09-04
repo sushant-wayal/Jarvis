@@ -1,6 +1,7 @@
 import { ChatMessage, JarvisState, TaskItem, ToolRiskLevel, UserEventItem } from '@jarvis/shared';
 import * as React from 'react';
 import {
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -11,6 +12,7 @@ import { GlassCard } from '../src/components/GlassCard';
 import { Icon } from '../src/components/Icon';
 import { StatusHeader } from '../src/components/StatusHeader';
 import { EtherealOrb } from '../src/components/EtherealOrb';
+import { MarkdownText } from '../src/components/MarkdownText';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
 import { adaptiveLocationEngine } from '../src/services/adaptiveLocationEngine';
 import { apiClient } from '../src/services/apiClient';
@@ -175,6 +177,28 @@ export default function HomeScreen(): React.ReactElement {
   const isListeningState = jarvisState === 'LISTENING';
   const isThinkingState = jarvisState === 'THINKING' || jarvisState === 'PROCESSING';
 
+  // Active response display (persists after speech completes so user can read and scroll)
+  const [activeResponse, setActiveResponse] = React.useState<string | null>(null);
+
+  // Sync activeResponse whenever assistantSpokenText updates with new content
+  React.useEffect(() => {
+    if (assistantSpokenText && assistantSpokenText.trim().length > 0) {
+      setActiveResponse(assistantSpokenText);
+    }
+  }, [assistantSpokenText]);
+
+  // When a new voice interaction starts (listening or thinking), clear activeResponse
+  React.useEffect(() => {
+    if (isListeningState || isThinkingState) {
+      setActiveResponse(null);
+    }
+  }, [isListeningState, isThinkingState]);
+
+  const handleDismissResponse = React.useCallback(() => {
+    setActiveResponse(null);
+  }, []);
+
+  const hasActiveResponse = Boolean(activeResponse && !isListeningState && !isThinkingState);
 
   return (
     <View style={styles.screenContainer}>
@@ -192,27 +216,59 @@ export default function HomeScreen(): React.ReactElement {
       />
 
       {/* Main Immersive Canvas */}
-      <View style={styles.mainCanvas}>
+      <View style={[styles.mainCanvas, hasActiveResponse && styles.mainCanvasWithResponse]}>
         {/* Living Ethereal Voice Orb */}
-        <View style={styles.orbWrapper}>
+        <View style={[styles.orbWrapper, hasActiveResponse && styles.orbWrapperCompact]}>
           <EtherealOrb
             state={jarvisState}
             onPress={handleOrbPress}
             audioLevel={recordingLevel}
-            size={280}
+            size={hasActiveResponse ? 92 : 280}
             showStatusLabel={false}
           />
         </View>
 
         {/* Dynamic Typography & Context Area */}
-        {isSpeakingState ? (
-          /* Jarvis Speaking State matching Jarvis Speaking.html */
-          <View style={styles.typographyBlock}>
-            <Text style={[typography.labelCaps, styles.speakingJarvisTag]}>JARVIS</Text>
-            <Text style={[typography.headlineLgMobile, styles.speakingResponseText]}>
-              "{assistantSpokenText}"
-            </Text>
-          </View>
+        {hasActiveResponse ? (
+          /* Dedicated Scrollable Glass Response Card */
+          <GlassCard variant="glow" style={styles.responseCard}>
+            {/* Header with status and dismiss button */}
+            <View style={styles.responseCardHeader}>
+              <View style={styles.responseStatusBadge}>
+                <View
+                  style={[
+                    styles.responseStatusDot,
+                    (isSpeakingState || isPlaying) && styles.responseStatusDotSpeaking,
+                  ]}
+                />
+                <Text style={styles.responseStatusText}>
+                  {isSpeakingState || isPlaying ? 'JARVIS SPEAKING' : 'JARVIS RESPONSE'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleDismissResponse}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.dismissButton}
+                accessibilityLabel="Dismiss response"
+              >
+                <Icon name="close" size={16} color={colors.outline} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Formatted Markdown Content */}
+            <ScrollView
+              style={styles.responseScrollView}
+              contentContainerStyle={styles.responseScrollContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+              indicatorStyle="white"
+            >
+              <MarkdownText
+                content={activeResponse || ''}
+                baseTextStyle={styles.responseMarkdownBase}
+              />
+            </ScrollView>
+          </GlassCard>
         ) : isListeningState ? (
           /* Listening State Typography */
           <View style={styles.typographyBlock}>
@@ -276,7 +332,7 @@ export default function HomeScreen(): React.ReactElement {
       </View>
 
       {/* Bottom Voice Interaction Trigger matching Home.html & Jarvis Speaking.html */}
-      {isSpeakingState ? (
+      {isSpeakingState || isPlaying ? (
         <View style={styles.bottomControlZone}>
           <TouchableOpacity
             activeOpacity={0.85}
@@ -367,10 +423,88 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     zIndex: 10,
   },
+  mainCanvasWithResponse: {
+    justifyContent: 'flex-start',
+    paddingTop: 6,
+  },
   orbWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
+  },
+  orbWrapperCompact: {
+    marginBottom: 8,
+    marginTop: 2,
+  },
+  responseCard: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 480,
+    marginBottom: 8,
+    borderRadius: rounded.xl,
+    padding: 0,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(19, 19, 20, 0.85)',
+    borderColor: 'rgba(0, 240, 255, 0.22)',
+  },
+  responseCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+  },
+  responseStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  responseStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primaryFixed,
+    shadowColor: colors.primaryFixed,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 5,
+  },
+  responseStatusDotSpeaking: {
+    backgroundColor: '#00F0FF',
+    shadowRadius: 8,
+  },
+  responseStatusText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: colors.primaryFixed,
+    textTransform: 'uppercase',
+  },
+  dismissButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  responseScrollView: {
+    flex: 1,
+  },
+  responseScrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  responseMarkdownBase: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.onSurface,
   },
   typographyBlock: {
     alignItems: 'center',

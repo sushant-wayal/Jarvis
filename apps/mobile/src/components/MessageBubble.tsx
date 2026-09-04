@@ -2,6 +2,7 @@ import { ChatMessage } from '@jarvis/shared';
 import * as React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, typography } from '../theme/tokens';
+import { MarkdownText } from './MarkdownText';
 
 export interface MessageBubbleProps {
   message: ChatMessage;
@@ -25,9 +26,16 @@ export function MessageBubble({ message }: MessageBubbleProps): React.ReactEleme
       </View>
 
       {/* Typography-First Content (Spacious & Clean) */}
-      <Text style={[typography.bodyXl, isUser ? styles.userText : styles.jarvisText]}>
-        {message.content}
-      </Text>
+      {isUser ? (
+        <Text style={[typography.bodyXl, styles.userText]}>
+          {message.content}
+        </Text>
+      ) : (
+        <MarkdownText
+          content={message.content}
+          baseTextStyle={styles.jarvisText}
+        />
+      )}
 
       {/* Tool executions summary */}
       {toolCalls && toolCalls.length > 0 && (
