@@ -77,12 +77,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     if (isPlaying) {
       await stopAudio();
       setJarvisState('IDLE');
+      earbudService.resumeTapDetection(300);
       await earbudService.playErrorChime();
       return;
     }
     if (isRecording) {
       await cancelRecording();
       setJarvisState('IDLE');
+      earbudService.resumeTapDetection(300);
       await earbudService.playErrorChime();
       return;
     }
@@ -98,10 +100,16 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         await stopAudio();
       }
 
+      // Suppress tap detection while recording so audio mode changes
+      // don't false-trigger the carrier tap detector
+      earbudService.suppressTapDetection();
+
       await earbudService.playWakeChime();
       await startRecording();
       setJarvisState('LISTENING');
     } catch (err: unknown) {
+      // On failure, restore tap detection immediately
+      earbudService.resumeTapDetection(200);
       setJarvisState('ERROR');
       const errorMsg = err instanceof Error ? err.message : 'Microphone initialization failed.';
       setErrorMessage(errorMsg);
@@ -154,7 +162,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           `### ⚠️ Audio Capture Failed\n\n${emptyAudioMsg}\n\n*Please verify your microphone is not muted and speak clearly.*`
         );
         await earbudService.playErrorChime();
-        setTimeout(() => setJarvisState('IDLE'), 3000);
+        setTimeout(() => {
+          setJarvisState('IDLE');
+          // Re-arm tap detection after error
+          earbudService.resumeTapDetection(200);
+        }, 3000);
         return;
       }
 
@@ -190,11 +202,15 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
           setJarvisState('IDLE');
+          // Re-arm tap detection after Jarvis finishes speaking
+          earbudService.resumeTapDetection(300);
           // After Jarvis finishes speaking, execute any pending phone action
           await handlePendingPhoneAction(response);
         });
       } else {
         setJarvisState('IDLE');
+        // Re-arm tap detection immediately (no audio to wait for)
+        earbudService.resumeTapDetection(200);
         await handlePendingPhoneAction(response);
       }
     } catch (err: unknown) {
@@ -205,9 +221,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         `### ⚠️ Request Execution Failed\n\n${errorMsg}\n\n*Tap ✕ above to dismiss or tap the mic below to retry.*`
       );
       await earbudService.playErrorChime();
-      setTimeout(() => setJarvisState('IDLE'), 3000);
+      setTimeout(() => {
+        setJarvisState('IDLE');
+        // Re-arm tap detection after error recovery
+        earbudService.resumeTapDetection(200);
+      }, 3000);
     }
   }, [stopRecording, playBase64Audio]);
+
 
   const toggleVoiceInteraction = React.useCallback(async (): Promise<void> => {
     const currentState = stateRef.current.jarvisState;

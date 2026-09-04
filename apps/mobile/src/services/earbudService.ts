@@ -213,7 +213,11 @@ class EarbudService {
       this.isStandbyRunning = true;
       this.status.isStandbyActive = true;
       this.wasPlayingBefore = true;
-      this.isInternalPause = false;
+      // Delay clearing the pause guard so the initial status update
+      // (isPlaying = true) doesn't false-trigger as a tap
+      setTimeout(() => {
+        this.isInternalPause = false;
+      }, 500);
 
       // Intercept Bluetooth earbud hardware Play/Pause triggers
       sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
@@ -222,9 +226,22 @@ class EarbudService {
         if (this.isStandbyRunning && !this.isInternalPause) {
           // When user taps their Bluetooth earbud, Android pauses the active audio track
           if (this.wasPlayingBefore && !status.isPlaying) {
-            this.handleRawMediaButton('PLAY_PAUSE');
-            // Resume carrier playback so it stays primed for future taps
-            sound.playAsync().catch(() => {});
+            // Debounce: ignore if another tap was emitted within 500ms
+            const now = Date.now();
+            if (now - this.lastTapTimestamp > 500) {
+              this.handleRawMediaButton('PLAY_PAUSE');
+            }
+            // Resume carrier playback so it stays primed for future taps.
+            // Use a brief internal pause guard so the resume itself doesn't
+            // trigger another false detection.
+            this.isInternalPause = true;
+            sound.playAsync().catch(() => {}).finally(() => {
+              setTimeout(() => {
+                this.isInternalPause = false;
+                this.wasPlayingBefore = true;
+              }, 300);
+            });
+            return;
           }
         }
         this.wasPlayingBefore = status.isPlaying;
@@ -236,6 +253,26 @@ class EarbudService {
       this.isInternalPause = false;
     }
   }
+
+  /**
+   * Suppresses tap detection during recording/processing.
+   * Must be paired with resumeTapDetection() when recording ends.
+   */
+  public suppressTapDetection(): void {
+    this.isInternalPause = true;
+  }
+
+  /**
+   * Resumes tap detection after recording/processing completes.
+   * Includes a short settling delay so audio mode changes stabilize.
+   */
+  public resumeTapDetection(delayMs = 400): void {
+    setTimeout(() => {
+      this.isInternalPause = false;
+      this.wasPlayingBefore = true;
+    }, delayMs);
+  }
+
 
   /**
    * Stops background audio standby
@@ -257,10 +294,14 @@ class EarbudService {
   }
 
   /**
-   * Plays a subtle sound chime directly through earbuds
+   * Plays a subtle sound chime directly through earbuds.
+   * Sets isInternalPause for the duration to suppress false tap detection.
    */
   private async playChime(base64Wav: string, volume = 0.6): Promise<void> {
     if (!this.settings.playFeedbackChimes) return;
+
+    // Guard: suppress carrier tap detection while chime is playing
+    this.isInternalPause = true;
 
     try {
       if (this.chimeSound) {
@@ -277,10 +318,16 @@ class EarbudService {
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync().catch(() => {});
+          // Re-enable tap detection 200ms after chime finishes to let
+          // the carrier sound's status stabilize before we start listening again
+          setTimeout(() => {
+            this.isInternalPause = false;
+          }, 200);
         }
       });
     } catch {
-      // ignore chime error
+      // If chime fails, always restore the guard
+      this.isInternalPause = false;
     }
   }
 

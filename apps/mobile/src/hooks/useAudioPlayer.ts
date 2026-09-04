@@ -16,17 +16,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const soundRef = React.useRef<Audio.Sound | null>(null);
   const onFinishedRef = React.useRef<(() => void) | null>(null);
 
-  // Pre-warm audio session in background for instant playback
-  React.useEffect(() => {
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      staysActiveInBackground: true,
-    }).catch(() => {
-      // Safe background initialization fallback
-    });
-  }, []);
+  // NOTE: Audio session config is intentionally NOT set here.
+  // earbudService.initialize() is the single owner of Audio.setAudioModeAsync
+  // to prevent multiple modules from overwriting each other's settings.
+  // This avoids conflicts with the carrier-sound tap detection mechanism.
 
   const stopAudio = React.useCallback(async (): Promise<void> => {
     if (soundRef.current) {

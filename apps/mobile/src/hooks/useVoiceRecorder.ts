@@ -21,12 +21,9 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       try {
         const { status } = await Audio.requestPermissionsAsync();
         setHasPermission(status === 'granted');
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: false,
-        });
+        // IMPORTANT: Do NOT call setAudioModeAsync here — earbudService.initialize()
+        // owns the global audio session config. Calling it here would wipe
+        // staysActiveInBackground and break carrier-based tap detection.
       } catch {
         setHasPermission(false);
       }
@@ -45,9 +42,13 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         await recordingRef.current.stopAndUnloadAsync();
       }
 
+      // Keep staysActiveInBackground and shouldDuckAndroid intact so the
+      // earbudService carrier sound keeps its audio focus during recording.
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: false,
       });
 
       const { recording } = await Audio.Recording.createAsync(
