@@ -170,12 +170,13 @@ export default function ConversationScreen(): React.ReactElement {
           playBase64Audio(ttsRes.audioBase64);
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : 'I am temporarily unable to reach my core cognition matrix.';
       const errorMsg: ChatMessage = {
         id: `temp_err_${Date.now()}`,
         conversationId: activeConvId || 'error',
         role: 'ASSISTANT',
-        content: 'I am temporarily unable to reach my core cognition matrix.',
+        content: `⚠️ **Request Execution Failed**\n\n${detail}`,
         inputType: 'TEXT',
         createdAt: new Date().toISOString(),
       };

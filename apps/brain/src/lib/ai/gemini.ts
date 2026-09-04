@@ -14,14 +14,13 @@ export const aiClient = {
   },
 };
 
-export const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+export const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 
 // Verified high-speed production fallback models
 export const FAST_FALLBACK_MODELS = [
-  'gemini-flash-lite-latest',
   'gemini-3-flash-preview',
-  'gemini-3.7-flash',
-  'gemini-flash-latest',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-flash-lite-latest',
 ];
 
 export function getGeminiPoolStats() {

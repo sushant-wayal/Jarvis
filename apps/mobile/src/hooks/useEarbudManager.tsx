@@ -103,7 +103,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       setJarvisState('LISTENING');
     } catch (err: unknown) {
       setJarvisState('ERROR');
-      setErrorMessage(err instanceof Error ? err.message : 'Microphone initialization failed.');
+      const errorMsg = err instanceof Error ? err.message : 'Microphone initialization failed.';
+      setErrorMessage(errorMsg);
+      setAssistantSpokenText(
+        `### ⚠️ Microphone Hardware Failed\n\n${errorMsg}\n\n*Please ensure microphone permissions are granted in Android Settings.*`
+      );
       await earbudService.playErrorChime();
     }
   }, [isPlaying, stopAudio, startRecording]);
@@ -144,9 +148,13 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       if (!audioData || !audioData.audioBase64) {
         setJarvisState('ERROR');
-        setErrorMessage('No voice audio detected.');
+        const emptyAudioMsg = '[Step: Audio Capture · Empty Stream]\nNo voice audio was detected from your microphone.';
+        setErrorMessage(emptyAudioMsg);
+        setAssistantSpokenText(
+          `### ⚠️ Audio Capture Failed\n\n${emptyAudioMsg}\n\n*Please verify your microphone is not muted and speak clearly.*`
+        );
         await earbudService.playErrorChime();
-        setTimeout(() => setJarvisState('IDLE'), 2000);
+        setTimeout(() => setJarvisState('IDLE'), 3000);
         return;
       }
 
@@ -191,7 +199,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       }
     } catch (err: unknown) {
       setJarvisState('ERROR');
-      setErrorMessage(err instanceof Error ? err.message : 'Cognitive brain link failed.');
+      const errorMsg = err instanceof Error ? err.message : 'Cognitive brain link failed.';
+      setErrorMessage(errorMsg);
+      setAssistantSpokenText(
+        `### ⚠️ Request Execution Failed\n\n${errorMsg}\n\n*Tap ✕ above to dismiss or tap the mic below to retry.*`
+      );
       await earbudService.playErrorChime();
       setTimeout(() => setJarvisState('IDLE'), 3000);
     }

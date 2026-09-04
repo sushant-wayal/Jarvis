@@ -77,27 +77,101 @@ export class JarvisApiClient {
     }
   }
 
+  /**
+   * Diagnoses exact step and root cause when Brain backend returns an error or non-JSON response
+   */
+  private async parseResponseError(res: Response, endpoint: string, stepName: string): Promise<Error> {
+    const status = res.status;
+    let rawText = '';
+    try {
+      rawText = await res.text();
+    } catch {
+      rawText = '';
+    }
+
+    // 1. Try parsing structured ApiResponse JSON
+    try {
+      const json = JSON.parse(rawText) as ApiResponse<unknown>;
+      if (json && json.error) {
+        const code = json.error.code || `HTTP_${status}`;
+        const msg = json.error.message || 'Unknown backend error';
+        return new Error(`[Step: ${stepName} · ${code}]\n${msg}`);
+      }
+    } catch {
+      // Not valid JSON
+    }
+
+    // 2. Identify Vercel Gateway Timeout (504)
+    if (status === 504 || rawText.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+      return new Error(
+        `[Step: ${stepName} · 504 Gateway Timeout]\n` +
+        `The cloud brain at brainofjarvis.vercel.app timed out while processing your request.\n` +
+        `Cause: AI reasoning or voice synthesis exceeded Vercel's execution time limit (15s).`
+      );
+    }
+
+    // 3. Identify Gateway/Server Unavailable (502/503)
+    if (status === 502 || status === 503) {
+      return new Error(
+        `[Step: ${stepName} · ${status} Service Unavailable]\n` +
+        `The cloud brain server is temporarily unreachable or undergoing deployment.`
+      );
+    }
+
+    // 4. Identify Not Found (404)
+    if (status === 404) {
+      return new Error(
+        `[Step: ${stepName} · 404 Not Found]\n` +
+        `Route '${endpoint}' was not found at ${this.baseUrl}. Check server URL in Settings.`
+      );
+    }
+
+    // 5. Clean text snippet fallback
+    const cleanSnippet = rawText.replace(/<[^>]*>/g, '').trim().slice(0, 180);
+    return new Error(
+      `[Step: ${stepName} · HTTP ${status}]\n` +
+      (cleanSnippet || res.statusText || 'Server returned an unhandled error response.')
+    );
+  }
+
   async sendChatMessage(
     message: string,
     conversationId?: string,
     speakResponse = false,
     phoneContext?: PhoneContext
   ): Promise<BrainResponse> {
-    const res = await fetch(`${this.baseUrl}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        message,
-        conversationId,
-        speakResponse,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        phoneContext,
-      }),
-    });
+    const url = `${this.baseUrl}/chat`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          message,
+          conversationId,
+          speakResponse,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          phoneContext,
+        }),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[Step: Network Link · Connection Failed]\nUnable to reach Brain at ${this.baseUrl}.\nDetails: ${msg}`);
+    }
 
-    const json = (await res.json()) as ApiResponse<BrainResponse>;
+    if (!res.ok) {
+      throw await this.parseResponseError(res, '/chat', 'Cognitive Reasoning');
+    }
+
+    let json: ApiResponse<BrainResponse>;
+    try {
+      json = (await res.json()) as ApiResponse<BrainResponse>;
+    } catch {
+      throw new Error(`[Step: Response Parsing · Invalid JSON]\nServer at ${url} returned an invalid or non-JSON response.`);
+    }
+
     if (!json.success || !json.data) {
-      throw new Error(json.error?.message || 'Failed to get Jarvis response');
+      throw new Error(`[Step: Brain Engine · ${json.error?.code || 'ERROR'}]\n${json.error?.message || 'Failed to get Jarvis response'}`);
     }
 
     return json.data;
@@ -123,21 +197,38 @@ export class JarvisApiClient {
     conversationId?: string,
     phoneContext?: PhoneContext
   ): Promise<VoiceResponse> {
-    const res = await fetch(`${this.baseUrl}/voice`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        audioBase64,
-        mimeType,
-        conversationId,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        phoneContext,
-      }),
-    });
+    const url = `${this.baseUrl}/voice`;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          audioBase64,
+          mimeType,
+          conversationId,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          phoneContext,
+        }),
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`[Step: Network Link · Voice Uplink Failed]\nUnable to transmit audio to Brain at ${this.baseUrl}.\nDetails: ${msg}`);
+    }
 
-    const json = (await res.json()) as ApiResponse<VoiceResponse>;
+    if (!res.ok) {
+      throw await this.parseResponseError(res, '/voice', 'Voice Pipeline & STT');
+    }
+
+    let json: ApiResponse<VoiceResponse>;
+    try {
+      json = (await res.json()) as ApiResponse<VoiceResponse>;
+    } catch {
+      throw new Error(`[Step: Response Parsing · Invalid Voice Response]\nServer at ${url} returned an invalid or non-JSON response.`);
+    }
+
     if (!json.success || !json.data) {
-      throw new Error(json.error?.message || 'Unable to process voice audio');
+      throw new Error(`[Step: Voice Synthesis & Logic · ${json.error?.code || 'ERROR'}]\n${json.error?.message || 'Unable to process voice audio'}`);
     }
 
     return json.data;

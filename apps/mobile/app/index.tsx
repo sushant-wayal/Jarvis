@@ -259,10 +259,20 @@ export default function HomeScreen(): React.ReactElement {
                   style={[
                     styles.responseStatusDot,
                     (isSpeakingState || isPlaying) && styles.responseStatusDotSpeaking,
+                    activeResponse?.startsWith('### ⚠️') && styles.responseStatusDotError,
                   ]}
                 />
-                <Text style={styles.responseStatusText}>
-                  {isSpeakingState || isPlaying ? 'JARVIS SPEAKING' : 'JARVIS RESPONSE'}
+                <Text
+                  style={[
+                    styles.responseStatusText,
+                    activeResponse?.startsWith('### ⚠️') && styles.responseStatusTextError,
+                  ]}
+                >
+                  {activeResponse?.startsWith('### ⚠️')
+                    ? 'EXECUTION FAILED'
+                    : isSpeakingState || isPlaying
+                    ? 'JARVIS SPEAKING'
+                    : 'JARVIS RESPONSE'}
                 </Text>
               </View>
               <TouchableOpacity
@@ -513,12 +523,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#00F0FF',
     shadowRadius: 8,
   },
+  responseStatusDotError: {
+    backgroundColor: '#FF5370',
+    shadowColor: '#FF5370',
+    shadowRadius: 8,
+  },
   responseStatusText: {
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.5,
     color: colors.primaryFixed,
     textTransform: 'uppercase',
+  },
+  responseStatusTextError: {
+    color: '#FF5370',
   },
   dismissButton: {
     width: 28,
