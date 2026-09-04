@@ -121,4 +121,4 @@ export const PROCESS_CHIME_BASE64 = generateChimeBase64(1046.5, 90, 1318.5, 120)
 export const ERROR_CHIME_BASE64 = generateChimeBase64(392.0, 150, 311.13, 200);
 
 // 4. Silent Carrier for Background Earbud Standby
-export const SILENT_CARRIER_BASE64 = generateSilentWavBase64(8000, 2);
+export const SILENT_CARRIER_BASE64 = generateSilentWavBase64(16000, 2);

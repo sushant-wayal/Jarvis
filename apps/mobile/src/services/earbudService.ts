@@ -133,6 +133,7 @@ class EarbudService {
    * Distinguishes single tap from double tap
    */
   private handleRawMediaButton(type: 'PLAY_PAUSE' | 'NEXT' | 'PREV' | 'STOP'): void {
+    console.log('[EarbudService] Raw media button event intercepted:', type);
     const now = Date.now();
 
     if (type === 'NEXT') {
@@ -228,7 +229,8 @@ class EarbudService {
         }
         this.wasPlayingBefore = status.isPlaying;
       });
-    } catch {
+    } catch (err) {
+      console.warn('[EarbudService] Standby carrier failed to start:', err);
       this.isStandbyRunning = false;
       this.status.isStandbyActive = false;
       this.isInternalPause = false;

@@ -329,15 +329,20 @@ export default function HomeScreen(): React.ReactElement {
               </Text>
             </GlassCard>
 
-            {/* Earbud Standby Active Status Pill */}
+            {/* Earbud Standby Active Status Pill (Interactive for testing) */}
             {earbudSettings.enabled ? (
-              <View style={styles.earbudIndicatorBadge}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => triggerSimulatedTap('SINGLE_TAP')}
+                style={styles.earbudIndicatorBadge}
+                accessibilityLabel="Simulate earbud single tap"
+              >
                 <View style={styles.earbudDotActive} />
                 <Icon name="hearing" size={13} color={colors.primaryFixed} />
                 <Text style={[typography.labelCaps, styles.earbudIndicatorText]}>
-                  EARBUD LINK ACTIVE · SINGLE TAP READY
+                  EARBUD LINK ACTIVE · TAP TO SIMULATE
                 </Text>
-              </View>
+              </TouchableOpacity>
             ) : null}
 
             {/* Sample UI Preview Button */}

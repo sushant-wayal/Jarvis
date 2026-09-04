@@ -24,8 +24,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: false,
         });
       } catch {
         setHasPermission(false);
