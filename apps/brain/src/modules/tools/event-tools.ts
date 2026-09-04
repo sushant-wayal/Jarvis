@@ -154,3 +154,350 @@ export const locationGetTool: JarvisTool<z.infer<typeof LocationGetInputSchema>,
     };
   },
 };
+
+const ListEventsInputSchema = z.object({
+  status: z.enum(['PLANNED', 'UPCOMING', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ALL']).optional().default('ALL'),
+});
+
+export const listEventsTool: JarvisTool<
+  z.infer<typeof ListEventsInputSchema>,
+  { events: Array<{ id: string; title: string; type: string; status: string; locationName?: string; startAt?: string }> }
+> = {
+  name: 'event_list',
+  description: 'Lists all planned trips, upcoming meetings, appointments, and events.',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'SAFE',
+  inputSchema: ListEventsInputSchema,
+  async execute(input, context) {
+    const events = await eventService.listEvents(
+      context.userId,
+      input.status === 'ALL' ? undefined : input.status
+    );
+    return {
+      events: events.map((e) => ({
+        id: e.id,
+        title: e.title,
+        type: e.type,
+        status: e.status,
+        locationName: e.locationName,
+        startAt: e.startAt,
+      })),
+    };
+  },
+};
+
+const UpdateEventInputSchema = z.object({
+  eventId: z.string().optional().describe('ID of the event or trip (if known)'),
+  query: z.string().optional().describe('Title or destination keyword of the event/trip if ID is unknown (e.g. "Goa", "trip", "meeting")'),
+  status: z.enum(['PLANNED', 'UPCOMING', 'ACTIVE', 'COMPLETED', 'CANCELLED']).optional().describe('New status for the event/trip'),
+  title: z.string().optional().describe('Updated title for the event'),
+  locationName: z.string().optional().describe('Updated city or location destination'),
+  description: z.string().optional().describe('Updated details or notes'),
+});
+
+export const updateEventTool: JarvisTool<
+  z.infer<typeof UpdateEventInputSchema>,
+  { success: boolean; eventId?: string; title?: string; status?: string; message: string }
+> = {
+  name: 'event_update',
+  description: 'Updates a planned trip, meeting, or event (e.g. mark as COMPLETED, CANCELLED, or change destination/dates). Can find by ID or title keyword.',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'LOW_RISK',
+  inputSchema: UpdateEventInputSchema,
+  async execute(input, context) {
+    let event = null;
+    if (input.eventId) {
+      event = await prisma.userEvent.findFirst({
+        where: { id: input.eventId, userId: context.userId },
+      });
+    }
+
+    if (!event && input.query) {
+      const q = input.query.toLowerCase().trim();
+      const all = await prisma.userEvent.findMany({
+        where: { userId: context.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      event = all.find(
+        (e) => e.title.toLowerCase().includes(q) || (e.locationName && e.locationName.toLowerCase().includes(q))
+      );
+    }
+
+    if (!event) {
+      return {
+        success: false,
+        message: `Could not find an event or trip matching "${input.query || input.eventId}".`,
+      };
+    }
+
+    const updated = await eventService.updateEvent(event.id, context.userId, {
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.locationName ? { locationName: input.locationName } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    });
+
+    return {
+      success: true,
+      eventId: updated?.id,
+      title: updated?.title,
+      status: updated?.status,
+      message: `Updated event "${updated?.title}" to status ${updated?.status}.`,
+    };
+  },
+};
+
+const DeleteEventInputSchema = z.object({
+  eventId: z.string().optional().describe('ID of the event or trip (if known)'),
+  query: z.string().optional().describe('Title or destination keyword of the event/trip to delete/cancel (e.g. "Goa")'),
+});
+
+export const deleteEventTool: JarvisTool<
+  z.infer<typeof DeleteEventInputSchema>,
+  { success: boolean; message: string; deletedTitle?: string }
+> = {
+  name: 'event_delete',
+  description: 'Cancels or deletes a planned trip, meeting, or event from the schedule.',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'LOW_RISK',
+  inputSchema: DeleteEventInputSchema,
+  async execute(input, context) {
+    let event = null;
+    if (input.eventId) {
+      event = await prisma.userEvent.findFirst({
+        where: { id: input.eventId, userId: context.userId },
+      });
+    }
+
+    if (!event && input.query) {
+      const q = input.query.toLowerCase().trim();
+      const all = await prisma.userEvent.findMany({
+        where: { userId: context.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      event = all.find(
+        (e) => e.title.toLowerCase().includes(q) || (e.locationName && e.locationName.toLowerCase().includes(q))
+      );
+    }
+
+    if (!event) {
+      return {
+        success: false,
+        message: `No event or trip matching "${input.query || input.eventId}" was found to delete.`,
+      };
+    }
+
+    await eventService.deleteEvent(event.id, context.userId);
+    return {
+      success: true,
+      deletedTitle: event.title,
+      message: `Successfully cancelled event: "${event.title}".`,
+    };
+  },
+};
+
+const ListEventRemindersInputSchema = z.object({
+  status: z.enum(['PENDING', 'TRIGGERED', 'COMPLETED', 'CANCELLED', 'ALL']).optional().default('PENDING'),
+});
+
+export const listEventRemindersTool: JarvisTool<
+  z.infer<typeof ListEventRemindersInputSchema>,
+  { reminders: Array<{ id: string; title: string; targetLocation: string; status: string }> }
+> = {
+  name: 'event_reminder_list',
+  description: 'Lists all location-based reminders (e.g. reminders that trigger when arriving at a place).',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'SAFE',
+  inputSchema: ListEventRemindersInputSchema,
+  async execute(input, context) {
+    const reminders = await eventService.listEventReminders(
+      context.userId,
+      input.status === 'ALL' ? undefined : input.status
+    );
+    return {
+      reminders: reminders.map((r) => ({
+        id: r.id,
+        title: r.title,
+        targetLocation: r.targetLocation || '',
+        status: r.status,
+      })),
+    };
+  },
+};
+
+const UpdateEventReminderInputSchema = z.object({
+  reminderId: z.string().optional().describe('ID of the reminder if known'),
+  query: z.string().optional().describe('Keyword or title of the location reminder (e.g. "parasailing", "passport")'),
+  status: z.enum(['PENDING', 'TRIGGERED', 'COMPLETED', 'CANCELLED']).optional().describe('New status for the reminder'),
+  title: z.string().optional().describe('New title for the reminder'),
+  description: z.string().optional().describe('Updated details'),
+});
+
+export const updateEventReminderTool: JarvisTool<
+  z.infer<typeof UpdateEventReminderInputSchema>,
+  { success: boolean; reminderId?: string; title?: string; status?: string; message: string }
+> = {
+  name: 'event_reminder_update',
+  description: 'Updates a location-based reminder (e.g. mark COMPLETED or CANCELLED, rename, or modify).',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'LOW_RISK',
+  inputSchema: UpdateEventReminderInputSchema,
+  async execute(input, context) {
+    let reminder = null;
+    if (input.reminderId) {
+      reminder = await prisma.eventReminder.findFirst({
+        where: { id: input.reminderId, userId: context.userId },
+      });
+    }
+
+    if (!reminder && input.query) {
+      const q = input.query.toLowerCase().trim();
+      const all = await prisma.eventReminder.findMany({
+        where: { userId: context.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      reminder = all.find(
+        (r) => r.title.toLowerCase().includes(q) || (r.description && r.description.toLowerCase().includes(q))
+      );
+    }
+
+    if (!reminder) {
+      return {
+        success: false,
+        message: `Could not find any location reminder matching "${input.query || input.reminderId}".`,
+      };
+    }
+
+    const updated = await eventService.updateEventReminder(reminder.id, context.userId, {
+      ...(input.title ? { title: input.title } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    });
+
+    return {
+      success: true,
+      reminderId: updated?.id,
+      title: updated?.title,
+      status: updated?.status,
+      message: `Updated location reminder "${updated?.title}" to status ${updated?.status}.`,
+    };
+  },
+};
+
+const DeleteEventReminderInputSchema = z.object({
+  reminderId: z.string().optional().describe('ID of the reminder if known'),
+  query: z.string().optional().describe('Keyword or title of the location reminder to remove'),
+});
+
+export const deleteEventReminderTool: JarvisTool<
+  z.infer<typeof DeleteEventReminderInputSchema>,
+  { success: boolean; message: string; deletedTitle?: string }
+> = {
+  name: 'event_reminder_delete',
+  description: 'Deletes or cancels a location-based reminder.',
+  category: 'PRODUCTIVITY',
+  riskLevel: 'LOW_RISK',
+  inputSchema: DeleteEventReminderInputSchema,
+  async execute(input, context) {
+    let reminder = null;
+    if (input.reminderId) {
+      reminder = await prisma.eventReminder.findFirst({
+        where: { id: input.reminderId, userId: context.userId },
+      });
+    }
+
+    if (!reminder && input.query) {
+      const q = input.query.toLowerCase().trim();
+      const all = await prisma.eventReminder.findMany({
+        where: { userId: context.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      reminder = all.find((r) => r.title.toLowerCase().includes(q));
+    }
+
+    if (!reminder) {
+      return {
+        success: false,
+        message: `No location reminder matching "${input.query || input.reminderId}" was found to delete.`,
+      };
+    }
+
+    await eventService.deleteEventReminder(reminder.id, context.userId);
+    return {
+      success: true,
+      deletedTitle: reminder.title,
+      message: `Successfully deleted location reminder: "${reminder.title}".`,
+    };
+  },
+};
+
+const ListPlacesInputSchema = z.object({});
+
+export const listPlacesTool: JarvisTool<
+  z.infer<typeof ListPlacesInputSchema>,
+  { places: Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number }> }
+> = {
+  name: 'place_list',
+  description: 'Lists all saved semantic places (e.g. Home, Office, Gym) for the user.',
+  category: 'LOCATION',
+  riskLevel: 'SAFE',
+  inputSchema: ListPlacesInputSchema,
+  async execute(_input, context) {
+    const places = await locationService.listKnownPlaces(context.userId);
+    return {
+      places: places.map((p) => ({
+        id: p.id,
+        name: p.name,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        radiusMeters: p.radiusMeters,
+      })),
+    };
+  },
+};
+
+const DeletePlaceInputSchema = z.object({
+  name: z.string().optional().describe('Name of the place to delete (e.g. "Home", "Gym")'),
+  placeId: z.string().optional().describe('ID of the place to delete if known'),
+});
+
+export const deletePlaceTool: JarvisTool<
+  z.infer<typeof DeletePlaceInputSchema>,
+  { success: boolean; message: string; deletedName?: string }
+> = {
+  name: 'place_delete',
+  description: 'Deletes a saved semantic place (e.g. remove "Gym" or "Office").',
+  category: 'LOCATION',
+  riskLevel: 'LOW_RISK',
+  inputSchema: DeletePlaceInputSchema,
+  async execute(input, context) {
+    let place = null;
+    if (input.placeId) {
+      place = await prisma.knownPlace.findFirst({
+        where: { id: input.placeId, userId: context.userId },
+      });
+    }
+
+    if (!place && input.name) {
+      const q = input.name.toLowerCase().trim();
+      const all = await prisma.knownPlace.findMany({
+        where: { userId: context.userId },
+      });
+      place = all.find((p) => p.name.toLowerCase().includes(q));
+    }
+
+    if (!place) {
+      return {
+        success: false,
+        message: `No saved place matching "${input.name || input.placeId}" was found.`,
+      };
+    }
+
+    await locationService.deleteKnownPlace(place.id, context.userId);
+    return {
+      success: true,
+      deletedName: place.name,
+      message: `Successfully removed saved place: "${place.name}".`,
+    };
+  },
+};

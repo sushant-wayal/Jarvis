@@ -7,10 +7,24 @@ import { dateTimeTool } from './date-time';
 import {
   createEventReminderTool,
   createEventTool,
+  deleteEventReminderTool,
+  deleteEventTool,
+  deletePlaceTool,
+  listEventRemindersTool,
+  listEventsTool,
+  listPlacesTool,
   locationGetTool,
   placeSaveTool,
+  updateEventReminderTool,
+  updateEventTool,
 } from './event-tools';
-import { createMemoryTool, searchMemoryTool } from './memory-tools';
+import {
+  createMemoryTool,
+  deleteMemoryTool,
+  listMemoriesTool,
+  searchMemoryTool,
+  updateMemoryTool,
+} from './memory-tools';
 import {
   createTaskTool,
   listTasksTool,
@@ -18,6 +32,7 @@ import {
   completeTaskTool,
   deleteTaskTool,
 } from './task-tools';
+import { getUserProfileTool, updateUserProfileTool } from './user-tools';
 import { JarvisTool, RegisteredTool } from './types';
 import { weatherTool } from './weather';
 import { webSearchTool } from './web-search';
@@ -34,20 +49,37 @@ class ToolRegistry {
     this.register(weatherTool as unknown as JarvisTool);
     this.register(webSearchTool as unknown as JarvisTool);
 
-    // V2 Core Tasks & Memory
+    // V2 Core Tasks & Reminders (Full Lifecycle)
     this.register(createTaskTool as unknown as JarvisTool);
     this.register(listTasksTool as unknown as JarvisTool);
     this.register(updateTaskTool as unknown as JarvisTool);
     this.register(completeTaskTool as unknown as JarvisTool);
     this.register(deleteTaskTool as unknown as JarvisTool);
+
+    // V2 Core Long-Term Memories & Preferences (Full Lifecycle)
     this.register(createMemoryTool as unknown as JarvisTool);
     this.register(searchMemoryTool as unknown as JarvisTool);
+    this.register(listMemoriesTool as unknown as JarvisTool);
+    this.register(updateMemoryTool as unknown as JarvisTool);
+    this.register(deleteMemoryTool as unknown as JarvisTool);
 
-    // V2 Location & Event-Based Reminders
+    // V2 Events, Trips, Plans & Locations (Full Lifecycle)
     this.register(createEventTool as unknown as JarvisTool);
+    this.register(listEventsTool as unknown as JarvisTool);
+    this.register(updateEventTool as unknown as JarvisTool);
+    this.register(deleteEventTool as unknown as JarvisTool);
     this.register(createEventReminderTool as unknown as JarvisTool);
+    this.register(listEventRemindersTool as unknown as JarvisTool);
+    this.register(updateEventReminderTool as unknown as JarvisTool);
+    this.register(deleteEventReminderTool as unknown as JarvisTool);
     this.register(placeSaveTool as unknown as JarvisTool);
+    this.register(listPlacesTool as unknown as JarvisTool);
+    this.register(deletePlaceTool as unknown as JarvisTool);
     this.register(locationGetTool as unknown as JarvisTool);
+
+    // V2 User Profile & Preference Settings
+    this.register(getUserProfileTool as unknown as JarvisTool);
+    this.register(updateUserProfileTool as unknown as JarvisTool);
 
     // V3 Phone Integration Layer
     for (const tool of phoneTools) {
