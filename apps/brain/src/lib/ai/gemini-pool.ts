@@ -82,15 +82,10 @@ export class GeminiKeyPoolManager {
       }
     }
 
-    // Deduplicate and prioritize real Google Gemini API keys (starting with AIzaSy)
+    // Deduplicate and filter out demo placeholder if real keys exist
     const uniqueKeys = Array.from(new Set(rawKeys));
-    const genuineGeminiKeys = uniqueKeys.filter((k) => k.startsWith('AIzaSy'));
-    if (genuineGeminiKeys.length > 0) {
-      return genuineGeminiKeys;
-    }
-
     const validKeys = uniqueKeys.filter(
-      (k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here' && !k.startsWith('AQ.')
+      (k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here' && k.length > 20
     );
 
     if (validKeys.length > 0) {
@@ -193,7 +188,19 @@ export class GeminiKeyPoolManager {
       attempts++;
 
       try {
-        const result = await slot.client.models.generateContent(params);
+        // Enforce 6.5s per-key timeout to prevent individual key latency spikes from hitting Vercel 15s limit
+        let timer: NodeJS.Timeout | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Key ${slot.maskedKey} call timed out (6.5s limit)`)), 6500);
+        });
+
+        const result = await Promise.race([
+          slot.client.models.generateContent(params),
+          timeoutPromise,
+        ]).finally(() => {
+          if (timer) clearTimeout(timer);
+        });
+
         slot.successCount++;
         // Clear past cooldown on successful response
         slot.cooldownUntil = 0;
@@ -212,9 +219,9 @@ export class GeminiKeyPoolManager {
           throw err;
         }
 
-        if (isRateLimitError(err)) {
+        if (isRateLimitError(err) || msg.includes('timed out')) {
           slot.cooldownUntil = Date.now() + this.defaultCooldownMs;
-          logger.warn(`Gemini Key ${slot.maskedKey} hit rate limit (429/quota). Cooling down for 60s.`, {
+          logger.warn(`Gemini Key ${slot.maskedKey} rate limited or timed out. Cooling down for 60s.`, {
             maskedKey: slot.maskedKey,
             model: params.model,
             cooldownUntil: new Date(slot.cooldownUntil).toISOString(),
