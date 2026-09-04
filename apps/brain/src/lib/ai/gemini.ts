@@ -14,7 +14,12 @@ export const aiClient = {
   },
 };
 
-export const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const envModel = process.env.GEMINI_MODEL?.trim();
+// Automatically sanitize against non-existent models (e.g. gemini-3.5-flash)
+export const DEFAULT_MODEL =
+  envModel && !envModel.includes('3.5') && !envModel.includes('2.0')
+    ? envModel
+    : 'gemini-3-flash-preview';
 
 // Verified high-speed production fallback models
 export const FAST_FALLBACK_MODELS = [

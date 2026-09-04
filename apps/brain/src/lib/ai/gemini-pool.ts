@@ -82,9 +82,16 @@ export class GeminiKeyPoolManager {
       }
     }
 
-    // Deduplicate and filter out demo placeholder if real keys exist
+    // Deduplicate and prioritize real Google Gemini API keys (starting with AIzaSy)
     const uniqueKeys = Array.from(new Set(rawKeys));
-    const validKeys = uniqueKeys.filter((k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here');
+    const genuineGeminiKeys = uniqueKeys.filter((k) => k.startsWith('AIzaSy'));
+    if (genuineGeminiKeys.length > 0) {
+      return genuineGeminiKeys;
+    }
+
+    const validKeys = uniqueKeys.filter(
+      (k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here' && !k.startsWith('AQ.')
+    );
 
     if (validKeys.length > 0) {
       return validKeys;
@@ -176,8 +183,15 @@ export class GeminiKeyPoolManager {
   ): Promise<ReturnType<GoogleGenAI['models']['generateContent']>> {
     const candidates = this.getCandidateSlots();
     let lastError: unknown = null;
+    let attempts = 0;
+    const maxAttempts = Math.min(candidates.length, 2); // Max 2 key attempts to prevent Vercel 15s timeout
 
     for (const slot of candidates) {
+      if (attempts >= maxAttempts) {
+        break;
+      }
+      attempts++;
+
       try {
         const result = await slot.client.models.generateContent(params);
         slot.successCount++;
@@ -188,6 +202,16 @@ export class GeminiKeyPoolManager {
         lastError = err;
         slot.failureCount++;
 
+        const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+        // If the model does not exist (404) or bad request (400), don't retry other keys
+        if (msg.includes('not found') || msg.includes('404') || msg.includes('invalid_argument')) {
+          logger.error(`Gemini call failed permanently for model ${params.model}`, {
+            model: params.model,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
+
         if (isRateLimitError(err)) {
           slot.cooldownUntil = Date.now() + this.defaultCooldownMs;
           logger.warn(`Gemini Key ${slot.maskedKey} hit rate limit (429/quota). Cooling down for 60s.`, {
@@ -196,7 +220,6 @@ export class GeminiKeyPoolManager {
             cooldownUntil: new Date(slot.cooldownUntil).toISOString(),
             error: err instanceof Error ? err.message : String(err),
           });
-          // Continue to try the next key in the pool
           continue;
         }
 
@@ -206,8 +229,7 @@ export class GeminiKeyPoolManager {
           error: err instanceof Error ? err.message : String(err),
         });
 
-        // If it's a structural or general error, try one more key just in case it was a transient provider issue
-        if (candidates.length > 1) {
+        if (attempts < maxAttempts) {
           continue;
         } else {
           throw err;
