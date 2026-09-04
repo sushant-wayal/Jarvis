@@ -7,7 +7,7 @@
 export const PACKAGE_TO_APP: Record<string, string> = {
   // Messaging & Social
   'com.whatsapp': 'whatsapp',
-  'com.whatsapp.w4b': 'whatsapp_business',
+  'com.whatsapp.w4b': 'whatsapp',
   'com.instagram.android': 'instagram',
   'org.telegram.messenger': 'telegram',
   'com.facebook.orca': 'messenger',

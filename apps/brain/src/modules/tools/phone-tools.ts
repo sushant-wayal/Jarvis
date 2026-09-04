@@ -300,8 +300,11 @@ export const generateMessageBriefingTool: JarvisTool<{ timePeriod?: string }> = 
   execute: async (input, context) => {
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
     if (!phone || !phone.recentNotifications.length) {
+      const listenerActive = phone?.capabilities?.notificationListener;
       return {
-        summary: 'No notifications or messages available. Notification access is active in the Jarvis APK build.',
+        summary: listenerActive
+          ? 'You currently have no new notifications or unread messages across your connected apps.'
+          : 'No phone notifications available. Please grant Notification Access for Jarvis in Settings to read messages.',
         totalMessages: 0,
       };
     }

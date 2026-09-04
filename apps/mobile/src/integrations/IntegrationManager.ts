@@ -40,10 +40,8 @@ export class IntegrationManager {
 
     // Start notification listener if available (APK builds)
     if (notificationIntegration.isAvailable()) {
-      const granted = await notificationIntegration.isPermissionGranted();
-      if (granted) {
-        await notificationIntegration.startListening();
-      }
+      await notificationIntegration.startListening();
+      await notificationIntegration.syncActiveNotifications();
     }
 
     this.initialized = true;
@@ -52,16 +50,17 @@ export class IntegrationManager {
   // ── Capability map ─────────────────────────────────────────────────────────
 
   async getCapabilities(): Promise<IntegrationCapabilities> {
-    const [canCall, canSms] = await Promise.all([
+    const [canCall, canSms, notifGranted] = await Promise.all([
       phoneIntegration.canMakeCall(),
       phoneIntegration.canSendSms(),
+      notificationIntegration.isPermissionGranted(),
     ]);
 
     return {
       contacts: contactsIntegration.isPermissionGranted(),
       phoneCall: canCall,
       sms: canSms,
-      notificationListener: notificationIntegration.isAvailable(),
+      notificationListener: notifGranted,
       notificationReply: false, // Requires APK + listener + active canReply notification
       openApp: true,
     };

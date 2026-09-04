@@ -51,7 +51,12 @@ export default function SettingsScreen(): React.ReactElement {
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
 
   // Phone & Integration state
-  const { capabilities, requestContactsPermission } = useIntegrationBridge();
+  const {
+    capabilities,
+    requestContactsPermission,
+    requestNotificationPermission,
+    refreshCapabilities,
+  } = useIntegrationBridge();
   const [notifSettings, setNotifSettings] = React.useState<NotificationStoreSettings>(notificationContextStore.getSettings());
   const [aliases, setAliases] = React.useState<Record<string, string>>(contactsIntegration.getAliases());
   const [newAliasKey, setNewAliasKey] = React.useState<string>('');
@@ -106,8 +111,16 @@ export default function SettingsScreen(): React.ReactElement {
     loadMemories();
     loadLocation();
     loadKnownPlaces();
-    setNotifSettings(notificationContextStore.getSettings());
-    setAliases(contactsIntegration.getAliases());
+
+    const loadLocalStores = async () => {
+      await Promise.all([
+        notificationContextStore.initialize(),
+        contactsIntegration.initialize(),
+      ]);
+      setNotifSettings(notificationContextStore.getSettings());
+      setAliases(contactsIntegration.getAliases());
+    };
+    loadLocalStores();
 
     const unsubAdaptive = adaptiveLocationEngine.subscribe((metrics) => {
       setAdaptiveMetrics(metrics);
@@ -126,6 +139,8 @@ export default function SettingsScreen(): React.ReactElement {
         adaptiveLocationEngine.triggerNow(),
         notificationContextStore.initialize().then(() => setNotifSettings(notificationContextStore.getSettings())),
         contactsIntegration.initialize().then(() => setAliases(contactsIntegration.getAliases())),
+        refreshCapabilities(),
+        notificationIntegration.syncActiveNotifications(),
       ]);
     } finally {
       setRefreshing(false);
@@ -137,6 +152,10 @@ export default function SettingsScreen(): React.ReactElement {
       ...notifSettings.enabledApps,
       [appId]: enabled,
     };
+    setNotifSettings((prev) => ({
+      ...prev,
+      enabledApps: updated,
+    }));
     await notificationContextStore.updateSettings({ enabledApps: updated });
     setNotifSettings(notificationContextStore.getSettings());
   };
@@ -670,9 +689,9 @@ export default function SettingsScreen(): React.ReactElement {
               </Text>
             </View>
             <View style={styles.permChip}>
-              <View style={[styles.earbudDot, { backgroundColor: capabilities?.notificationListener ? colors.primaryFixed : colors.tertiaryFixed }]} />
+              <View style={[styles.earbudDot, { backgroundColor: capabilities?.notificationListener ? colors.primaryFixed : colors.error }]} />
               <Text style={[typography.bodySm, styles.permChipText]}>
-                Listener: {capabilities?.notificationListener ? 'Active' : 'APK Mode'}
+                Listener: {capabilities?.notificationListener ? 'Active' : 'Missing'}
               </Text>
             </View>
           </View>
@@ -690,6 +709,27 @@ export default function SettingsScreen(): React.ReactElement {
               }}
             >
               <Text style={styles.actionBtnText}>GRANT CONTACTS ACCESS</Text>
+            </TouchableOpacity>
+          )}
+
+          {!capabilities?.notificationListener && (
+            <TouchableOpacity
+              style={[styles.actionBtn, { marginTop: 8 }]}
+              onPress={async () => {
+                const res = await requestNotificationPermission();
+                if (res === 'granted') {
+                  Alert.alert('Granted', 'Notification listener authorized.');
+                } else if (res === 'unavailable') {
+                  Alert.alert('Unavailable', 'Notification listener requires an Android device.');
+                } else {
+                  Alert.alert(
+                    'Notification Access Required',
+                    'Please find "Jarvis" in the opened Android Settings and turn ON the switch to allow Jarvis to read notifications.'
+                  );
+                }
+              }}
+            >
+              <Text style={styles.actionBtnText}>GRANT NOTIFICATION ACCESS</Text>
             </TouchableOpacity>
           )}
 

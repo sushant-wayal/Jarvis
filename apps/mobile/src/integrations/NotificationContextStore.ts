@@ -77,7 +77,10 @@ export class NotificationContextStore {
 
   /** Add a new notification event, respecting privacy settings. */
   ingest(event: PhoneNotificationEvent): void {
-    if (!this.settings.enabledApps[event.app]) return;
+    const isAppEnabled =
+      this.settings.enabledApps[event.app] ??
+      (event.app === 'whatsapp_business' ? this.settings.enabledApps['whatsapp'] : false);
+    if (!isAppEnabled) return;
 
     const processed: PhoneNotificationEvent = {
       ...event,
@@ -187,7 +190,14 @@ export class NotificationContextStore {
   }
 
   async updateSettings(partial: Partial<NotificationStoreSettings>): Promise<void> {
-    this.settings = { ...this.settings, ...partial };
+    await this.initialize();
+    this.settings = {
+      ...this.settings,
+      ...partial,
+      enabledApps: partial.enabledApps
+        ? { ...this.settings.enabledApps, ...partial.enabledApps }
+        : this.settings.enabledApps,
+    };
     await AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATION_SETTINGS, JSON.stringify(this.settings));
     // Strip content from existing events if user just disabled storage
     if (partial.storeContent === false) {
@@ -254,7 +264,15 @@ export class NotificationContextStore {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFICATION_SETTINGS);
       if (raw) {
-        this.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw) as Partial<NotificationStoreSettings>;
+        this.settings = {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          enabledApps: {
+            ...DEFAULT_SETTINGS.enabledApps,
+            ...(parsed.enabledApps ?? {}),
+          },
+        };
       }
     } catch {
       this.settings = DEFAULT_SETTINGS;

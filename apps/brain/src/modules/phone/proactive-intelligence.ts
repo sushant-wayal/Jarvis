@@ -44,6 +44,23 @@ export class ProactiveIntelligenceService {
 
     // Filter by timePeriod if specified
     const filtered = this.filterByPeriod(notifications, timePeriod);
+    if (filtered.length === 0) {
+      if (notifications.length > 0 && timePeriod) {
+        const fallbackBriefing = this.generateBriefing(phoneContext, undefined);
+        return {
+          ...fallbackBriefing,
+          summaryText: `No new messages specifically from ${timePeriod}, but overall: ${fallbackBriefing.summaryText}`,
+        };
+      }
+      return {
+        summaryText: 'You have no recent messages across your connected apps.',
+        totalMessages: 0,
+        unansweredCount: 0,
+        actionItems: [],
+        highlights: [],
+      };
+    }
+
     const actionItems = this.detectActionItems(filtered);
 
     // Group by sender

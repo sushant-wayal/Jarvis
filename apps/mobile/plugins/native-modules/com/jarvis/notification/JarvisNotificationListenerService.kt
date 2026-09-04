@@ -19,6 +19,7 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         // Cache active reply actions by key for background RemoteInput reply execution
         val replyActionCache = mutableMapOf<String, NotificationReplyAction>()
         var isServiceConnected = false
+        var instance: JarvisNotificationListenerService? = null
     }
 
     data class NotificationReplyAction(
@@ -29,19 +30,36 @@ class JarvisNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        instance = this
         isServiceConnected = true
         Log.i(TAG, "Jarvis NotificationListenerService connected.")
+        syncActiveNotifications()
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        instance = null
         isServiceConnected = false
         Log.i(TAG, "Jarvis NotificationListenerService disconnected.")
     }
 
+    fun syncActiveNotifications() {
+        try {
+            val activeNotifs = activeNotifications ?: return
+            for (sbn in activeNotifs) {
+                processAndBroadcastNotification(sbn)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing active notifications: ${e.message}")
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
+        processAndBroadcastNotification(sbn)
+    }
 
+    private fun processAndBroadcastNotification(sbn: StatusBarNotification) {
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
         val packageName = sbn.packageName ?: return
@@ -61,8 +79,26 @@ class JarvisNotificationListenerService : NotificationListenerService() {
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: ""
         val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
 
-        val finalSender = if (title.isNotBlank()) title else conversationTitle
-        val finalContent = if (bigText.isNotBlank()) bigText else text
+        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        val textLines = if (lines != null && lines.isNotEmpty()) {
+            lines.filterNotNull().joinToString("\n") { it.toString() }
+        } else {
+            ""
+        }
+
+        val finalSender = when {
+            title.isNotBlank() -> title
+            conversationTitle.isNotBlank() -> conversationTitle
+            subText.isNotBlank() -> subText
+            else -> ""
+        }
+
+        val finalContent = when {
+            bigText.isNotBlank() -> bigText
+            textLines.isNotBlank() -> textLines
+            text.isNotBlank() -> text
+            else -> ""
+        }
 
         if (finalSender.isBlank() && finalContent.isBlank()) {
             return

@@ -55,6 +55,17 @@ class JarvisNotificationModule(private val reactContext: ReactApplicationContext
     }
 
     @ReactMethod
+    fun isPermissionGranted(promise: Promise) {
+        try {
+            val packageName = reactContext.packageName
+            val enabledPackages = NotificationManagerCompat.getEnabledListenerPackages(reactContext)
+            promise.resolve(enabledPackages.contains(packageName))
+        } catch (e: Exception) {
+            promise.reject("ERR_CHECK_PERMISSION", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun isServiceRunning(promise: Promise) {
         try {
             val packageName = reactContext.packageName
@@ -63,6 +74,21 @@ class JarvisNotificationModule(private val reactContext: ReactApplicationContext
             promise.resolve(isEnabled && JarvisNotificationListenerService.isServiceConnected)
         } catch (e: Exception) {
             promise.reject("ERR_CHECK_SERVICE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun syncActiveNotifications(promise: Promise) {
+        try {
+            val service = JarvisNotificationListenerService.instance
+            if (service != null) {
+                service.syncActiveNotifications()
+                promise.resolve(true)
+            } else {
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            promise.reject("ERR_SYNC_NOTIFS", e.message, e)
         }
     }
 
@@ -94,6 +120,8 @@ class JarvisNotificationModule(private val reactContext: ReactApplicationContext
                 }
                 receiverRegistered = true
             }
+            // Proactively sync existing notifications currently in the status bar
+            JarvisNotificationListenerService.instance?.syncActiveNotifications()
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("ERR_START_LISTENING", e.message, e)

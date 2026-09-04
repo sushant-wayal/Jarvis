@@ -27,6 +27,10 @@ export interface IntegrationBridgeValue {
   buildPhoneContext: () => Promise<PhoneContext>;
   /** Request contacts permission explicitly (e.g. from settings) */
   requestContactsPermission: () => Promise<'granted' | 'denied'>;
+  /** Request notification listener access (opens system settings) */
+  requestNotificationPermission: () => Promise<'granted' | 'denied' | 'unavailable'>;
+  /** Refresh current device capabilities */
+  refreshCapabilities: () => Promise<IntegrationCapabilities>;
 }
 
 const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
@@ -85,11 +89,35 @@ export function useIntegrationBridge(): IntegrationBridgeValue {
     []
   );
 
+  const requestNotificationPermission = React.useCallback(
+    async (): Promise<'granted' | 'denied' | 'unavailable'> => {
+      const { notificationIntegration } = await import('../integrations/NotificationIntegration');
+      const result = await notificationIntegration.requestPermission();
+      await notificationIntegration.startListening();
+      await notificationIntegration.syncActiveNotifications();
+      const caps = await integrationManager.getCapabilities();
+      setCapabilities(caps);
+      return result;
+    },
+    []
+  );
+
+  const refreshCapabilities = React.useCallback(
+    async (): Promise<IntegrationCapabilities> => {
+      const caps = await integrationManager.getCapabilities();
+      setCapabilities(caps);
+      return caps;
+    },
+    []
+  );
+
   return {
     ready,
     capabilities: capabilities ?? DEFAULT_CAPABILITIES,
     executeAction,
     buildPhoneContext,
     requestContactsPermission,
+    requestNotificationPermission,
+    refreshCapabilities,
   };
 }

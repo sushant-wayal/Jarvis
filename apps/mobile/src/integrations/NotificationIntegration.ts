@@ -25,10 +25,12 @@ import { notificationContextStore } from './NotificationContextStore';
 
 // The native module is only present in APK builds
 const JarvisNotificationListener = NativeModules.JarvisNotificationListener as {
+  isPermissionGranted?: () => Promise<boolean>;
   isServiceRunning: () => Promise<boolean>;
   requestListenerPermission: () => Promise<void>;
   startListening: () => Promise<void>;
   stopListening: () => Promise<void>;
+  syncActiveNotifications?: () => Promise<boolean>;
 } | undefined;
 
 export class NotificationIntegration {
@@ -46,8 +48,8 @@ export class NotificationIntegration {
     if (!this.isAvailable()) return 'unavailable';
     try {
       await JarvisNotificationListener!.requestListenerPermission();
-      const running = await JarvisNotificationListener!.isServiceRunning();
-      return running ? 'granted' : 'denied';
+      const granted = await this.isPermissionGranted();
+      return granted ? 'granted' : 'denied';
     } catch {
       return 'denied';
     }
@@ -56,7 +58,23 @@ export class NotificationIntegration {
   async isPermissionGranted(): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      return JarvisNotificationListener!.isServiceRunning();
+      if (JarvisNotificationListener?.isPermissionGranted) {
+        return await JarvisNotificationListener.isPermissionGranted();
+      }
+      return await JarvisNotificationListener!.isServiceRunning();
+    } catch {
+      return false;
+    }
+  }
+
+  /** Sync notifications already active in the status bar */
+  async syncActiveNotifications(): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      if (JarvisNotificationListener?.syncActiveNotifications) {
+        return await JarvisNotificationListener.syncActiveNotifications();
+      }
+      return false;
     } catch {
       return false;
     }
@@ -68,12 +86,18 @@ export class NotificationIntegration {
 
     try {
       await JarvisNotificationListener!.startListening();
-      this.emitter = new NativeEventEmitter(NativeModules.JarvisNotificationListener);
-      this.subscription = this.emitter.addListener(
-        'onNotificationPosted',
-        this.handleRawNotification.bind(this)
-      );
+      if (!this.emitter) {
+        this.emitter = new NativeEventEmitter(NativeModules.JarvisNotificationListener);
+      }
+      if (!this.subscription) {
+        this.subscription = this.emitter.addListener(
+          'onNotificationPosted',
+          this.handleRawNotification.bind(this)
+        );
+      }
       this.running = true;
+      // Proactively pull active notifications from status bar
+      await this.syncActiveNotifications();
     } catch {
       this.running = false;
     }
@@ -115,13 +139,17 @@ export class NotificationIntegration {
     if (!app) return null; // Not a tracked app
 
     const sender = String(
-      raw.title ?? raw.sender ?? raw.extraTitle ?? ''
+      raw.sender || raw.title || raw.extraTitle || raw.subText || app
     ).trim();
 
     if (!sender) return null; // Can't use a notification with no sender
 
-    const content = raw.text ? String(raw.text).trim() : undefined;
-    const notificationId = String(raw.id ?? raw.notificationId ?? `${Date.now()}`);
+    const content = raw.text
+      ? String(raw.text).trim()
+      : raw.bigText
+      ? String(raw.bigText).trim()
+      : undefined;
+    const notificationId = String(raw.id ?? raw.notificationId ?? `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
 
     return {
       id: notificationId,
