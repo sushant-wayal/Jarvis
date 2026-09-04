@@ -21,24 +21,7 @@ import { integrationManager } from '../src/integrations/IntegrationManager';
 import { reminderScheduler } from '../src/services/reminderScheduler';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
-const SAMPLE_PREVIEW_RESPONSE = `### Notification Briefing
-I retrieved 3 active updates across your observed messaging apps:
 
-• **WhatsApp (Sarah Connor)**: "Hey Sushant, are we still meeting for lunch at 1:00 PM?"
-• **WhatsApp (Project Alpha)**: "Staging build v2.4 deployed successfully. All unit tests passed."
-• **Slack (#engineering)**: "Alex mentioned you in a comment on PR #104: *Looks good to merge!*"
-
-### Upcoming Agenda
-• **1:00 PM**: Lunch at Bistro 9
-• **3:30 PM**: Design Architecture Sync with Mobile Team
-• **6:00 PM**: Review flight booking confirmation
-
-### System Health
-• **Network**: Connected to \`192.168.1.5:4000\`
-• **Location Awareness**: Active (Proximity engine running)
-• **Earbud Link**: Standby · Single-tap ready
-
-*Tap the "✕" above to return to ambient greeting, or tap the mic below to speak.*`;
 
 export default function HomeScreen(): React.ReactElement {
   const {
@@ -196,8 +179,8 @@ export default function HomeScreen(): React.ReactElement {
   const isListeningState = jarvisState === 'LISTENING';
   const isThinkingState = jarvisState === 'THINKING' || jarvisState === 'PROCESSING';
 
-  // Active response display (initialized with sample text for immediate UI inspection)
-  const [activeResponse, setActiveResponse] = React.useState<string | null>(SAMPLE_PREVIEW_RESPONSE);
+  // Active response display — starts empty, populated after each voice cycle
+  const [activeResponse, setActiveResponse] = React.useState<string | null>(null);
 
   // Sync activeResponse whenever assistantSpokenText updates with new content
   React.useEffect(() => {
