@@ -13,6 +13,8 @@
     "vercel-build": "npm run build:shared && npm run build:brain",
     "build:brain": "npm run build --workspace=apps/brain",
     "build:shared": "npm run build --workspace=packages/shared",
+    "build:mobile:apk": "npm run build:apk --workspace=apps/mobile",
+    "build:mobile:apk:prod": "npm run build:apk:prod --workspace=apps/mobile",
     "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
