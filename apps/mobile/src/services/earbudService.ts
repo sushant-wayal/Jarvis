@@ -1,6 +1,7 @@
 import { EarbudEventType, EarbudSettings, EarbudStatus } from '@jarvis/shared';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio, AVPlaybackStatus } from 'expo-av';
+import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import {
   ERROR_CHIME_BASE64,
   PROCESS_CHIME_BASE64,
@@ -12,15 +13,31 @@ type EarbudListener = (event: EarbudEventType) => void;
 
 const EARBUD_STORAGE_KEY = 'jarvis:earbud_settings';
 
+// Default brain URL — matches apiClient
+const DEFAULT_BRAIN_URL =
+  process.env.EXPO_PUBLIC_JARVIS_API_URL || 'https://brainofjarvis.vercel.app/api/v1';
+
+// Native module reference (only available in real builds, not Expo Go)
+const { JarvisEarbudModule } = NativeModules as {
+  JarvisEarbudModule?: {
+    startService: (brainUrl: string) => Promise<void>;
+    stopService: () => Promise<void>;
+    EARBUD_TAP_EVENT: string;
+  };
+};
+
+const hasNativeModule = Boolean(JarvisEarbudModule);
+
 class EarbudService {
   private listeners: Set<EarbudListener> = new Set();
   private carrierSound: Audio.Sound | null = null;
   private chimeSound: Audio.Sound | null = null;
+  private nativeEventSubscription: ReturnType<NativeEventEmitter['addListener']> | null = null;
   private isStandbyRunning = false;
   private lastTapTimestamp = 0;
   private tapTimeout: ReturnType<typeof setTimeout> | null = null;
-  private wasPlayingBefore = true;
   private isInternalPause = false;
+  private wasPlayingBefore = true;
 
   private settings: EarbudSettings = {
     enabled: true,
@@ -50,9 +67,9 @@ class EarbudService {
     }
 
     if (this.settings.enabled && this.settings.backgroundStandby) {
-      this.startStandby();
+      if (!hasNativeModule) await this.startCarrierStandby();
     } else {
-      this.stopStandby();
+      if (!hasNativeModule) await this.stopCarrierStandby();
     }
   }
 
@@ -68,9 +85,15 @@ class EarbudService {
   }
 
   /**
-   * Initializes audio session for background listening and sets up MediaSession action handlers
+   * Initializes audio session and earbud tap detection.
+   *
+   * Strategy:
+   *  - Android real build → use the native JarvisForegroundService + MediaButtonReceiver.
+   *    This works with screen off, phone in pocket, JS thread dead.
+   *  - Expo Go / fallback → use the carrier-sound polling approach (foreground only).
    */
   public async initialize(): Promise<void> {
+    // Load persisted settings
     try {
       const raw = await AsyncStorage.getItem(EARBUD_STORAGE_KEY);
       if (raw) {
@@ -81,6 +104,7 @@ class EarbudService {
       // Fallback to defaults
     }
 
+    // Set up audio mode — single source of truth for the entire app
     try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -88,113 +112,88 @@ class EarbudService {
         staysActiveInBackground: true,
         shouldDuckAndroid: false,
         interruptionModeAndroid: 1, // DoNotMix
-        interruptionModeIOS: 1, // DoNotMix
+        interruptionModeIOS: 1,     // DoNotMix
       });
-
-      this.setupMediaSession();
-
-      if (this.settings.enabled && this.settings.backgroundStandby) {
-        await this.startStandby();
-      }
     } catch {
-      // Audio mode fallback
+      // Audio mode fallback — non-fatal
     }
-  }
 
-  /**
-   * Configures MediaSession API for web / browser runtimes where available
-   */
-  private setupMediaSession(): void {
-    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
-      try {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: 'Jarvis Neural Interface',
-          artist: 'Earbud Standby Active',
-          album: 'Jarvis AI Assistant',
-        });
-
-        const handleMediaAction = (type: 'PLAY_PAUSE' | 'NEXT' | 'PREV' | 'STOP') => {
-          if (!this.settings.enabled) return;
-          this.handleRawMediaButton(type);
-        };
-
-        navigator.mediaSession.setActionHandler('play', () => handleMediaAction('PLAY_PAUSE'));
-        navigator.mediaSession.setActionHandler('pause', () => handleMediaAction('PLAY_PAUSE'));
-        navigator.mediaSession.setActionHandler('nexttrack', () => handleMediaAction('NEXT'));
-        navigator.mediaSession.setActionHandler('previoustrack', () => handleMediaAction('PREV'));
-        navigator.mediaSession.setActionHandler('stop', () => handleMediaAction('STOP'));
-      } catch {
-        // MediaSession not supported in this runtime
+    if (hasNativeModule && Platform.OS === 'android') {
+      await this.initNativeService();
+    } else {
+      // Expo Go / iOS fallback
+      this.setupWebMediaSession();
+      if (this.settings.enabled && this.settings.backgroundStandby) {
+        await this.startCarrierStandby();
       }
     }
   }
 
-  /**
-   * Distinguishes single tap from double tap
-   */
-  private handleRawMediaButton(type: 'PLAY_PAUSE' | 'NEXT' | 'PREV' | 'STOP'): void {
-    console.log('[EarbudService] Raw media button event intercepted:', type);
-    const now = Date.now();
+  // ─── Native service path (real Android build) ───────────────────────────
 
-    if (type === 'NEXT') {
-      this.emitEvent('DOUBLE_TAP');
-      return;
-    }
+  private async initNativeService(): Promise<void> {
+    try {
+      // Start the foreground service — it keeps itself alive via START_STICKY
+      await JarvisEarbudModule!.startService(DEFAULT_BRAIN_URL);
+      this.isStandbyRunning = true;
+      this.status.isStandbyActive = true;
 
-    if (type === 'PREV') {
-      this.emitEvent('TRIPLE_TAP');
-      return;
-    }
-
-    if (type === 'STOP') {
-      this.emitEvent('LONG_PRESS');
-      return;
-    }
-
-    // PLAY_PAUSE single/double tap discriminator
-    if (this.tapTimeout) {
-      // Second tap arrived within 380ms -> Double tap
-      clearTimeout(this.tapTimeout);
-      this.tapTimeout = null;
-      this.lastTapTimestamp = 0;
-      this.emitEvent('DOUBLE_TAP');
-    } else {
-      this.lastTapTimestamp = now;
-      this.tapTimeout = setTimeout(() => {
-        this.tapTimeout = null;
-        this.emitEvent('SINGLE_TAP');
-      }, 350);
+      // Subscribe to native media button events from the service
+      const emitter = new NativeEventEmitter(NativeModules.JarvisEarbudModule);
+      this.nativeEventSubscription = emitter.addListener(
+        JarvisEarbudModule!.EARBUD_TAP_EVENT,
+        (eventType: string) => {
+          this.emitEvent(eventType as EarbudEventType);
+        }
+      );
+    } catch (err) {
+      console.warn('[EarbudService] Native service failed to start, falling back to carrier:', err);
+      await this.startCarrierStandby();
     }
   }
 
+  // ─── Tap guard API (used by useEarbudManager) ───────────────────────────
+
   /**
-   * Broadcasts the recognized earbud event to all active listeners
+   * Suppresses tap detection during recording so audio mode changes
+   * don't cause false-trigger events.
    */
+  public suppressTapDetection(): void {
+    this.isInternalPause = true;
+  }
+
+  /**
+   * Re-enables tap detection after a recording/processing cycle completes.
+   * Includes a settling delay so audio mode transitions stabilise.
+   */
+  public resumeTapDetection(delayMs = 400): void {
+    setTimeout(() => {
+      this.isInternalPause = false;
+      this.wasPlayingBefore = true;
+    }, delayMs);
+  }
+
+  // ─── Event emission ─────────────────────────────────────────────────────
+
   public emitEvent(event: EarbudEventType): void {
     this.status.lastEvent = event;
     this.status.lastEventTimestamp = Date.now();
-
     for (const listener of this.listeners) {
       try {
         listener(event);
       } catch {
-        // ignore listener errors
+        // Ignore listener errors
       }
     }
   }
 
-  /**
-   * Triggers a simulated earbud event for UI testing
-   */
   public triggerSimulatedTap(eventType: EarbudEventType = 'SINGLE_TAP'): void {
     this.emitEvent(eventType);
   }
 
-  /**
-   * Starts inaudible looped background carrier to anchor audio focus in Android/iOS.
-   * Attaches playback status listener to intercept Bluetooth earbud Play/Pause hardware taps.
-   */
-  public async startStandby(): Promise<void> {
+  // ─── Carrier standby (Expo Go / iOS fallback) ───────────────────────────
+
+  public async startCarrierStandby(): Promise<void> {
     if (this.isStandbyRunning) return;
 
     try {
@@ -213,27 +212,22 @@ class EarbudService {
       this.isStandbyRunning = true;
       this.status.isStandbyActive = true;
       this.wasPlayingBefore = true;
-      // Delay clearing the pause guard so the initial status update
-      // (isPlaying = true) doesn't false-trigger as a tap
+
+      // Delay clearing the guard so the initial status update doesn't false-fire
       setTimeout(() => {
         this.isInternalPause = false;
       }, 500);
 
-      // Intercept Bluetooth earbud hardware Play/Pause triggers
       sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
         if (!status.isLoaded) return;
 
         if (this.isStandbyRunning && !this.isInternalPause) {
-          // When user taps their Bluetooth earbud, Android pauses the active audio track
           if (this.wasPlayingBefore && !status.isPlaying) {
-            // Debounce: ignore if another tap was emitted within 500ms
             const now = Date.now();
             if (now - this.lastTapTimestamp > 500) {
               this.handleRawMediaButton('PLAY_PAUSE');
             }
-            // Resume carrier playback so it stays primed for future taps.
-            // Use a brief internal pause guard so the resume itself doesn't
-            // trigger another false detection.
+            // Re-prime carrier with isInternalPause guard to prevent self-triggering
             this.isInternalPause = true;
             sound.playAsync().catch(() => {}).finally(() => {
               setTimeout(() => {
@@ -247,37 +241,14 @@ class EarbudService {
         this.wasPlayingBefore = status.isPlaying;
       });
     } catch (err) {
-      console.warn('[EarbudService] Standby carrier failed to start:', err);
+      console.warn('[EarbudService] Carrier standby failed:', err);
       this.isStandbyRunning = false;
       this.status.isStandbyActive = false;
       this.isInternalPause = false;
     }
   }
 
-  /**
-   * Suppresses tap detection during recording/processing.
-   * Must be paired with resumeTapDetection() when recording ends.
-   */
-  public suppressTapDetection(): void {
-    this.isInternalPause = true;
-  }
-
-  /**
-   * Resumes tap detection after recording/processing completes.
-   * Includes a short settling delay so audio mode changes stabilize.
-   */
-  public resumeTapDetection(delayMs = 400): void {
-    setTimeout(() => {
-      this.isInternalPause = false;
-      this.wasPlayingBefore = true;
-    }, delayMs);
-  }
-
-
-  /**
-   * Stops background audio standby
-   */
-  public async stopStandby(): Promise<void> {
+  public async stopCarrierStandby(): Promise<void> {
     this.isInternalPause = true;
     if (this.carrierSound) {
       try {
@@ -294,9 +265,58 @@ class EarbudService {
   }
 
   /**
-   * Plays a subtle sound chime directly through earbuds.
-   * Sets isInternalPause for the duration to suppress false tap detection.
+   * Web/browser MediaSession API — works in Expo Go web preview only.
    */
+  private setupWebMediaSession(): void {
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Jarvis Neural Interface',
+          artist: 'Earbud Standby Active',
+          album: 'Jarvis AI Assistant',
+        });
+
+        const handle = (type: 'PLAY_PAUSE' | 'NEXT' | 'PREV' | 'STOP') => {
+          if (!this.settings.enabled) return;
+          this.handleRawMediaButton(type);
+        };
+
+        navigator.mediaSession.setActionHandler('play',          () => handle('PLAY_PAUSE'));
+        navigator.mediaSession.setActionHandler('pause',         () => handle('PLAY_PAUSE'));
+        navigator.mediaSession.setActionHandler('nexttrack',     () => handle('NEXT'));
+        navigator.mediaSession.setActionHandler('previoustrack', () => handle('PREV'));
+        navigator.mediaSession.setActionHandler('stop',          () => handle('STOP'));
+      } catch {
+        // MediaSession not supported in this runtime
+      }
+    }
+  }
+
+  /**
+   * Single/double tap discriminator for the carrier-sound / web fallback paths.
+   */
+  private handleRawMediaButton(type: 'PLAY_PAUSE' | 'NEXT' | 'PREV' | 'STOP'): void {
+    if (type === 'NEXT')  { this.emitEvent('DOUBLE_TAP'); return; }
+    if (type === 'PREV')  { this.emitEvent('TRIPLE_TAP'); return; }
+    if (type === 'STOP')  { this.emitEvent('LONG_PRESS'); return; }
+
+    const now = Date.now();
+    if (this.tapTimeout) {
+      clearTimeout(this.tapTimeout);
+      this.tapTimeout = null;
+      this.lastTapTimestamp = 0;
+      this.emitEvent('DOUBLE_TAP');
+    } else {
+      this.lastTapTimestamp = now;
+      this.tapTimeout = setTimeout(() => {
+        this.tapTimeout = null;
+        this.emitEvent('SINGLE_TAP');
+      }, 350);
+    }
+  }
+
+  // ─── Chime playback ─────────────────────────────────────────────────────
+
   private async playChime(base64Wav: string, volume = 0.6): Promise<void> {
     if (!this.settings.playFeedbackChimes) return;
 
@@ -318,8 +338,7 @@ class EarbudService {
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync().catch(() => {});
-          // Re-enable tap detection 200ms after chime finishes to let
-          // the carrier sound's status stabilize before we start listening again
+          // Re-enable tap detection 200ms after chime finishes
           setTimeout(() => {
             this.isInternalPause = false;
           }, 200);
@@ -331,16 +350,19 @@ class EarbudService {
     }
   }
 
-  public async playWakeChime(): Promise<void> {
-    await this.playChime(WAKE_CHIME_BASE64, 0.7);
-  }
+  public async playWakeChime():    Promise<void> { await this.playChime(WAKE_CHIME_BASE64, 0.7); }
+  public async playProcessChime(): Promise<void> { await this.playChime(PROCESS_CHIME_BASE64, 0.55); }
+  public async playErrorChime():   Promise<void> { await this.playChime(ERROR_CHIME_BASE64, 0.6); }
 
-  public async playProcessChime(): Promise<void> {
-    await this.playChime(PROCESS_CHIME_BASE64, 0.55);
-  }
+  // ─── Cleanup ─────────────────────────────────────────────────────────────
 
-  public async playErrorChime(): Promise<void> {
-    await this.playChime(ERROR_CHIME_BASE64, 0.6);
+  public async destroy(): Promise<void> {
+    this.nativeEventSubscription?.remove();
+    this.nativeEventSubscription = null;
+    if (hasNativeModule && Platform.OS === 'android') {
+      try { await JarvisEarbudModule!.stopService(); } catch { /* ignore */ }
+    }
+    await this.stopCarrierStandby();
   }
 }
 

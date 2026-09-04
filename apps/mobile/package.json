@@ -9,6 +9,9 @@
     "web": "expo start --web",
     "build:apk": "eas build --platform android --profile preview --clear-cache",
     "build:apk:prod": "eas build --platform android --profile production --clear-cache",
+    "prebuild": "expo prebuild --clean --platform android",
+    "build:local:apk": "expo prebuild --clean --platform android && cd android && ./gradlew assembleRelease",
+    "build:local:apk:win": "expo prebuild --clean --platform android && cd android && gradlew.bat assembleRelease",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },

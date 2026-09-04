@@ -42,12 +42,14 @@
         "CALL_PHONE",
         "SEND_SMS",
         "READ_SMS",
-        "BIND_NOTIFICATION_LISTENER_SERVICE"
+        "BIND_NOTIFICATION_LISTENER_SERVICE",
+        "POST_NOTIFICATIONS"
       ]
     },
     "plugins": [
       "expo-router",
-      "./plugins/withNotificationListener"
+      "./plugins/withNotificationListener",
+      "./plugins/withAndroidEarbudService"
     ],
     "extra": {
       "router": {},
