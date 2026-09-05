@@ -117,7 +117,7 @@ export class PhoneIntegration {
     }
   }
 
-  /** Send SMS — opens the native SMS composer pre-filled. */
+  /** Send SMS — attempts direct silent background SMS via native module, or composer fallback. */
   async sendSms(contact: ResolvedContact, message: string): Promise<ActionResult> {
     const number = contact.phoneNumbers[0]?.number;
     if (!number) {
@@ -127,14 +127,31 @@ export class PhoneIntegration {
       };
     }
 
+    const sanitized = number.replace(/[^0-9+]/g, '');
+
+    // 1. Try silent background SMS via native Android module (APK builds)
+    if (Platform.OS === 'android') {
+      const nativeModule = NativeModules.JarvisNotificationListener || NativeModules.JarvisEarbudModule;
+      if (nativeModule?.sendDirectSms) {
+        try {
+          const sent = await nativeModule.sendDirectSms(sanitized, message);
+          if (sent) {
+            return { success: true, message: `Message sent to ${contact.displayName}.` };
+          }
+        } catch {
+          // Fall through to composer fallback
+        }
+      }
+    }
+
+    // 2. Fallback for Expo Go: opens composer
     try {
       const isAvailable = await SMS.isAvailableAsync();
       if (!isAvailable) {
-        // Fallback: open sms: URL
         return this.sendSmsViaLinking(number, message);
       }
 
-      const { result } = await SMS.sendSMSAsync([number.replace(/\s+/g, '')], message);
+      const { result } = await SMS.sendSMSAsync([sanitized], message);
 
       if (result === 'sent' || result === 'unknown') {
         return { success: true, message: `SMS ready to send to ${contact.displayName}.` };

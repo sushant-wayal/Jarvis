@@ -60,7 +60,9 @@ export class NotificationReplyExecutor {
       // Attempt to use the native reply module (APK only)
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { NativeModules } = require('react-native');
-      const replyModule = NativeModules.JarvisNotificationReply as {
+      const replyModule = (NativeModules.JarvisNotificationListener ||
+        NativeModules.JarvisNotificationReply ||
+        NativeModules.JarvisEarbudModule) as {
         replyToNotification: (key: string, message: string) => Promise<boolean>;
       } | undefined;
 

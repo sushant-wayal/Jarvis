@@ -276,6 +276,28 @@ class JarvisNotificationModule(private val reactContext: ReactApplicationContext
     }
 
     @ReactMethod
+    fun sendDirectSms(phoneNumber: String, message: String, promise: Promise) {
+        try {
+            val sanitized = phoneNumber.replace(Regex("[^0-9+]"), "")
+            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                reactContext.getSystemService(android.telephony.SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                android.telephony.SmsManager.getDefault()
+            }
+            val parts = smsManager.divideMessage(message)
+            if (parts.size > 1) {
+                smsManager.sendMultipartTextMessage(sanitized, null, parts, null, null)
+            } else {
+                smsManager.sendTextMessage(sanitized, null, message, null, null)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERR_SEND_DIRECT_SMS", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun addListener(eventName: String) {
         // Required for RN built-in Event Emitter
     }
