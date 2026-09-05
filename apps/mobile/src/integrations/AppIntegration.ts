@@ -258,20 +258,8 @@ export class AppIntegration {
     appName = 'spotify',
     videoId?: string
   ): Promise<ActionResult> {
-    let cleanApp = appName.toLowerCase().trim();
-    // Aggressively clean query: remove "on spotify", "on youtube", leading "play", etc.
-    let cleanQuery = query
-      .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-      .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-      .replace(/^(?:please\s+|can\s+you\s+)?play\s+/i, '')
-      .trim();
-    if (!cleanQuery) cleanQuery = query.trim();
-
-    if (query.toLowerCase().includes('spotify') && !cleanApp.includes('youtube')) {
-      cleanApp = 'spotify';
-    } else if (query.toLowerCase().includes('youtube') && !cleanApp.includes('spotify')) {
-      cleanApp = query.toLowerCase().includes('music') ? 'youtube_music' : 'youtube';
-    }
+    const cleanApp = appName.toLowerCase().trim();
+    const cleanQuery = query.trim();
 
     // ── 1. Spotify Direct Playback ──────────────────────────────────────────
     if (cleanApp.includes('spotify')) {

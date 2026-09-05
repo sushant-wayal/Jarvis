@@ -137,10 +137,10 @@ describe('Phone Tools (Brain)', () => {
   });
 
   it('playMediaTool creates PLAY_MEDIA action for Spotify and YouTube', async () => {
-    const resSpotify = (await playMediaTool.execute({ query: 'Believer', app: 'spotify' }, mockToolContext)) as Record<string, any>;
+    const resSpotify = (await playMediaTool.execute({ query: 'Tum Mere Ho by Anuv Jain', app: 'spotify' }, mockToolContext)) as Record<string, any>;
     expect(resSpotify.type).toBe('PLAY_MEDIA');
     expect(resSpotify.action).toBe('PLAY_MEDIA');
-    expect(resSpotify.query).toBe('Believer');
+    expect(resSpotify.query).toBe('Tum Mere Ho by Anuv Jain');
     expect(resSpotify.app).toBe('spotify');
     expect(resSpotify.response).toContain('Spotify');
 
@@ -150,22 +150,16 @@ describe('Phone Tools (Brain)', () => {
     expect(resYT.response).toContain('YouTube');
   });
 
-  it('playMediaTool aggressively cleans query and infers target app', async () => {
-    // Strips trailing 'on spotify' and leading 'play'
-    const resClean = (await playMediaTool.execute({ query: 'play tum mere ho by anuv jain on spotify' }, mockToolContext)) as Record<string, any>;
+  it('playMediaTool preserves clean query and formats playback response', async () => {
+    const resClean = (await playMediaTool.execute({ query: 'Tum Mere Ho', app: 'spotify' }, mockToolContext)) as Record<string, any>;
     expect(resClean.action).toBe('PLAY_MEDIA');
-    expect(resClean.query).toBe('tum mere ho by anuv jain');
+    expect(resClean.query).toBe('Tum Mere Ho');
     expect(resClean.app).toBe('spotify');
-    expect(resClean.response).toBe('Playing "tum mere ho by anuv jain" on Spotify.');
+    expect(resClean.response).toBe('Playing "Tum Mere Ho" on Spotify.');
 
-    // Strips 'on youtube' and infers youtube app
-    const resYT = (await playMediaTool.execute({ query: 'coldplay viva la vida on youtube' }, mockToolContext)) as Record<string, any>;
-    expect(resYT.query).toBe('coldplay viva la vida');
-    expect(resYT.app).toBe('youtube');
-
-    // Infers youtube_music
-    const resYTM = (await playMediaTool.execute({ query: 'starboy on youtube music' }, mockToolContext)) as Record<string, any>;
-    expect(resYTM.query).toBe('starboy');
+    const resYTM = (await playMediaTool.execute({ query: 'Starboy', app: 'youtube_music' }, mockToolContext)) as Record<string, any>;
+    expect(resYTM.query).toBe('Starboy');
     expect(resYTM.app).toBe('youtube_music');
+    expect(resYTM.response).toBe('Playing "Starboy" on YouTube Music.');
   });
 });

@@ -408,39 +408,27 @@ export const playMediaTool: JarvisTool<{
 }> = {
   name: 'play_media',
   description:
-    'Play a song, artist, playlist, track, or video directly on Spotify, YouTube, or YouTube Music. Triggers immediate playback instead of just opening the app home screen. Use when user says "play [song/video]", "play [song] on Spotify", "play [video] on YouTube".',
+    'Play a song, artist, playlist, track, or video directly on Spotify, YouTube, or YouTube Music. Triggers immediate playback instead of just opening the app home screen. Use whenever the user asks to play, stream, or listen to music, songs, artists, or watch videos in any phrasing (e.g. "on spotify play tum mere ho by anuv jain", "play believer on spotify", "spotify pe anuv jain chalao", "play funny cat videos on youtube", "put on viva la vida").',
   category: 'SYSTEM',
   riskLevel: 'SAFE',
   requiresConfirmation: false,
   inputSchema: z.object({
-    query: z.string().describe('The name of the song, artist, album, playlist, or video to play.'),
+    query: z
+      .string()
+      .describe(
+        'The pure, clean search query: song title, artist, album, playlist, or video title to play. Extract ONLY the media title or artist name from the user\'s natural language request—DO NOT include platform names ("Spotify", "YouTube"), commanding verbs ("play", "stream", "put on", "chalao", "bajao", "lagao"), or prepositions ("on", "in", "via", "pe"). For example: for "on spotify play tum mere ho by anuv jain" or "spotify pe tum mere ho bajao", query must be "tum mere ho by anuv jain" or "tum mere ho".'
+      ),
     app: z
       .enum(['spotify', 'youtube', 'youtube_music'])
       .optional()
-      .describe('Target media app: "spotify" (default for music) or "youtube" (default for videos) or "youtube_music".'),
+      .describe(
+        'The target media platform: "spotify" (default for music/songs) or "youtube" (default for videos) or "youtube_music". If the user mentions Spotify anywhere in the request, choose "spotify". If the user mentions YouTube, choose "youtube". If neither is mentioned, default to "spotify" for songs and "youtube" for videos. NEVER prompt the user to choose an app.'
+      ),
     videoId: z.string().optional().describe('YouTube video ID if resolved, e.g. "dQw4w9WgXcQ".'),
   }),
   execute: async (input) => {
-    // Aggressively clean the query so trailing "on spotify", "on youtube", leading "play" are removed
-    let cleanQuery = input.query
-      .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-      .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-      .replace(/^(?:please\s+|can\s+you\s+)?play\s+/i, '')
-      .trim();
-    if (!cleanQuery) cleanQuery = input.query.trim();
-
-    // Determine target app
-    let rawApp = input.app;
-    if (!rawApp) {
-      if (/youtube\s+music/i.test(input.query)) {
-        rawApp = 'youtube_music';
-      } else if (/\byoutube\b|video/i.test(input.query)) {
-        rawApp = 'youtube';
-      } else {
-        rawApp = 'spotify';
-      }
-    }
-
+    const cleanQuery = input.query.trim();
+    const rawApp = input.app || (cleanQuery.toLowerCase().includes('video') ? 'youtube' : 'spotify');
     const appNameFormatted =
       rawApp === 'spotify' ? 'Spotify' : rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube';
 

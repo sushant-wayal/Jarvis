@@ -136,11 +136,20 @@ Phone & Contact Intelligence:
      - DO NOT attempt to call or send a message!
      - Tell the user directly: "I couldn't find anyone named [Name] in your contacts."
 - Media Playback (Music & Videos):
-  • When user says "play [song/artist/playlist/video]" (e.g. "play Believer on Spotify", "play funny cat videos on YouTube", "play Arijit Singh", "play tum mere ho by anuv jain on spotify"):
-    - ZERO PROMPTING RULE: NEVER ask the user to choose between Spotify and YouTube! NEVER ask "Which app would you like to use?".
-    - If the user specifies an app (e.g. "on Spotify", "on YouTube"), IMMEDIATELY invoke 'play_media' with that app (e.g. app: 'spotify').
-    - If the user does NOT specify an app, default to app: 'spotify' for songs/music, and app: 'youtube' for videos, and invoke 'play_media' immediately!
-    - In 'query', pass ONLY the clean song or video name (e.g. query: "tum mere ho by anuv jain", app: "spotify"). NEVER include "on spotify" or "on youtube" in the 'query' argument!
+  • When user asks to play, stream, or listen to any music, song, artist, album, playlist, or video in ANY natural language phrasing (e.g. "on spotify play tum mere ho by anuv jain", "play believer on spotify", "spotify pe anuv jain chalao", "play funny cat videos on youtube", "put on viva la vida", "can you play coldplay"):
+    - ZERO PROMPTING RULE: NEVER ask the user to choose between Spotify and YouTube! NEVER ask "Which app would you like to use?" or offer options.
+    - Semantic Phrasing Understanding: Users express requests in many ways regardless of word order or language ("on spotify play X", "play X on spotify", "spotify pe X bajao", "put on X"). You (the LLM) must understand the user's intent naturally.
+    - Platform Resolution:
+      * If the user mentions Spotify anywhere in the request, set app: 'spotify'.
+      * If the user mentions YouTube anywhere in the request, set app: 'youtube'.
+      * If no platform is mentioned, default to app: 'spotify' for songs/music, and app: 'youtube' for videos.
+    - Clean Media Query Extraction: In 'query', extract ONLY the pure song, artist, album, playlist, or video title to search. Extract the pure media name, stripping any platform words ("Spotify", "YouTube"), commanding verbs ("play", "put on", "stream", "chalao", "bajao", "lagao"), and prepositions ("on", "in", "via", "pe").
+      * "on spotify play tum mere ho by anuv jain" -> query: "tum mere ho by anuv jain", app: "spotify"
+      * "play tum mere ho on spotify" -> query: "tum mere ho", app: "spotify"
+      * "spotify pe anuv jain ka gaana bajao" -> query: "anuv jain", app: "spotify"
+      * "play believer" -> query: "believer", app: "spotify"
+      * "show cat compilation on youtube" -> query: "cat compilation", app: "youtube"
+    - Mandatory Tool Execution: IMMEDIATELY invoke the 'play_media' tool! NEVER generate text saying "Playing [song] on Spotify" without invoking the tool, because playback on the mobile device ONLY triggers when 'play_media' runs.
     - DO NOT call 'open_application' for playback requests — 'open_application' only opens the app home screen, whereas 'play_media' triggers direct playback!
 - MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call' or 'play_media') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" or "Playing Believer" without executing the tool, because native launchers and media players ONLY trigger when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
@@ -358,57 +367,7 @@ Timezone & Scheduling Directive:
       }
     }
 
-    // Robustness Guard: If the user explicitly requested an action (open app, play media, make call, send message),
-    // but the LLM directly replied with text instead of executing the tool,
-    // synthesize the pending phone action so the user's phone still executes the action!
-    if (!pendingPhoneAction) {
-      const lowerMsg = message.toLowerCase().trim();
-      const openMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:open|launch|start)\s+([a-zA-Z0-9_\s]+)$/i);
-      const playMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?play\s+(.+?)(?:\s+(?:on|via|in)\s+(spotify|youtube(?:\s+music)?))?$/i);
-      const callMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+)?(?:call|dial|phone|ring)\s+(?:to\s+)?(.+?)(?:\s+(?:on|via|in)\s+(whatsapp|phone))?$/i);
 
-      if (playMatch && playMatch[1]) {
-        let rawQuery = playMatch[1]
-          .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-          .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
-          .trim();
-        if (!rawQuery) rawQuery = playMatch[1].trim();
-        const rawApp = (playMatch[2] || (lowerMsg.includes('spotify') ? 'spotify' : (lowerMsg.includes('youtube') ? 'youtube' : 'spotify'))).toLowerCase();
-        const app = rawApp.includes('youtube') ? (rawApp.includes('music') ? 'youtube_music' : 'youtube') : 'spotify';
-        pendingPhoneAction = {
-          type: 'PLAY_MEDIA',
-          action: 'PLAY_MEDIA',
-          query: rawQuery,
-          app,
-          response: `Playing "${rawQuery}" on ${app === 'spotify' ? 'Spotify' : 'YouTube'}.`,
-        } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-        logger.info('Synthesized pending PLAY_MEDIA action from user message intent', { query: rawQuery, app });
-      } else if (callMatch && callMatch[1]) {
-        const targetContact = callMatch[1].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
-        const isWhatsApp = lowerMsg.includes('whatsapp') || Boolean(callMatch[2]?.toLowerCase().includes('whatsapp'));
-        const callType = lowerMsg.includes('video') ? 'video' : 'voice';
-        pendingPhoneAction = {
-          type: 'CALL_CONTACT',
-          action: 'CALL_CONTACT',
-          contactName: targetContact,
-          callType,
-          app: isWhatsApp ? 'whatsapp' : 'phone',
-          response: `Calling ${targetContact}${isWhatsApp ? ' on WhatsApp' : ''}.`,
-        } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-        logger.info('Synthesized pending CALL_CONTACT action from user message intent', { contact: targetContact, isWhatsApp });
-      } else if (openMatch && openMatch[1]) {
-        const candidateApp = openMatch[1].replace(/\b(?:the\s+)?app\b/gi, '').trim();
-        if (candidateApp && candidateApp.length >= 2) {
-          pendingPhoneAction = {
-            type: 'OPEN_APP',
-            action: 'OPEN_APP',
-            app: candidateApp.toLowerCase(),
-            response: `Opening ${candidateApp}.`,
-          } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-          logger.info('Synthesized pending OPEN_APP action from user message intent', { app: candidateApp });
-        }
-      }
-    }
 
     return {
       text: finalText,
