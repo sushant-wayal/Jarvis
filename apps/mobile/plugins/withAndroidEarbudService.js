@@ -116,23 +116,46 @@ const withAndroidEarbudService = (config) => {
     if (!app.receiver) app.receiver = [];
 
     const receiverName = 'com.jarvis.earbud.JarvisMediaButtonReceiver';
-    const receiverExists = app.receiver.some(
+    const receiverFilter = [
+      {
+        $: { 'android:priority': '1000' },
+        action: [
+          { $: { 'android:name': 'android.intent.action.MEDIA_BUTTON' } },
+          { $: { 'android:name': 'android.intent.action.VOICE_COMMAND' } },
+        ],
+      },
+    ];
+
+    const existingReceiver = app.receiver.find(
       (r) => r.$ && r.$['android:name'] === receiverName
     );
-    if (!receiverExists) {
+    if (existingReceiver) {
+      existingReceiver['intent-filter'] = receiverFilter;
+    } else {
       app.receiver.push({
         $: {
           'android:name': receiverName,
           'android:exported': 'true',
         },
-        'intent-filter': [
-          {
-            $: { 'android:priority': '1000' },
-            action: [{ $: { 'android:name': 'android.intent.action.MEDIA_BUTTON' } }],
-          },
-        ],
+        'intent-filter': receiverFilter,
       });
       console.log('[withAndroidEarbudService] Added JarvisMediaButtonReceiver to manifest');
+    }
+
+    // ── MainActivity: Register VOICE_COMMAND intent-filter ────────────────
+    if (app.activity && app.activity.length > 0) {
+      const mainActivity = app.activity[0];
+      if (!mainActivity['intent-filter']) mainActivity['intent-filter'] = [];
+      const hasVoiceCommand = mainActivity['intent-filter'].some(
+        (filter) => filter.action && filter.action.some((a) => a.$ && a.$['android:name'] === 'android.intent.action.VOICE_COMMAND')
+      );
+      if (!hasVoiceCommand) {
+        mainActivity['intent-filter'].push({
+          action: [{ $: { 'android:name': 'android.intent.action.VOICE_COMMAND' } }],
+          category: [{ $: { 'android:name': 'android.intent.category.DEFAULT' } }],
+        });
+        console.log('[withAndroidEarbudService] Added VOICE_COMMAND to MainActivity');
+      }
     }
 
     return modConfig;

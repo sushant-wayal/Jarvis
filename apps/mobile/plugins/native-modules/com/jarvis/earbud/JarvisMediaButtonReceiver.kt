@@ -16,21 +16,28 @@ import android.view.KeyEvent
 class JarvisMediaButtonReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_MEDIA_BUTTON) return
+        val action = intent.action ?: return
+        if (action != Intent.ACTION_MEDIA_BUTTON && action != Intent.ACTION_VOICE_COMMAND) return
 
-        val keyEvent: KeyEvent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+        val keyCode: Int
+        if (action == Intent.ACTION_VOICE_COMMAND) {
+            keyCode = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
         } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+            val keyEvent: KeyEvent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+            }
+
+            // Only act on key-down to avoid double-firing (Android sends both ACTION_DOWN + ACTION_UP)
+            if (keyEvent?.action != KeyEvent.ACTION_DOWN) return
+            keyCode = keyEvent.keyCode
         }
 
-        // Only act on key-down to avoid double-firing (Android sends both ACTION_DOWN + ACTION_UP)
-        if (keyEvent?.action != KeyEvent.ACTION_DOWN) return
-
         val serviceIntent = Intent(context, JarvisForegroundService::class.java).apply {
-            action = JarvisForegroundService.ACTION_MEDIA_BUTTON
-            putExtra(JarvisForegroundService.EXTRA_KEY_CODE, keyEvent.keyCode)
+            this.action = JarvisForegroundService.ACTION_MEDIA_BUTTON
+            putExtra(JarvisForegroundService.EXTRA_KEY_CODE, keyCode)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

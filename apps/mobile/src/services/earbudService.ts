@@ -68,9 +68,9 @@ class EarbudService {
     }
 
     if (this.settings.enabled && this.settings.backgroundStandby) {
-      if (!hasNativeModule) await this.startCarrierStandby();
+      await this.startCarrierStandby();
     } else {
-      if (!hasNativeModule) await this.stopCarrierStandby();
+      await this.stopCarrierStandby();
     }
   }
 
@@ -88,10 +88,11 @@ class EarbudService {
   /**
    * Initializes audio session and earbud tap detection.
    *
-   * Strategy:
-   *  - Android real build → use the native JarvisForegroundService + MediaButtonReceiver.
-   *    This works with screen off, phone in pocket, JS thread dead.
-   *  - Expo Go / fallback → use the carrier-sound polling approach (foreground only).
+   * Dual-layer strategy:
+   *  1. JavaScript Carrier Standby: Plays an ultra-low silent audio carrier via expo-av
+   *     so Android AVRCP registers active audio playback and routes earbud taps.
+   *  2. Native Android Service (when built into APK): Runs JarvisForegroundService with
+   *     native MediaSession + AudioTrack for deep background / screen-off / pocket persistence.
    */
   public async initialize(): Promise<void> {
     // Load persisted settings
@@ -119,14 +120,17 @@ class EarbudService {
       // Audio mode fallback — non-fatal
     }
 
+    // Initialize native service if available
     if (hasNativeModule && Platform.OS === 'android') {
       await this.initNativeService();
-    } else {
-      // Expo Go / iOS fallback
-      this.setupWebMediaSession();
-      if (this.settings.enabled && this.settings.backgroundStandby) {
-        await this.startCarrierStandby();
-      }
+    }
+
+    // Web MediaSession fallback
+    this.setupWebMediaSession();
+
+    // Start carrier standby loop — critical for hardware earbud AVRCP routing
+    if (this.settings.enabled && this.settings.backgroundStandby) {
+      await this.startCarrierStandby();
     }
   }
 

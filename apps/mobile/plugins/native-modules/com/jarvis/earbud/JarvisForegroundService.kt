@@ -6,12 +6,15 @@ import android.content.Context
 import android.content.Intent
 import android.media.*
 import android.os.*
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat.MediaStyle
+import androidx.media.session.MediaButtonReceiver
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -36,9 +39,9 @@ import java.util.concurrent.TimeUnit
  * Lifecycle:
  *  - Started as a foreground service when the app initializes (earbudService.initialize())
  *  - Runs indefinitely with START_STICKY (auto-restarts if killed)
- *  - Shows a persistent low-priority notification
- *  - Keeps a MediaSession ACTIVE + holds audio focus so Android routes
- *    Bluetooth AVRCP media events (PLAY, PAUSE, HEADSETHOOK, etc.) to Jarvis
+ *  - Shows an official MediaStyle notification linked to MediaSessionCompat
+ *  - Plays a continuous silent AudioTrack so Android's AudioPolicy / AVRCP routes
+ *    all Bluetooth earbud clicks (boAt, AirPods, etc.) to Jarvis instead of ignoring them
  */
 class JarvisForegroundService : Service() {
 
@@ -58,7 +61,7 @@ class JarvisForegroundService : Service() {
         const val EXTRA_KEY_CODE = "KEY_CODE"
 
         // Tap debounce: ignore duplicate events within this window (ms)
-        private const val TAP_DEBOUNCE_MS = 450L
+        private const val TAP_DEBOUNCE_MS = 400L
 
         // Auto-stop recording after this many ms of silence
         private const val SILENCE_THRESHOLD_MS = 2200L
@@ -85,7 +88,11 @@ class JarvisForegroundService : Service() {
     private var mediaRecorder: MediaRecorder? = null
     private var recordingFile: File? = null
 
-    // ─── MediaSession (keeps BT routing alive) ────────────────────────────────
+    // ─── Silent Audio Carrier ─────────────────────────────────────────────────
+    // Critical: Keeps Android AudioFlinger / Bluetooth AVRCP active so taps route to Jarvis
+    private var silentAudioTrack: AudioTrack? = null
+
+    // ─── MediaSession ─────────────────────────────────────────────────────────
 
     private var mediaSession: MediaSessionCompat? = null
     private var audioFocusRequest: AudioFocusRequest? = null
@@ -137,9 +144,10 @@ class JarvisForegroundService : Service() {
         super.onCreate()
         Log.d(TAG, "JarvisForegroundService created")
         createNotificationChannel()
-        startForegroundCompat(buildNotification("Jarvis · Tap earbud to speak"))
         initMediaSession()
+        startForegroundCompat(buildNotification("Jarvis · Tap earbud to speak"))
         requestAudioFocus()
+        startSilentAudioCarrier()
     }
 
     private fun startForegroundCompat(notification: Notification) {
@@ -158,7 +166,18 @@ class JarvisForegroundService : Service() {
         when (intent?.action) {
             ACTION_MEDIA_BUTTON -> {
                 val keyCode = intent.getIntExtra(EXTRA_KEY_CODE, KeyEvent.KEYCODE_UNKNOWN)
-                handleMediaButton(keyCode)
+                if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
+                    handleMediaButton(keyCode)
+                } else {
+                    mediaSession?.let { MediaButtonReceiver.handleIntent(it, intent) }
+                }
+            }
+            Intent.ACTION_MEDIA_BUTTON -> {
+                mediaSession?.let { MediaButtonReceiver.handleIntent(it, intent) }
+            }
+            Intent.ACTION_VOICE_COMMAND -> {
+                Log.d(TAG, "ACTION_VOICE_COMMAND received from Bluetooth assistant gesture")
+                handleMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
             }
             ACTION_STOP_RECORDING -> {
                 if (state == State.RECORDING) stopNativeRecording()
@@ -178,6 +197,7 @@ class JarvisForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         mainHandler.removeCallbacksAndMessages(null)
+        stopSilentAudioCarrier()
         cleanupRecorder()
         abandonAudioFocus()
         mediaSession?.run { isActive = false; release() }
@@ -193,6 +213,12 @@ class JarvisForegroundService : Service() {
             setFlags(
                 MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                 MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS
+            )
+            setMetadata(
+                MediaMetadataCompat.Builder()
+                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, "Jarvis AI")
+                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Tap earbud to speak")
+                    .build()
             )
             setPlaybackState(
                 PlaybackStateCompat.Builder()
@@ -263,6 +289,83 @@ class JarvisForegroundService : Service() {
         }
     }
 
+    // ─── Silent Audio Carrier ─────────────────────────────────────────────────
+
+    private fun startSilentAudioCarrier() {
+        try {
+            if (silentAudioTrack != null) return
+            val sampleRate = 44100
+            val minBufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
+            val bufferSize = maxOf(minBufferSize, sampleRate * 2)
+            val silentBuffer = ByteArray(bufferSize)
+
+            val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioTrack.Builder()
+                    .setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                            .build()
+                    )
+                    .setBufferSizeInBytes(bufferSize)
+                    .setTransferMode(AudioTrack.MODE_STATIC)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                AudioTrack(
+                    AudioManager.STREAM_MUSIC,
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    bufferSize,
+                    AudioTrack.MODE_STATIC
+                )
+            }
+
+            track.write(silentBuffer, 0, silentBuffer.size)
+            track.setLoopPoints(0, bufferSize / 2, -1)
+            track.setVolume(0.001f)
+            track.play()
+            silentAudioTrack = track
+            Log.d(TAG, "Silent audio carrier active — Bluetooth AVRCP will route all earbud taps to Jarvis")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start silent audio carrier", e)
+        }
+    }
+
+    private fun pauseSilentAudioCarrier() {
+        try {
+            silentAudioTrack?.pause()
+        } catch (_: Exception) {}
+    }
+
+    private fun resumeSilentAudioCarrier() {
+        try {
+            if (silentAudioTrack?.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                silentAudioTrack?.play()
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun stopSilentAudioCarrier() {
+        try {
+            silentAudioTrack?.stop()
+            silentAudioTrack?.release()
+        } catch (_: Exception) {}
+        silentAudioTrack = null
+    }
+
     // ─── Media button handling ────────────────────────────────────────────────
 
     private fun handleMediaButton(keyCode: Int) {
@@ -279,7 +382,7 @@ class JarvisForegroundService : Service() {
 
         val now = System.currentTimeMillis()
         if (isTapKey) {
-            // Debounce rapid double-fires from some earbuds
+            // Debounce rapid double-fires from earbuds
             if (now - lastTapTs < TAP_DEBOUNCE_MS && state == State.IDLE) {
                 Log.d(TAG, "Debounced rapid duplicate tap keyCode=$keyCode")
                 return
@@ -400,6 +503,7 @@ class JarvisForegroundService : Service() {
         state = State.RECORDING
         silenceStartTs = 0L
 
+        pauseSilentAudioCarrier()
         updateNotification("🎙 Listening… Tap earbud to stop")
         playTone(ToneGenerator.TONE_PROP_BEEP, 120)
 
@@ -433,6 +537,7 @@ class JarvisForegroundService : Service() {
             Log.e(TAG, "Recording start failed: ${e.message}", e)
             releaseBluetoothAudioRouting()
             cleanupRecorder()
+            resumeSilentAudioCarrier()
             state = State.IDLE
             updateNotification("Jarvis · Tap earbud to speak")
             playTone(ToneGenerator.TONE_PROP_NACK, 200)
@@ -464,6 +569,7 @@ class JarvisForegroundService : Service() {
 
         if (file == null || !file.exists() || file.length() == 0L) {
             state = State.IDLE
+            resumeSilentAudioCarrier()
             updateNotification("Jarvis · Tap earbud to speak")
             return
         }
@@ -478,6 +584,7 @@ class JarvisForegroundService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Audio processing failed: ${e.message}", e)
                 state = State.IDLE
+                resumeSilentAudioCarrier()
                 playTone(ToneGenerator.TONE_PROP_NACK, 200)
                 showResultNotification("Jarvis couldn't process that. Try again.")
                 updateNotification("Jarvis · Tap earbud to speak")
@@ -492,6 +599,7 @@ class JarvisForegroundService : Service() {
         recordingFile?.delete()
         recordingFile = null
         releaseBluetoothAudioRouting()
+        resumeSilentAudioCarrier()
     }
 
     // ─── Brain API call ───────────────────────────────────────────────────────
@@ -527,6 +635,7 @@ class JarvisForegroundService : Service() {
 
             http.newCall(request).execute().use { response ->
                 state = State.IDLE
+                resumeSilentAudioCarrier()
 
                 if (!response.isSuccessful) {
                     val code = response.code
@@ -562,6 +671,7 @@ class JarvisForegroundService : Service() {
             }
         } catch (e: Exception) {
             state = State.IDLE
+            resumeSilentAudioCarrier()
             Log.e(TAG, "Brain API call failed: ${e.message}", e)
             playTone(ToneGenerator.TONE_PROP_NACK, 200)
             showResultNotification("Jarvis: network error. Check your connection.")
@@ -626,7 +736,8 @@ class JarvisForegroundService : Service() {
             this, 0, launchIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Jarvis AI")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
@@ -634,7 +745,15 @@ class JarvisForegroundService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+
+        mediaSession?.let { session ->
+            builder.setStyle(
+                MediaStyle()
+                    .setMediaSession(session.sessionToken)
+            )
+        }
+
+        return builder.build()
     }
 
     private fun updateNotification(text: String) {
