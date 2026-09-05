@@ -74,7 +74,7 @@ export function generateChimeBase64(
   for (let i = 0; i < t1Frames; i++) {
     const t = i / sampleRate;
     const env = Math.sin((Math.PI * i) / t1Frames); // smooth bell envelope
-    const sample = Math.sin(2 * Math.PI * tone1Freq * t) * env * 0.45;
+    const sample = Math.sin(2 * Math.PI * tone1Freq * t) * env * 0.85;
     pcm16[i] = Math.floor(sample * 32767);
   }
 
@@ -82,7 +82,7 @@ export function generateChimeBase64(
   for (let i = 0; i < t2Frames; i++) {
     const t = i / sampleRate;
     const env = Math.sin((Math.PI * i) / t2Frames);
-    const sample = Math.sin(2 * Math.PI * tone2Freq * t) * env * 0.55;
+    const sample = Math.sin(2 * Math.PI * tone2Freq * t) * env * 0.90;
     pcm16[t1Frames + i] = Math.floor(sample * 32767);
   }
 

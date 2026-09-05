@@ -61,8 +61,6 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       setJarvisState('LISTENING');
     } else if (isPlaying) {
       setJarvisState('SPEAKING');
-    } else if (!isRecording && !isPlaying && jarvisState === 'SPEAKING') {
-      setJarvisState('IDLE');
     }
   }, [isRecording, isPlaying]);
 
@@ -201,17 +199,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       if (response.audioBase64) {
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
-          setJarvisState('IDLE');
-          // Re-arm tap detection after Jarvis finishes speaking
-          earbudService.resumeTapDetection(300);
           // After Jarvis finishes speaking, execute any pending phone action
           await handlePendingPhoneAction(response);
+          // Directly enter continuous listening mode for fluid UX!
+          await startVoiceListening();
         });
       } else {
-        setJarvisState('IDLE');
-        // Re-arm tap detection immediately (no audio to wait for)
-        earbudService.resumeTapDetection(200);
         await handlePendingPhoneAction(response);
+        await startVoiceListening();
       }
     } catch (err: unknown) {
       setJarvisState('ERROR');
@@ -227,7 +222,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         earbudService.resumeTapDetection(200);
       }, 3000);
     }
-  }, [stopRecording, playBase64Audio]);
+  }, [stopRecording, playBase64Audio, handlePendingPhoneAction, startVoiceListening]);
 
 
   const toggleVoiceInteraction = React.useCallback(async (): Promise<void> => {
@@ -242,21 +237,85 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [interruptOrStop, stopAndProcessVoice, startVoiceListening]);
 
+  // Silence auto-send detection: auto-submits when user pauses for 4.5s after speaking
+  const speechDetectedRef = React.useRef(false);
+  const silenceTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    if (jarvisState !== 'LISTENING') {
+      speechDetectedRef.current = false;
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (!settings.autoSilenceStop) return;
+
+    // Normal speech metering level is > 0.18 (normalized 0..1 scale)
+    if (recordingLevel > 0.18) {
+      speechDetectedRef.current = true;
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+    } else if (speechDetectedRef.current) {
+      // User was speaking and has now paused
+      if (!silenceTimeoutRef.current) {
+        const thresholdMs = (settings.silenceThresholdSeconds || 4.5) * 1000;
+        silenceTimeoutRef.current = setTimeout(() => {
+          silenceTimeoutRef.current = null;
+          speechDetectedRef.current = false;
+          if (stateRef.current.jarvisState === 'LISTENING') {
+            void stopAndProcessVoice();
+          }
+        }, thresholdMs);
+      }
+    }
+  }, [jarvisState, recordingLevel, settings.autoSilenceStop, settings.silenceThresholdSeconds, stopAndProcessVoice]);
+
+  // Idle timeout: if in continuous listening mode and user says nothing for 12s, peacefully return to IDLE
+  React.useEffect(() => {
+    if (jarvisState !== 'LISTENING') return;
+    const idleTimer = setTimeout(() => {
+      if (stateRef.current.jarvisState === 'LISTENING' && !speechDetectedRef.current) {
+        void interruptOrStop();
+      }
+    }, 12000);
+    return () => clearTimeout(idleTimer);
+  }, [jarvisState, interruptOrStop]);
+
   // Handle Earbud Events received from hardware / MediaSession
   const handleEarbudEvent = React.useCallback(
     async (event: EarbudEventType) => {
       setStatus(earbudService.getStatus());
       const currentState = stateRef.current.jarvisState;
 
-      if (event === 'SINGLE_TAP' || event === 'MEDIA_PLAY' || event === 'MEDIA_PAUSE') {
-        if (currentState === 'IDLE' || currentState === 'ERROR') {
+      if (currentState === 'IDLE' || currentState === 'ERROR') {
+        // Any intentional tap or media button wakes Jarvis when idle
+        if (
+          event === 'SINGLE_TAP' ||
+          event === 'DOUBLE_TAP' ||
+          event === 'MEDIA_PLAY' ||
+          event === 'MEDIA_PAUSE'
+        ) {
           await startVoiceListening();
-        } else if (currentState === 'LISTENING') {
+        }
+      } else if (currentState === 'LISTENING') {
+        // Tapping while listening completes & processes voice immediately (supports boAt double-tap as well)
+        if (
+          event === 'SINGLE_TAP' ||
+          event === 'DOUBLE_TAP' ||
+          event === 'MEDIA_PLAY' ||
+          event === 'MEDIA_PAUSE'
+        ) {
           await stopAndProcessVoice();
-        } else if (currentState === 'SPEAKING') {
+        } else if (event === 'LONG_PRESS') {
           await interruptOrStop();
         }
-      } else if (event === 'DOUBLE_TAP' || event === 'LONG_PRESS') {
+      } else if (currentState === 'SPEAKING') {
+        // Any tap while speaking immediately interrupts
         await interruptOrStop();
       }
     },

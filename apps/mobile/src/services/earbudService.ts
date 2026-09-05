@@ -46,7 +46,7 @@ class EarbudService {
     doubleTapAction: 'STOP_OR_INTERRUPT',
     playFeedbackChimes: true,
     autoSilenceStop: true,
-    silenceThresholdSeconds: 2.5,
+    silenceThresholdSeconds: 4.5,
     backgroundStandby: true,
   };
 
@@ -328,42 +328,55 @@ class EarbudService {
 
   // ─── Chime playback ─────────────────────────────────────────────────────
 
-  private async playChime(base64Wav: string, volume = 0.6): Promise<void> {
+  private async playChime(base64Wav: string, volume = 1.0): Promise<void> {
     if (!this.settings.playFeedbackChimes) return;
 
     // Guard: suppress carrier tap detection while chime is playing
     this.isInternalPause = true;
 
-    try {
-      if (this.chimeSound) {
-        await this.chimeSound.unloadAsync().catch(() => {});
-        this.chimeSound = null;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/wav;base64,${base64Wav}` },
-        { shouldPlay: true, volume }
-      );
-
-      this.chimeSound = sound;
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync().catch(() => {});
-          // Re-enable tap detection 200ms after chime finishes
-          setTimeout(() => {
-            this.isInternalPause = false;
-          }, 200);
+    return new Promise<void>(async (resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          this.isInternalPause = false;
+          resolve();
         }
-      });
-    } catch {
-      // If chime fails, always restore the guard
-      this.isInternalPause = false;
-    }
+      };
+
+      // Fallback timeout in case audio focus or status update hangs (chimes are max 360ms)
+      const timeout = setTimeout(done, 600);
+
+      try {
+        if (this.chimeSound) {
+          await this.chimeSound.unloadAsync().catch(() => {});
+          this.chimeSound = null;
+        }
+
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: `data:audio/wav;base64,${base64Wav}` },
+          { shouldPlay: true, volume }
+        );
+
+        this.chimeSound = sound;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            clearTimeout(timeout);
+            sound.unloadAsync().catch(() => {});
+            this.chimeSound = null;
+            setTimeout(done, 80);
+          }
+        });
+      } catch {
+        clearTimeout(timeout);
+        done();
+      }
+    });
   }
 
-  public async playWakeChime():    Promise<void> { await this.playChime(WAKE_CHIME_BASE64, 0.7); }
-  public async playProcessChime(): Promise<void> { await this.playChime(PROCESS_CHIME_BASE64, 0.55); }
-  public async playErrorChime():   Promise<void> { await this.playChime(ERROR_CHIME_BASE64, 0.6); }
+  public async playWakeChime():    Promise<void> { await this.playChime(WAKE_CHIME_BASE64, 1.0); }
+  public async playProcessChime(): Promise<void> { await this.playChime(PROCESS_CHIME_BASE64, 0.95); }
+  public async playErrorChime():   Promise<void> { await this.playChime(ERROR_CHIME_BASE64, 1.0); }
 
   // ─── Cleanup ─────────────────────────────────────────────────────────────
 

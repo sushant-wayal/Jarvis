@@ -63,12 +63,12 @@ class JarvisForegroundService : Service() {
         // Tap debounce: ignore duplicate events within this window (ms)
         private const val TAP_DEBOUNCE_MS = 400L
 
-        // Auto-stop recording after this many ms of silence
-        private const val SILENCE_THRESHOLD_MS = 2200L
+        // Auto-stop recording after this many ms of silence (allows natural speaking pauses)
+        private const val SILENCE_THRESHOLD_MS = 4500L
         private const val SILENCE_AMPLITUDE = 900
 
         // Max recording duration
-        private const val MAX_RECORD_MS = 12_000L
+        private const val MAX_RECORD_MS = 25_000L
 
         @Volatile
         private var brainUrl: String = "https://brainofjarvis.vercel.app/api/v1"
@@ -420,10 +420,16 @@ class JarvisForegroundService : Service() {
                 }
             }
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                if (JarvisEarbudModule.isAppInForeground()) {
-                    JarvisEarbudModule.emitEarbudEvent("DOUBLE_TAP")
-                } else if (state == State.RECORDING) {
-                    stopNativeRecording()
+                when (state) {
+                    State.IDLE -> {
+                        if (JarvisEarbudModule.isAppInForeground()) {
+                            JarvisEarbudModule.emitEarbudEvent("DOUBLE_TAP")
+                        } else {
+                            startNativeRecording()
+                        }
+                    }
+                    State.RECORDING -> stopNativeRecording()
+                    State.PROCESSING -> {}
                 }
             }
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
@@ -440,20 +446,80 @@ class JarvisForegroundService : Service() {
         }
     }
 
-    // ─── Native audio feedback ────────────────────────────────────────────────
+    // ─── Native audio feedback (PCM Chimes matching the mobile app) ───────────
 
-    private fun playTone(toneType: Int, durationMs: Int = 150) {
-        try {
-            ToneGenerator(AudioManager.STREAM_MUSIC, 85).run {
-                startTone(toneType, durationMs)
-                mainHandler.postDelayed({
-                    try { release() } catch (_: Exception) {}
-                }, (durationMs + 100).toLong())
+    private fun playChimePcm(freq1: Double, dur1Ms: Int, freq2: Double, dur2Ms: Int, volume: Float = 1.0f) {
+        Thread {
+            try {
+                val sampleRate = 22050
+                val totalFrames = ((sampleRate * (dur1Ms + dur2Ms)) / 1000)
+                val t1Frames = (sampleRate * dur1Ms) / 1000
+                val t2Frames = totalFrames - t1Frames
+
+                val pcm = ShortArray(totalFrames)
+
+                // Tone 1 with smooth bell envelope
+                for (i in 0 until t1Frames) {
+                    val t = i.toDouble() / sampleRate
+                    val env = Math.sin(Math.PI * i / t1Frames)
+                    val sample = Math.sin(2.0 * Math.PI * freq1 * t) * env * 0.85
+                    pcm[i] = (sample * 32767.0).toInt().coerceIn(-32768, 32767).toShort()
+                }
+
+                // Tone 2 with smooth bell envelope
+                for (i in 0 until t2Frames) {
+                    val t = i.toDouble() / sampleRate
+                    val env = Math.sin(Math.PI * i / t2Frames)
+                    val sample = Math.sin(2.0 * Math.PI * freq2 * t) * env * 0.90
+                    pcm[t1Frames + i] = (sample * 32767.0).toInt().coerceIn(-32768, 32767).toShort()
+                }
+
+                val bufferSize = totalFrames * 2
+                val track = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    AudioTrack.Builder()
+                        .setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        )
+                        .setAudioFormat(
+                            AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(sampleRate)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .build()
+                        )
+                        .setBufferSizeInBytes(bufferSize)
+                        .setTransferMode(AudioTrack.MODE_STATIC)
+                        .build()
+                } else {
+                    @Suppress("DEPRECATION")
+                    AudioTrack(
+                        AudioManager.STREAM_MUSIC,
+                        sampleRate,
+                        AudioFormat.CHANNEL_OUT_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        bufferSize,
+                        AudioTrack.MODE_STATIC
+                    )
+                }
+
+                track.write(pcm, 0, pcm.size)
+                track.setVolume(volume)
+                track.play()
+                Thread.sleep((dur1Ms + dur2Ms + 100).toLong())
+                track.stop()
+                track.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Chime playback error: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Tone playback error: ${e.message}")
-        }
+        }.start()
     }
+
+    private fun playWakeChime()    = playChimePcm(587.33, 140, 880.0, 220, 1.0f)
+    private fun playProcessChime() = playChimePcm(1046.5, 90, 1318.5, 120, 1.0f)
+    private fun playErrorChime()   = playChimePcm(392.0, 150, 311.13, 200, 1.0f)
 
     private fun enableBluetoothAudioRouting() {
         try {
@@ -505,7 +571,7 @@ class JarvisForegroundService : Service() {
 
         pauseSilentAudioCarrier()
         updateNotification("🎙 Listening… Tap earbud to stop")
-        playTone(ToneGenerator.TONE_PROP_BEEP, 120)
+        playWakeChime()
 
         try {
             val file = File(cacheDir, "jarvis_rec_${System.currentTimeMillis()}.m4a")
@@ -527,8 +593,8 @@ class JarvisForegroundService : Service() {
                 start()
             }
 
-            // Start silence-detection polling (after 1.5s to let user start speaking)
-            mainHandler.postDelayed({ mainHandler.post(silencePoller) }, 1500)
+            // Start silence-detection polling (after 2.5s to let user start speaking)
+            mainHandler.postDelayed({ mainHandler.post(silencePoller) }, 2500)
 
             // Hard cap on recording duration
             mainHandler.postDelayed(maxDurationStopper, MAX_RECORD_MS)
@@ -540,7 +606,7 @@ class JarvisForegroundService : Service() {
             resumeSilentAudioCarrier()
             state = State.IDLE
             updateNotification("Jarvis · Tap earbud to speak")
-            playTone(ToneGenerator.TONE_PROP_NACK, 200)
+            playErrorChime()
         }
     }
 
@@ -552,7 +618,7 @@ class JarvisForegroundService : Service() {
         mainHandler.removeCallbacks(maxDurationStopper)
 
         updateNotification("🧠 Thinking…")
-        playTone(ToneGenerator.TONE_PROP_ACK, 100)
+        playProcessChime()
 
         val recorder = mediaRecorder
         val file = recordingFile
@@ -585,7 +651,7 @@ class JarvisForegroundService : Service() {
                 Log.e(TAG, "Audio processing failed: ${e.message}", e)
                 state = State.IDLE
                 resumeSilentAudioCarrier()
-                playTone(ToneGenerator.TONE_PROP_NACK, 200)
+                playErrorChime()
                 showResultNotification("Jarvis couldn't process that. Try again.")
                 updateNotification("Jarvis · Tap earbud to speak")
             }
@@ -641,7 +707,7 @@ class JarvisForegroundService : Service() {
                     val code = response.code
                     val errorBody = response.body?.string() ?: ""
                     Log.e(TAG, "Brain API error $code: $errorBody")
-                    playTone(ToneGenerator.TONE_PROP_NACK, 200)
+                    playErrorChime()
                     showResultNotification("Jarvis: couldn't connect ($code). Try again.")
                     updateNotification("Jarvis · Tap earbud to speak")
                     return
@@ -659,6 +725,13 @@ class JarvisForegroundService : Service() {
                 // Play audio response through earbuds if available
                 if (audioB64.isNotEmpty()) {
                     playAudioResponse(audioB64)
+                } else {
+                    // Continuous conversation: if text-only, auto-listen after short delay
+                    mainHandler.postDelayed({
+                        if (state == State.IDLE) {
+                            startNativeRecording()
+                        }
+                    }, 800)
                 }
 
                 // Show notification with the text response
@@ -673,7 +746,7 @@ class JarvisForegroundService : Service() {
             state = State.IDLE
             resumeSilentAudioCarrier()
             Log.e(TAG, "Brain API call failed: ${e.message}", e)
-            playTone(ToneGenerator.TONE_PROP_NACK, 200)
+            playErrorChime()
             showResultNotification("Jarvis: network error. Check your connection.")
             updateNotification("Jarvis · Tap earbud to speak")
         }
@@ -700,6 +773,13 @@ class JarvisForegroundService : Service() {
                 setOnCompletionListener { mp ->
                     mp.release()
                     tmpFile.delete()
+                    // Continuous conversation: after speech completes, transition directly into listening mode!
+                    mainHandler.postDelayed({
+                        if (state == State.IDLE) {
+                            Log.d(TAG, "Continuous conversation: auto-starting native recording after speech")
+                            startNativeRecording()
+                        }
+                    }, 400)
                 }
                 setOnErrorListener { mp, _, _ ->
                     mp.release()
