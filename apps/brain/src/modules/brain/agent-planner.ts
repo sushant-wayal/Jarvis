@@ -320,7 +320,7 @@ Timezone & Scheduling Directive:
     }
 
     const PHONE_ACTION_TYPES = new Set([
-      'CALL_CONTACT', 'SEND_SMS', 'REPLY_TO_NOTIFICATION', 'OPEN_APP', 'OPEN_CONVERSATION',
+      'CALL_CONTACT', 'SEND_SMS', 'REPLY_TO_NOTIFICATION', 'OPEN_APP', 'OPEN_CONVERSATION', 'PLAY_MEDIA',
     ]);
 
     let pendingPhoneAction: import('@jarvis/shared').JarvisPhoneAction | undefined;
@@ -349,13 +349,27 @@ Timezone & Scheduling Directive:
       }
     }
 
-    // Robustness Guard: If the user explicitly requested to open an app or make a call,
+    // Robustness Guard: If the user explicitly requested to open an app, make a call, or play media,
     // but the LLM directly replied with text instead of executing the tool,
-    // synthesize the pending phone action so the user's phone still executes the redirect!
+    // synthesize the pending phone action so the user's phone still executes the action!
     if (!pendingPhoneAction) {
       const lowerMsg = message.toLowerCase().trim();
       const openMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:open|launch|start)\s+([a-zA-Z0-9_\s]+)$/i);
-      if (openMatch && openMatch[1]) {
+      const playMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?play\s+(.+?)(?:\s+(?:on|via|in)\s+(spotify|youtube(?:\s+music)?))?$/i);
+
+      if (playMatch && playMatch[1]) {
+        const rawQuery = playMatch[1].trim();
+        const rawApp = (playMatch[2] || (lowerMsg.includes('spotify') ? 'spotify' : (lowerMsg.includes('youtube') ? 'youtube' : 'spotify'))).toLowerCase();
+        const app = rawApp.includes('youtube') ? (rawApp.includes('music') ? 'youtube_music' : 'youtube') : 'spotify';
+        pendingPhoneAction = {
+          type: 'PLAY_MEDIA',
+          action: 'PLAY_MEDIA',
+          query: rawQuery,
+          app,
+          response: `Playing "${rawQuery}" on ${app === 'spotify' ? 'Spotify' : 'YouTube'}.`,
+        } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+        logger.info('Synthesized pending PLAY_MEDIA action from user message intent', { query: rawQuery, app });
+      } else if (openMatch && openMatch[1]) {
         const candidateApp = openMatch[1].replace(/\b(?:the\s+)?app\b/gi, '').trim();
         if (candidateApp && candidateApp.length >= 2) {
           pendingPhoneAction = {

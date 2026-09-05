@@ -1137,6 +1137,44 @@ class JarvisForegroundService : Service() {
                         }
                         startActivity(smsIntent)
                     }
+
+                    "PLAY_MEDIA" -> {
+                        val query = action.optString("query")
+                        val app = action.optString("app", "spotify").lowercase()
+                        val videoId = action.optString("videoId")
+
+                        if (app.contains("spotify")) {
+                            val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
+                                setPackage("com.spotify.music")
+                                putExtra(android.app.SearchManager.QUERY, query)
+                                putExtra("android.intent.extra.focus", "vnd.android.cursor.item/*")
+                                putExtra("android.intent.extra.title", query)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            try {
+                                startActivity(intent)
+                                Log.d(TAG, "Native initiated Spotify playback for: $query")
+                            } catch (se: Exception) {
+                                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(query))).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(fallbackIntent)
+                            }
+                        } else if (app.contains("youtube")) {
+                            if (videoId.isNotBlank()) {
+                                val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
+                                    setPackage("com.google.android.youtube")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(ytIntent)
+                            } else {
+                                val ytSearch = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(ytSearch)
+                            }
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to execute native phone action: ${e.message}", e)
