@@ -59,8 +59,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
       recording.setOnRecordingStatusUpdate((status) => {
         if (status.isRecording && status.metering !== undefined) {
-          // Normalize metering from -160..0 dB to 0..1
-          const norm = Math.max(0, Math.min(1, (status.metering + 160) / 160));
+          // Normalize metering: -60 dBFS (ambient room noise) to 0 dBFS (peak speech) -> 0..1 scale
+          const norm = Math.max(0, Math.min(1, (status.metering + 60) / 60));
           setRecordingLevel(norm);
         }
       });

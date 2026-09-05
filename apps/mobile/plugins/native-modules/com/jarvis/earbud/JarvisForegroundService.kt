@@ -69,8 +69,8 @@ class JarvisForegroundService : Service() {
         private const val SILENCE_THRESHOLD_MS = 4500L
         // Timeout when user never spoke at all (cancels without sending to brain)
         private const val NO_SPEECH_TIMEOUT_MS = 3800L
-        private const val SPEECH_AMPLITUDE = 1800
-        private const val SILENCE_AMPLITUDE = 900
+        private const val SPEECH_AMPLITUDE = 3200
+        private const val SILENCE_AMPLITUDE = 1600
 
         // Max recording duration
         private const val MAX_RECORD_MS = 25_000L

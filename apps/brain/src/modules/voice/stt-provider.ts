@@ -11,6 +11,7 @@ export interface SpeechToTextProvider {
 
 const SILENCE_TOKENS = [
   'silence',
+  'silent',
   'background noise',
   'noise',
   'music',
@@ -20,19 +21,26 @@ const SILENCE_TOKENS = [
   'coughing',
   'inaudible',
   'no speech',
+  'empty',
+  'none',
   'thank you',
-  'thank you.',
   'thank you for watching',
-  'thank you for watching.',
   'thanks for watching',
   'subtitles by',
   'amara org',
   'i have completed your request',
-  'i have completed your request.',
   'i completed your request',
-  'i completed your request.',
   'i have completed your task',
   'i completed your task',
+  'i have completed the task',
+  'i completed the task',
+  'completed the task',
+  'completed your task',
+  'task completed',
+  'task complete',
+  'okay',
+  'you are welcome',
+  'youre welcome',
 ];
 
 export function sanitizeTranscript(raw: string): string {
@@ -40,7 +48,13 @@ export function sanitizeTranscript(raw: string): string {
   if (!clean) return '';
   const lower = clean.toLowerCase().replace(/[.,!?;:"'()\[\]]/g, '').trim();
 
-  if (SILENCE_TOKENS.some((t) => lower === t || lower.startsWith(t + ' ') || lower.endsWith(' ' + t))) {
+  if (
+    lower === 'silence' ||
+    lower === 'silent' ||
+    lower === 'no speech' ||
+    lower === 'empty' ||
+    SILENCE_TOKENS.some((t) => lower === t || lower.startsWith(t + ' ') || lower.endsWith(' ' + t))
+  ) {
     return '';
   }
 
@@ -69,7 +83,7 @@ export class GeminiSpeechToTextProvider implements SpeechToTextProvider {
                   },
                 },
                 {
-                  text: 'Transcribe the spoken audio into text. If the audio is silent, contains only background noise, or has no human speech, respond with an empty string. Output only the transcription without explanation.',
+                  text: 'You are an audio transcription engine. Transcribe human speech in this audio word-for-word.\n\nCRITICAL RULES:\n1. If the audio contains NO human speech (only silence, background room noise, hiss, breath, static, or echo), you MUST respond with EXACTLY: SILENCE\n2. Do NOT guess, imagine, or hallucinate speech. Never output generic phrases like "I completed the task" or "Thank you" unless audibly spoken by a human.\n3. Output ONLY the verbatim spoken text, or SILENCE.',
                 },
               ],
             },

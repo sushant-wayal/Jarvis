@@ -270,8 +270,8 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
     if (!settings.autoSilenceStop) return;
 
-    // Normal speech metering level is > 0.18 (normalized 0..1 scale)
-    if (recordingLevel > 0.18) {
+    // Real human speech metering level is > 0.45 (ambient room noise is < 0.25 on normalized scale)
+    if (recordingLevel > 0.45) {
       speechDetectedRef.current = true;
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
@@ -292,14 +292,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [jarvisState, recordingLevel, settings.autoSilenceStop, settings.silenceThresholdSeconds, stopAndProcessVoice]);
 
-  // Idle timeout: if in continuous listening mode and user says nothing for 4.5s, peacefully return to IDLE
+  // Idle timeout: if in continuous listening mode and user says nothing for 3.8s, peacefully return to IDLE without sending audio
   React.useEffect(() => {
     if (jarvisState !== 'LISTENING') return;
     const idleTimer = setTimeout(() => {
       if (stateRef.current.jarvisState === 'LISTENING' && !speechDetectedRef.current) {
         void interruptOrStop();
       }
-    }, 4500);
+    }, 3800);
     return () => clearTimeout(idleTimer);
   }, [jarvisState, interruptOrStop]);
 
