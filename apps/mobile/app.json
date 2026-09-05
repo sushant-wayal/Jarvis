@@ -59,6 +59,12 @@
         "projectId": "ca864547-142c-47c6-a8d3-a660251a66df"
       }
     },
-    "owner": "sushant_wayal"
+    "owner": "sushant_wayal",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ca864547-142c-47c6-a8d3-a660251a66df"
+    }
   }
 }
