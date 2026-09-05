@@ -84,11 +84,25 @@ const withAndroidEarbudService = (config) => {
       'android.permission.MODIFY_AUDIO_SETTINGS',
       'android.permission.BLUETOOTH',
       'android.permission.BLUETOOTH_CONNECT',
+      'android.permission.CALL_PHONE',
+      'android.permission.QUERY_ALL_PACKAGES',
     ];
     for (const perm of requiredPermissions) {
       if (!manifest['uses-permission'].some((p) => p.$ && p.$['android:name'] === perm)) {
         manifest['uses-permission'].push({ $: { 'android:name': perm } });
       }
+    }
+
+    // ── Queries for Package Visibility (Android 11+) ──────────────────────
+    if (!manifest.queries) manifest.queries = [];
+    const queries = manifest.queries;
+    const queryIntents = [
+      { intent: [{ action: [{ $: { 'android:name': 'android.intent.action.MAIN' } }] }] },
+      { intent: [{ action: [{ $: { 'android:name': 'android.intent.action.DIAL' } }] }] },
+      { intent: [{ action: [{ $: { 'android:name': 'android.intent.action.CALL' } }] }] },
+    ];
+    for (const q of queryIntents) {
+      queries.push(q);
     }
 
     // ── Service ──────────────────────────────────────────────────────────

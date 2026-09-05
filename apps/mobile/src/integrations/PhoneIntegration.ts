@@ -13,7 +13,7 @@
  *  - Uses Linking.openURL('tel:...') — works in Expo Go and APK.
  */
 
-import { Linking, Platform } from 'react-native';
+import { Linking, NativeModules, Platform } from 'react-native';
 import * as SMS from 'expo-sms';
 import { ActionResult, ResolvedContact } from '@jarvis/shared';
 
@@ -28,17 +28,19 @@ export class PhoneIntegration {
       };
     }
 
-    const sanitized = number.replace(/\s+/g, '');
+    const sanitized = number.replace(/[^0-9+*#]/g, '');
     const url = `tel:${sanitized}`;
 
     try {
-      const canOpen = await Linking.canOpenURL(url);
-      if (!canOpen) {
-        return {
-          success: false,
-          error: 'This device cannot make phone calls.',
-        };
+      if (Platform.OS === 'android' && NativeModules.JarvisEarbudModule?.makeCall) {
+        try {
+          await NativeModules.JarvisEarbudModule.makeCall(sanitized);
+          return { success: true, message: `Calling ${contact.displayName}.` };
+        } catch {
+          // Fall through to Linking
+        }
       }
+
       await Linking.openURL(url);
       return { success: true, message: `Calling ${contact.displayName}.` };
     } catch (err) {

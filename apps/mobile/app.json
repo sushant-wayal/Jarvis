@@ -44,7 +44,8 @@
         "SEND_SMS",
         "READ_SMS",
         "BIND_NOTIFICATION_LISTENER_SERVICE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "QUERY_ALL_PACKAGES"
       ]
     },
     "plugins": [

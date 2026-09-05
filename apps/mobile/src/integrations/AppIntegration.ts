@@ -21,14 +21,26 @@ export class AppIntegration {
 
     // 0. On Android, try native package launcher first via Android PackageManager
     const knownPackage = APP_TO_PACKAGE[cleanApp] || (cleanApp.startsWith('com.') ? cleanApp : null);
-    if (Platform.OS === 'android' && knownPackage && NativeModules.JarvisNotificationListener?.launchApplication) {
-      try {
-        const launched = await NativeModules.JarvisNotificationListener.launchApplication(knownPackage);
-        if (launched) {
-          return { success: true, message: `Opened ${appName}.` };
+    if (Platform.OS === 'android' && knownPackage) {
+      if (NativeModules.JarvisEarbudModule?.launchApp) {
+        try {
+          const launched = await NativeModules.JarvisEarbudModule.launchApp(knownPackage);
+          if (launched) {
+            return { success: true, message: `Opened ${appName}.` };
+          }
+        } catch {
+          // Fall back
         }
-      } catch {
-        // Fall back to URL schemes
+      }
+      if (NativeModules.JarvisNotificationListener?.launchApplication) {
+        try {
+          const launched = await NativeModules.JarvisNotificationListener.launchApplication(knownPackage);
+          if (launched) {
+            return { success: true, message: `Opened ${appName}.` };
+          }
+        } catch {
+          // Fall back to URL schemes
+        }
       }
     }
 

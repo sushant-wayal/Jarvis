@@ -204,9 +204,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           .catch(() => {});
       }
 
+      const hasPhoneAction = Boolean(response.pendingPhoneAction);
       const shouldContinue =
         Boolean(response.response) &&
         !response.response.includes('Understood. Goodbye') &&
+        !hasPhoneAction &&
         (response as unknown as { continuousListening?: boolean }).continuousListening !== false;
 
       if (response.audioBase64) {

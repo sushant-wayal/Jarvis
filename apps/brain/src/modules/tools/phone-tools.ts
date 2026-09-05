@@ -92,21 +92,25 @@ function formatNotificationsForBrain(events: PhoneNotificationEvent[]): string {
 
 // ── Tools ────────────────────────────────────────────────────────────────────
 
-export const initiatePhoneCallTool: JarvisTool<{ contactName: string }> = {
+export const initiatePhoneCallTool: JarvisTool<{ contactName: string; phoneNumber?: string }> = {
   name: 'initiate_phone_call',
   description:
-    'Initiate a phone call to a named contact. Returns an action descriptor for the mobile app to execute. Use when the user says "call [name]".',
+    'Initiate a phone call to a named contact or direct phone number. Returns an action descriptor for the mobile app to execute. Use when the user says "call [name]" or "call [number]".',
   category: 'COMMUNICATION',
   riskLevel: 'LOW_RISK',
   requiresConfirmation: false,
   inputSchema: z.object({
-    contactName: z.string().describe('The name of the contact to call, as spoken by the user.'),
+    contactName: z.string().describe('The name of the contact or phone number to call, as spoken by the user.'),
+    phoneNumber: z.string().optional().describe('Direct phone number if provided by user or looked up.'),
   }),
   execute: async (input) => {
+    const digits = input.contactName.replace(/[^0-9+]/g, '');
+    const resolvedNumber = input.phoneNumber || (digits.length >= 7 ? input.contactName : undefined);
     return {
       type: 'CALL_CONTACT' as const,
       action: 'CALL_CONTACT' as const,
       contactName: input.contactName,
+      phoneNumber: resolvedNumber,
       response: `Calling ${input.contactName}.`,
     };
   },

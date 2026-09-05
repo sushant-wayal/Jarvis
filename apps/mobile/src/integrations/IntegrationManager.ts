@@ -159,6 +159,17 @@ export class IntegrationManager {
       });
     }
 
+    // Direct phone number check: if contactName is a phone number (e.g. 7+ digits)
+    const cleanDigits = contactName.replace(/[^0-9+*#]/g, '');
+    if (cleanDigits.length >= 7) {
+      return phoneIntegration.makeCall({
+        id: 'direct-number',
+        name: contactName,
+        displayName: contactName,
+        phoneNumbers: [{ number: cleanDigits, label: 'mobile' }],
+      });
+    }
+
     if (!contactsIntegration.isPermissionGranted()) {
       return {
         success: false,

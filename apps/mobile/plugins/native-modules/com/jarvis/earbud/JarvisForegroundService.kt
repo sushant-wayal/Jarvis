@@ -15,6 +15,11 @@ import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.ContactsContract
+import android.provider.Settings
+import android.provider.MediaStore
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -845,8 +850,9 @@ class JarvisForegroundService : Service() {
                 val textResponse = (dataJson?.optString("response") ?: rootJson.optString("response", "")).trim()
                 val audioB64 = (dataJson?.optString("audioBase64") ?: rootJson.optString("audioBase64", "")).trim()
                 val continuous = dataJson?.optBoolean("continuousListening", true) ?: rootJson.optBoolean("continuousListening", true)
+                val phoneAction = dataJson?.optJSONObject("pendingPhoneAction") ?: rootJson.optJSONObject("pendingPhoneAction")
 
-                Log.d(TAG, "Brain response: text len=${textResponse.length}, audio len=${audioB64.length}, continuous=$continuous")
+                Log.d(TAG, "Brain response: text len=${textResponse.length}, audio len=${audioB64.length}, action=${phoneAction?.optString("type")}")
 
                 // If Brain returned an empty silence turn, remain in IDLE without speaking or restarting listening
                 if (textResponse.isEmpty() && audioB64.isEmpty()) {
@@ -855,16 +861,26 @@ class JarvisForegroundService : Service() {
                     return
                 }
 
+                // If phone action is executing, do not restart listening
+                val shouldAutoListen = continuous && (phoneAction == null)
+
                 // Play audio response through earbuds if available
                 if (audioB64.isNotEmpty()) {
-                    playAudioResponse(audioB64, autoListenAfter = continuous)
-                } else if (continuous && textResponse.isNotEmpty()) {
-                    // Continuous conversation: if text-only, auto-listen after short delay
-                    mainHandler.postDelayed({
-                        if (state == State.IDLE) {
-                            startNativeRecording()
+                    playAudioResponse(audioB64, autoListenAfter = shouldAutoListen) {
+                        if (phoneAction != null) {
+                            executeNativePhoneAction(phoneAction)
                         }
-                    }, 800)
+                    }
+                } else {
+                    if (phoneAction != null) {
+                        executeNativePhoneAction(phoneAction)
+                    } else if (shouldAutoListen && textResponse.isNotEmpty()) {
+                        mainHandler.postDelayed({
+                            if (state == State.IDLE) {
+                                startNativeRecording()
+                            }
+                        }, 800)
+                    }
                 }
 
                 // Show notification with the text response
@@ -887,7 +903,11 @@ class JarvisForegroundService : Service() {
 
     // ─── Audio playback ───────────────────────────────────────────────────────
 
-    private fun playAudioResponse(base64Audio: String, autoListenAfter: Boolean = true) {
+    private fun playAudioResponse(
+        base64Audio: String,
+        autoListenAfter: Boolean = true,
+        onComplete: (() -> Unit)? = null
+    ) {
         try {
             val audioBytes = Base64.decode(base64Audio, Base64.NO_WRAP)
             val tmpFile = File(cacheDir, "jarvis_resp_${System.currentTimeMillis()}.mp3")
@@ -906,6 +926,7 @@ class JarvisForegroundService : Service() {
                 setOnCompletionListener { mp ->
                     mp.release()
                     tmpFile.delete()
+                    onComplete?.invoke()
                     if (autoListenAfter) {
                         mainHandler.postDelayed({
                             if (state == State.IDLE) {
@@ -920,11 +941,147 @@ class JarvisForegroundService : Service() {
                 setOnErrorListener { mp, _, _ ->
                     mp.release()
                     tmpFile.delete()
+                    onComplete?.invoke()
                     false
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Audio playback failed: ${e.message}", e)
+            onComplete?.invoke()
+        }
+    }
+
+    // ─── Native Phone Actions ─────────────────────────────────────────────────
+
+    private fun executeNativePhoneAction(action: JSONObject) {
+        val type = action.optString("type").ifEmpty { action.optString("action") }
+        mainHandler.post {
+            try {
+                when (type) {
+                    "OPEN_APP" -> {
+                        val app = action.optString("app").lowercase().replace(Regex("[^a-z0-9_]"), "")
+                        val targetPackage = when (app) {
+                            "whatsapp" -> "com.whatsapp"
+                            "whatsapp_business" -> "com.whatsapp.w4b"
+                            "instagram" -> "com.instagram.android"
+                            "telegram" -> "org.telegram.messenger"
+                            "youtube" -> "com.google.android.youtube"
+                            "spotify" -> "com.spotify.music"
+                            "chrome" -> "com.android.chrome"
+                            "gmail" -> "com.google.android.gm"
+                            "maps" -> "com.google.android.apps.maps"
+                            "calculator" -> "com.google.android.calculator"
+                            "photos" -> "com.google.android.apps.photos"
+                            "calendar" -> "com.google.android.calendar"
+                            "clock" -> "com.google.android.deskclock"
+                            "uber" -> "com.ubercab"
+                            "swiggy" -> "in.swiggy.android"
+                            "zomato" -> "com.application.zomato"
+                            "phonepe" -> "com.phonepe.app"
+                            "paytm" -> "net.one97.paytm"
+                            else -> if (app.startsWith("com.")) app else null
+                        }
+
+                        var launched = false
+                        if (targetPackage != null) {
+                            var intent = packageManager.getLaunchIntentForPackage(targetPackage)
+                            if (intent == null && targetPackage == "com.whatsapp") {
+                                intent = packageManager.getLaunchIntentForPackage("com.whatsapp.w4b")
+                            }
+                            if (intent != null) {
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                                startActivity(intent)
+                                launched = true
+                                Log.d(TAG, "Native launched application package: $targetPackage")
+                            }
+                        }
+
+                        if (!launched) {
+                            // Fallback to Uri scheme
+                            val uriScheme = when (app) {
+                                "whatsapp" -> "whatsapp://"
+                                "instagram" -> "instagram://app"
+                                "youtube" -> "vnd.youtube://"
+                                "spotify" -> "spotify://"
+                                "telegram" -> "tg://"
+                                "chrome" -> "googlechrome://"
+                                "maps" -> "geo:0,0"
+                                else -> if (app.isNotBlank()) "$app://" else null
+                            }
+                            if (uriScheme != null) {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriScheme)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                                Log.d(TAG, "Native launched app via URI scheme: $uriScheme")
+                            }
+                        }
+                    }
+
+                    "CALL_CONTACT" -> {
+                        val phoneNum = action.optString("phoneNumber")
+                        val contactName = action.optString("contactName")
+                        var numberToCall = phoneNum.ifEmpty { contactName }
+
+                        // If not digits, query Contacts Provider
+                        val cleanDigits = numberToCall.replace(Regex("[^0-9+*#]"), "")
+                        if (cleanDigits.length < 7 && contactName.isNotBlank()) {
+                            try {
+                                val cursor = contentResolver.query(
+                                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                                    arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                                    arrayOf("%$contactName%"),
+                                    null
+                                )
+                                cursor?.use {
+                                    if (it.moveToFirst()) {
+                                        numberToCall = it.getString(0)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Contacts resolution error: ${e.message}")
+                            }
+                        }
+
+                        val finalDigits = numberToCall.replace(Regex("[^0-9+*#]"), "")
+                        if (finalDigits.isNotBlank()) {
+                            val uri = Uri.parse("tel:$finalDigits")
+                            val isCallPermGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+                            } else {
+                                true
+                            }
+                            val callIntent = if (isCallPermGranted) {
+                                Intent(Intent.ACTION_CALL, uri).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            } else {
+                                Intent(Intent.ACTION_DIAL, uri).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            }
+                            startActivity(callIntent)
+                            Log.d(TAG, "Native initiated phone call to: $finalDigits")
+                        }
+                    }
+
+                    "SEND_SMS" -> {
+                        val phoneNum = action.optString("phoneNumber")
+                        val contactName = action.optString("contactName")
+                        val message = action.optString("message")
+                        val number = phoneNum.ifEmpty { contactName }.replace(Regex("[^0-9+*#]"), "")
+                        val uri = Uri.parse("sms:$number")
+                        val smsIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                            putExtra("sms_body", message)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(smsIntent)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to execute native phone action: ${e.message}", e)
+            }
         }
     }
 

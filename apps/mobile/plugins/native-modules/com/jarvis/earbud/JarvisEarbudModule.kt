@@ -1,6 +1,8 @@
 package com.jarvis.earbud
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import com.facebook.react.bridge.*
@@ -95,6 +97,52 @@ class JarvisEarbudModule(private val reactContext: ReactApplicationContext) :
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("SERVICE_STOP_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun launchApp(packageName: String, promise: Promise) {
+        try {
+            val pm = reactContext.packageManager
+            var intent = pm.getLaunchIntentForPackage(packageName)
+            if (intent == null && packageName == "com.whatsapp") {
+                intent = pm.getLaunchIntentForPackage("com.whatsapp.w4b")
+            }
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                reactContext.startActivity(intent)
+                promise.resolve(true)
+            } else {
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            promise.reject("ERR_LAUNCH", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun makeCall(phoneNumber: String, promise: Promise) {
+        try {
+            val sanitized = phoneNumber.replace(Regex("[^0-9+*#]"), "")
+            val uri = Uri.parse("tel:$sanitized")
+            val isCallPermGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                reactContext.checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+            val intent = if (isCallPermGranted) {
+                Intent(Intent.ACTION_CALL, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            } else {
+                Intent(Intent.ACTION_DIAL, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERR_CALL", e.message, e)
         }
     }
 
