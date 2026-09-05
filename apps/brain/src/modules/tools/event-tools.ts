@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import { eventService } from '@/modules/events/event-service';
 import { locationService } from '@/modules/location/location-service';
 import { JarvisTool } from './types';
+import { semanticMatcher } from '../brain/semantic-matcher';
 
 const CreateEventInputSchema = z.object({
   title: z.string().describe('Title of the event or trip, e.g. "Goa Trip", "Bangalore Visit"'),
@@ -213,14 +214,24 @@ export const updateEventTool: JarvisTool<
     }
 
     if (!event && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.userEvent.findMany({
         where: { userId: context.userId },
         orderBy: { createdAt: 'desc' },
       });
-      event = all.find(
-        (e) => e.title.toLowerCase().includes(q) || (e.locationName && e.locationName.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (e) => `${e.title} ${e.locationName || ''} ${e.description || ''}`,
+        (e) => e.id,
+        'event or trip'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple events matching "${input.query}": ${match.ambiguousCandidates.map((e) => `"${e.title}"`).join(', ')}. Please specify which one to update.`,
+        };
+      }
+      event = match.matchedItem;
     }
 
     if (!event) {
@@ -270,14 +281,24 @@ export const deleteEventTool: JarvisTool<
     }
 
     if (!event && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.userEvent.findMany({
         where: { userId: context.userId },
         orderBy: { createdAt: 'desc' },
       });
-      event = all.find(
-        (e) => e.title.toLowerCase().includes(q) || (e.locationName && e.locationName.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (e) => `${e.title} ${e.locationName || ''} ${e.description || ''}`,
+        (e) => e.id,
+        'event or trip'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple events matching "${input.query}": ${match.ambiguousCandidates.map((e) => `"${e.title}"`).join(', ')}. Please specify which one to cancel.`,
+        };
+      }
+      event = match.matchedItem;
     }
 
     if (!event) {
@@ -351,14 +372,24 @@ export const updateEventReminderTool: JarvisTool<
     }
 
     if (!reminder && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.eventReminder.findMany({
         where: { userId: context.userId },
         orderBy: { createdAt: 'desc' },
       });
-      reminder = all.find(
-        (r) => r.title.toLowerCase().includes(q) || (r.description && r.description.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (r) => `${r.title} ${r.targetLocation || ''} ${r.description || ''}`,
+        (r) => r.id,
+        'location reminder'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple reminders matching "${input.query}": ${match.ambiguousCandidates.map((r) => `"${r.title}"`).join(', ')}. Please specify which one to update.`,
+        };
+      }
+      reminder = match.matchedItem;
     }
 
     if (!reminder) {
@@ -407,12 +438,24 @@ export const deleteEventReminderTool: JarvisTool<
     }
 
     if (!reminder && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.eventReminder.findMany({
         where: { userId: context.userId },
         orderBy: { createdAt: 'desc' },
       });
-      reminder = all.find((r) => r.title.toLowerCase().includes(q));
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (r) => `${r.title} ${r.targetLocation || ''} ${r.description || ''}`,
+        (r) => r.id,
+        'location reminder'
+      );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple reminders matching "${input.query}": ${match.ambiguousCandidates.map((r) => `"${r.title}"`).join(', ')}. Please specify which one to delete.`,
+        };
+      }
+      reminder = match.matchedItem;
     }
 
     if (!reminder) {
@@ -438,7 +481,7 @@ export const listPlacesTool: JarvisTool<
   { places: Array<{ id: string; name: string; latitude: number; longitude: number; radiusMeters: number }> }
 > = {
   name: 'place_list',
-  description: 'Lists all saved semantic places (e.g. Home, Office, Gym) for the user.',
+  description: 'Lists all saved semantic places (Home, Work, Gym, etc.).',
   category: 'LOCATION',
   riskLevel: 'SAFE',
   inputSchema: ListPlacesInputSchema,
@@ -457,13 +500,13 @@ export const listPlacesTool: JarvisTool<
 };
 
 const DeletePlaceInputSchema = z.object({
-  name: z.string().optional().describe('Name of the place to delete (e.g. "Home", "Gym")'),
-  placeId: z.string().optional().describe('ID of the place to delete if known'),
+  placeId: z.string().optional().describe('ID of the place to delete (if known)'),
+  name: z.string().optional().describe('Name of the place to delete (e.g. "Gym", "Office")'),
 });
 
 export const deletePlaceTool: JarvisTool<
   z.infer<typeof DeletePlaceInputSchema>,
-  { success: boolean; message: string; deletedName?: string }
+  { success: boolean; deletedName?: string; message: string }
 > = {
   name: 'place_delete',
   description: 'Deletes a saved semantic place (e.g. remove "Gym" or "Office").',
@@ -479,11 +522,17 @@ export const deletePlaceTool: JarvisTool<
     }
 
     if (!place && input.name) {
-      const q = input.name.toLowerCase().trim();
       const all = await prisma.knownPlace.findMany({
         where: { userId: context.userId },
       });
-      place = all.find((p) => p.name.toLowerCase().includes(q));
+      const match = await semanticMatcher.matchItem(
+        input.name,
+        all,
+        (p) => p.name,
+        (p) => p.id,
+        'saved place'
+      );
+      place = match.matchedItem;
     }
 
     if (!place) {

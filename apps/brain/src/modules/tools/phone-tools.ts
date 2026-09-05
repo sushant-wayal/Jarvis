@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { PhoneContext, PhoneNotificationEvent } from '@jarvis/shared';
 import { JarvisTool } from './types';
 import { proactiveIntelligenceService } from '../phone/proactive-intelligence';
+import { semanticEntityResolver } from '../brain/semantic-entity-resolver';
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 
@@ -39,8 +40,16 @@ function filterNotifications(
   let results = [...notifications];
 
   if (sender) {
-    const q = sender.toLowerCase();
-    results = results.filter((n) => n.sender.toLowerCase().includes(q));
+    const q = sender.toLowerCase().trim();
+    results = results.filter((n) => {
+      const s = n.sender.toLowerCase();
+      if (s === q) return true;
+      // Do not match third-party possessives (e.g. "Darshan's mom") when querying direct relation (e.g. "mom")
+      if (/^[a-zA-Z]+'s\s+/i.test(s) && !/^[a-zA-Z]+'s\s+/i.test(q)) {
+        return false;
+      }
+      return s.includes(q);
+    });
   }
   if (app) {
     const a = app.toLowerCase();
@@ -126,10 +135,32 @@ export const sendMessageToContactTool: JarvisTool<{
   }),
   execute: async (input, context) => {
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
+    const userName = context.userName || 'Sushant';
+    let targetContactName = input.contactName;
+
+    // Resolve target contact name semantically if contacts exist
+    if (phone?.contacts && phone.contacts.length > 0) {
+      const resolved = await semanticEntityResolver.resolveContact(
+        input.contactName,
+        userName,
+        phone.contacts,
+        phone.aliases
+      );
+      if (resolved.found && resolved.contact) {
+        targetContactName = resolved.contact.name;
+      }
+    }
+
     // Try to find recent notification to determine the preferred channel
-    const recentEvent = phone?.recentNotifications.find((n) =>
-      n.sender.toLowerCase().includes(input.contactName.toLowerCase())
-    );
+    const targetLower = targetContactName.toLowerCase();
+    const recentEvent = phone?.recentNotifications.find((n) => {
+      const s = n.sender.toLowerCase();
+      if (s === targetLower) return true;
+      if (/^[a-zA-Z]+'s\s+/i.test(s) && !/^[a-zA-Z]+'s\s+/i.test(targetLower)) {
+        return false;
+      }
+      return s.includes(targetLower);
+    });
 
     const resolvedApp = input.preferredApp ?? recentEvent?.app ?? 'sms';
 
@@ -137,9 +168,9 @@ export const sendMessageToContactTool: JarvisTool<{
       return {
         type: 'SEND_SMS' as const,
         action: 'SEND_SMS' as const,
-        contactName: input.contactName,
+        contactName: targetContactName,
         message: input.message,
-        response: `Sending SMS to ${input.contactName}: "${input.message}"`,
+        response: `Sending SMS to ${targetContactName}: "${input.message}"`,
       };
     }
 
@@ -147,7 +178,7 @@ export const sendMessageToContactTool: JarvisTool<{
       type: 'REPLY_TO_NOTIFICATION' as const,
       action: 'REPLY_TO_NOTIFICATION' as const,
       app: resolvedApp,
-      sender: input.contactName,
+      sender: targetContactName,
       conversationKey: recentEvent?.conversationKey,
       message: input.message,
       notificationId: recentEvent?.id,
@@ -397,50 +428,11 @@ export const lookupContactTool: JarvisTool<{ nameOrQuery: string }> = {
 
     const query = input.nameOrQuery.toLowerCase().trim();
     const aliases = phone.aliases || {};
-
-    // Check configured aliases (e.g. mom -> "Mom" or mom -> "+919876543210")
     const targetName = aliases[query] || query;
-
-    // Search in phone.contacts
     const contacts = phone.contacts || [];
+    const userName = context.userName || 'Sushant';
 
-    // Exact or case-insensitive match
-    let matched = contacts.find((c) => c.name.toLowerCase() === targetName.toLowerCase());
-
-    // Partial match
-    if (!matched) {
-      matched = contacts.find((c) => c.name.toLowerCase().includes(targetName.toLowerCase()));
-    }
-
-    // Common relation nicknames
-    if (!matched) {
-      const relationSynonyms: Record<string, string[]> = {
-        mom: ['mother', 'maa', 'aai', 'mummy', 'mommy', 'ammi', 'amma'],
-        mother: ['mom', 'maa', 'aai', 'mummy', 'mommy'],
-        dad: ['father', 'papa', 'baba', 'appa', 'daddy'],
-        father: ['dad', 'papa', 'baba', 'appa', 'daddy'],
-        bro: ['brother', 'bhai'],
-        sis: ['sister', 'didi'],
-      };
-
-      const synonyms = relationSynonyms[query] || [];
-      for (const syn of synonyms) {
-        matched = contacts.find((c) => c.name.toLowerCase().includes(syn));
-        if (matched) break;
-      }
-    }
-
-    if (matched) {
-      return {
-        found: true,
-        contactName: matched.name,
-        phoneNumber: matched.number,
-        label: matched.label || 'mobile',
-        formatted: `${matched.name}: ${matched.number}`,
-      };
-    }
-
-    // If alias is a phone number directly
+    // If alias is a phone number directly, return fast
     if (/^\+?[\d\s\-]{7,15}$/.test(targetName)) {
       return {
         found: true,
@@ -451,10 +443,33 @@ export const lookupContactTool: JarvisTool<{ nameOrQuery: string }> = {
       };
     }
 
+    // Use Privacy-Masked Semantic Entity & Relationship Resolver
+    const resolved = await semanticEntityResolver.resolveContact(
+      input.nameOrQuery,
+      userName,
+      contacts,
+      aliases
+    );
+
+    if (resolved.found && resolved.contact) {
+      return {
+        found: true,
+        contactName: resolved.contact.name,
+        phoneNumber: resolved.contact.number,
+        label: resolved.contact.label || 'mobile',
+        formatted: resolved.contact.formatted,
+        reasoning: resolved.reasoning,
+      };
+    }
+
     return {
       found: false,
-      message: `I looked through your contacts but couldn't find anyone matching "${input.nameOrQuery}". You can configure contact aliases in Settings if the name differs in your address book.`,
+      status: resolved.status,
+      message:
+        resolved.disambiguationMessage ||
+        `I looked through your contacts but couldn't find anyone matching "${input.nameOrQuery}". You can configure contact aliases in Settings if the name differs in your address book.`,
       availableContactCount: contacts.length,
+      reasoning: resolved.reasoning,
     };
   },
 };

@@ -131,11 +131,19 @@ export class ProactiveIntelligenceService {
   /**
    * Summarizes all interactions with a specific contact across channels.
    */
+  /**
+   * Summarizes all interactions with a specific contact across channels.
+   */
   summarizeContact(contactName: string, phoneContext: PhoneContext): string {
-    const q = contactName.toLowerCase();
-    const matches = (phoneContext.recentNotifications || []).filter((n) =>
-      n.sender.toLowerCase().includes(q)
-    );
+    const q = contactName.toLowerCase().trim();
+    const matches = (phoneContext.recentNotifications || []).filter((n) => {
+      const s = n.sender.toLowerCase();
+      if (s === q) return true;
+      if (/^[a-zA-Z]+'s\s+/i.test(s) && !/^[a-zA-Z]+'s\s+/i.test(q)) {
+        return false;
+      }
+      return s.includes(q);
+    });
 
     if (matches.length === 0) {
       return `No recent messaging activity found for ${contactName}.`;
@@ -167,12 +175,18 @@ export class ProactiveIntelligenceService {
     const notifications = phoneContext.recentNotifications || [];
 
     for (const event of events) {
-      const eventKeywords = [event.title, event.locationName].filter(Boolean) as string[];
+      const eventKeywords = [event.title, event.locationName]
+        .filter(Boolean)
+        .map((k) => (k as string).toLowerCase().trim())
+        .filter((k) => k.length >= 3);
+
       for (const notif of notifications) {
         if (!notif.content) continue;
-        const matchesEvent = eventKeywords.some((kw) =>
-          notif.content?.toLowerCase().includes(kw.toLowerCase())
-        );
+        const cLower = notif.content.toLowerCase();
+        const matchesEvent = eventKeywords.some((kw) => {
+          const regex = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          return regex.test(cLower);
+        });
 
         if (matchesEvent) {
           insights.push(
@@ -183,9 +197,13 @@ export class ProactiveIntelligenceService {
     }
 
     for (const task of tasks) {
+      const titleLower = task.title.toLowerCase().trim();
+      if (titleLower.length < 3) continue;
+      const titleRegex = new RegExp(`\\b${titleLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+
       for (const notif of notifications) {
         if (!notif.content) continue;
-        if (notif.content.toLowerCase().includes(task.title.toLowerCase())) {
+        if (titleRegex.test(notif.content.toLowerCase())) {
           insights.push(
             `Message from ${notif.sender} relates to your task "${task.title}": "${notif.content}"`
           );

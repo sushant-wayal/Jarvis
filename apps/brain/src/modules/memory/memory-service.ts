@@ -2,6 +2,7 @@ import { MemoryItem, MemoryType } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
 import { ttlEngine } from '@/modules/brain/ttl-engine';
+import { memoryLifecycleService } from './memory-lifecycle';
 
 export class MemoryService {
   async getRelevantMemories(userId: string, query?: string, limit = 5): Promise<MemoryItem[]> {
@@ -50,41 +51,10 @@ export class MemoryService {
     content: string,
     importance = 3,
     ttlDays?: number,
-    expiresAt?: Date
+    expiresAt?: Date,
+    source = 'USER_EXPLICIT'
   ): Promise<MemoryItem> {
     const trimmedContent = content.trim();
-
-    // Determine dynamic expiry date
-    let finalExpiresAt: Date;
-    if (expiresAt) {
-      finalExpiresAt = expiresAt;
-    } else if (ttlDays !== undefined && ttlDays > 0) {
-      finalExpiresAt = ttlEngine.calculateExpiryDate(ttlDays);
-    } else {
-      const suggestedDays = await ttlEngine.suggestMemoryTtl(trimmedContent, type);
-      finalExpiresAt = ttlEngine.calculateExpiryDate(suggestedDays);
-    }
-
-    const existing = await prisma.memory.findFirst({
-      where: {
-        userId,
-        content: { equals: trimmedContent },
-      },
-    });
-
-    if (existing) {
-      // Whenever record is updated, renew its TTL and updatedAt
-      const updated = await prisma.memory.update({
-        where: { id: existing.id },
-        data: {
-          importance,
-          expiresAt: finalExpiresAt,
-          updatedAt: new Date(),
-        },
-      });
-      logger.info('Updated existing memory and renewed TTL', { userId, memoryId: existing.id, expiresAt: finalExpiresAt });
-      return this.mapToMemoryItem(updated);
-    }
 
     // Ensure User record exists in DB
     await prisma.user.upsert({
@@ -93,18 +63,43 @@ export class MemoryService {
       create: { id: userId, name: 'Sushant' },
     });
 
-    const created = await prisma.memory.create({
-      data: {
-        userId,
-        type,
-        content: trimmedContent,
-        importance,
-        expiresAt: finalExpiresAt,
-      },
+    const result = await memoryLifecycleService.processCandidate({
+      userId,
+      type,
+      content: trimmedContent,
+      importance,
+      confidence: 0.95,
+      source,
+      ttlDays,
+      expiresAt,
     });
 
-    logger.info('Saved long-term memory with TTL', { userId, type, content: trimmedContent, expiresAt: finalExpiresAt });
-    return this.mapToMemoryItem(created);
+    if (result.memoryId) {
+      const memory = await prisma.memory.findUnique({ where: { id: result.memoryId } });
+      if (memory) {
+        return this.mapToMemoryItem(memory);
+      }
+    }
+
+    // Fallback if rejected or discarded: find latest memory of this type or create stub
+    const latest = await prisma.memory.findFirst({
+      where: { userId, type },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (latest) {
+      return this.mapToMemoryItem(latest);
+    }
+
+    return {
+      id: 'rejected-candidate',
+      userId,
+      type,
+      content: trimmedContent,
+      importance,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   async deleteMemory(userId: string, memoryId: string): Promise<boolean> {

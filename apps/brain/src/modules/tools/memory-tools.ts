@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { memoryService } from '@/modules/memory/memory-service';
 import { JarvisTool } from './types';
+import { semanticMatcher } from '../brain/semantic-matcher';
 
 const CreateMemoryInputSchema = z.object({
   content: z.string().describe('Clear personal fact, preference, habit, or project detail to remember forever'),
@@ -124,12 +125,24 @@ export const updateMemoryTool: JarvisTool<
     }
 
     if (!memory && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.memory.findMany({
         where: { userId: context.userId },
         orderBy: { updatedAt: 'desc' },
       });
-      memory = all.find((m) => m.content.toLowerCase().includes(q));
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (m) => m.content,
+        (m) => m.id,
+        'memory'
+      );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple memories matching "${input.query}": ${match.ambiguousCandidates.map((m) => `"${m.content}"`).join(', ')}. Please clarify which one to update.`,
+        };
+      }
+      memory = match.matchedItem;
     }
 
     if (!memory) {
@@ -181,12 +194,24 @@ export const deleteMemoryTool: JarvisTool<
     }
 
     if (!memory && input.query) {
-      const q = input.query.toLowerCase().trim();
       const all = await prisma.memory.findMany({
         where: { userId: context.userId },
         orderBy: { updatedAt: 'desc' },
       });
-      memory = all.find((m) => m.content.toLowerCase().includes(q));
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        all,
+        (m) => m.content,
+        (m) => m.id,
+        'memory'
+      );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple memories matching "${input.query}": ${match.ambiguousCandidates.map((m) => `"${m.content}"`).join(', ')}. Please clarify which one to delete.`,
+        };
+      }
+      memory = match.matchedItem;
     }
 
     if (!memory) {

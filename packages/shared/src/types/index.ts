@@ -520,6 +520,7 @@ export interface HealthStatus {
 
 export interface ToolContext {
   userId: string;
+  userName?: string;
   conversationId: string;
   requestId: string;
   timezone: string;

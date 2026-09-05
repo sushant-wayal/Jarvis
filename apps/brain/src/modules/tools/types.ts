@@ -7,8 +7,7 @@ export interface JarvisTool<TInput = unknown, TOutput = unknown> {
   category: ToolCategory;
   riskLevel: ToolRiskLevel;
   requiresConfirmation?: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  inputSchema: z.ZodType<TInput, z.ZodTypeDef, any>;
+  inputSchema: z.ZodType<TInput, z.ZodTypeDef, unknown>;
   execute(input: TInput, context: ToolContext): Promise<TOutput>;
 }
 

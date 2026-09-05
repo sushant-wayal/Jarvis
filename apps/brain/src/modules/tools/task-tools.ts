@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { JarvisTool } from './types';
 import { parseScheduleDate } from '@/modules/tasks/date-parser';
+import { semanticMatcher } from '../brain/semantic-matcher';
 
 const CreateTaskInputSchema = z.object({
   title: z.string().describe('Clear title or reminder summary, e.g. "Call Mom", "Submit monthly tax report"'),
@@ -110,14 +111,24 @@ export const updateTaskTool: JarvisTool<
     }
 
     if (!task && input.query) {
-      const q = input.query.toLowerCase().trim();
       const candidates = await prisma.task.findMany({
         where: { userId: context.userId },
         orderBy: { updatedAt: 'desc' },
       });
-      task = candidates.find(
-        (t) => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        candidates,
+        (t) => `${t.title} ${t.description || ''}`,
+        (t) => t.id,
+        'task'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple tasks matching "${input.query}": ${match.ambiguousCandidates.map((t) => `"${t.title}"`).join(', ')}. Please specify which one you would like to update.`,
+        };
+      }
+      task = match.matchedItem;
     }
 
     if (!task) {
@@ -205,23 +216,39 @@ export const completeTaskTool: JarvisTool<
     }
 
     if (!task && input.query) {
-      const q = input.query.toLowerCase().trim();
       const candidates = await prisma.task.findMany({
         where: { userId: context.userId, status: 'ACTIVE' },
         orderBy: { updatedAt: 'desc' },
       });
-      task = candidates.find(
-        (t) => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        candidates,
+        (t) => `${t.title} ${t.description || ''}`,
+        (t) => t.id,
+        'active task'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple tasks matching "${input.query}": ${match.ambiguousCandidates.map((t) => `"${t.title}"`).join(', ')}. Please specify which one to complete.`,
+        };
+      }
+      task = match.matchedItem;
+
       if (!task) {
-        // Fallback: search across all tasks including completed/paused
+        // Fallback: search across all tasks
         const allCandidates = await prisma.task.findMany({
           where: { userId: context.userId },
           orderBy: { updatedAt: 'desc' },
         });
-        task = allCandidates.find(
-          (t) => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
+        const fallbackMatch = await semanticMatcher.matchItem(
+          input.query,
+          allCandidates,
+          (t) => `${t.title} ${t.description || ''}`,
+          (t) => t.id,
+          'task'
         );
+        task = fallbackMatch.matchedItem;
       }
     }
 
@@ -292,14 +319,24 @@ export const deleteTaskTool: JarvisTool<
     }
 
     if (!task && input.query) {
-      const q = input.query.toLowerCase().trim();
       const candidates = await prisma.task.findMany({
         where: { userId: context.userId },
         orderBy: { updatedAt: 'desc' },
       });
-      task = candidates.find(
-        (t) => t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q))
+      const match = await semanticMatcher.matchItem(
+        input.query,
+        candidates,
+        (t) => `${t.title} ${t.description || ''}`,
+        (t) => t.id,
+        'task'
       );
+      if (match.status === 'AMBIGUOUS' && match.ambiguousCandidates?.length) {
+        return {
+          success: false,
+          message: `Found multiple tasks matching "${input.query}": ${match.ambiguousCandidates.map((t) => `"${t.title}"`).join(', ')}. Please specify which one to delete.`,
+        };
+      }
+      task = match.matchedItem;
     }
 
     if (task) {

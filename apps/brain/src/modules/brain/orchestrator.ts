@@ -57,6 +57,7 @@ export class BrainOrchestrator {
     // 4. Tool Execution Context
     const toolContext: ToolContext = {
       userId,
+      userName: assembledContext.userProfile.name || 'Sushant',
       conversationId,
       requestId,
       timezone,
