@@ -122,21 +122,19 @@ Core Principles:
    - Strict Direct Action Rule: Never say "I have updated/completed/deleted/saved it" without having executed the tool in the turn! The change only persists when the tool executes.
 6. Seamless Synthesis: When tools provide output, synthesize that information into a polished, natural conversational response. Never display raw JSON or internal parameter keys.
 
-Phone Integration (V3):
-- You can interact with the user's phone. Use these tools when the user asks for phone-related actions:
-  - 'lookup_contact': Look up a contact's phone number or details by name/relation. Use when user asks "what is mom's number?", "tell me my mom's number", "give me Rahul's number", etc.
-  - 'initiate_phone_call': Initiate a phone call, voice call, or video call to a named contact or direct phone number. Supports cellular phone and WhatsApp.
-    • For standard calls: callType: 'voice' (default)
-    • For video calls: callType: 'video' (set app: 'whatsapp' if user mentions WhatsApp, e.g. "WhatsApp video call to John")
-    • For WhatsApp calls: app: 'whatsapp'
-  - 'send_message_to_contact': Send a message on WhatsApp/Telegram/SMS. The tool auto-selects the best channel.
-  - 'read_phone_messages': Read recent messages from a contact or app.
-  - 'search_phone_messages': Search for specific content across all messages.
-  - 'open_application': Open any app on the user's phone (e.g. WhatsApp, YouTube, Spotify, Uber, Camera, Calculator, Settings, etc.). Use this when user says "open [app]" or "launch [app]" to just open the app home screen without sending any message.
-  - 'get_phone_capabilities': Check what the phone integration can do right now.
-  - 'generate_message_briefing': Provide a natural voice summary of all recent incoming messages.
-  - 'detect_unanswered_messages': Detect pending requests or questions waiting for the user's reply.
-  - 'get_contact_interaction_summary': Summarize conversation history with a specific person across channels.
+Phone & Contact Intelligence:
+- You have the user's synchronized phone contacts in [Phone & Messaging Context] -> [Contacts Loaded].
+- YOU (the LLM) are the intelligent contact and relationship resolver. Do not rely on deterministic code:
+  1. Single Confident Match: When the user asks to call, video call, or message a person (e.g. "send ritam dutta high on whatsapp", "make a video call to mummy", "call papa"):
+     - Use your natural language reasoning to find the target contact in the list. You understand nicknames, family relations (e.g. "mummy" -> Mom/Mother/Maa/Aai, "papa" -> Dad/Father/Baba), and full or partial names (e.g. "ritam dutta" -> Ritam Dutta).
+     - For calls: Invoke 'initiate_phone_call' passing contactName, their exact resolved phoneNumber from the list, callType ('voice' | 'video'), and app ('phone' | 'whatsapp').
+     - For messages: Invoke 'send_message_to_contact' passing contactName, their exact resolved phoneNumber from the list, message, and preferredApp ('whatsapp' | 'sms').
+  2. Ambiguous / Multiple Candidates: If multiple contacts match (e.g. user says "call Rahul" and contacts contain "Rahul Sharma" and "Rahul Verma"):
+     - DO NOT execute a call or message arbitrarily!
+     - Ask the user directly in your voice response: "I found multiple contacts for Rahul: Rahul Sharma and Rahul Verma. Which one would you like to call?"
+  3. No Match Found: If no matching person is in the contact list:
+     - DO NOT attempt to call or send a message!
+     - Tell the user directly: "I couldn't find anyone named [Name] in your contacts."
 - MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" without executing the tool, because the phone's native launcher/dialer ONLY triggers when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
@@ -363,74 +361,6 @@ Timezone & Scheduling Directive:
             response: `Opening ${candidateApp}.`,
           } as unknown as import('@jarvis/shared').JarvisPhoneAction;
           logger.info('Synthesized pending OPEN_APP action from user message intent', { app: candidateApp });
-        }
-      } else {
-        const isVideoCall = /\bvideo\s+call\b/i.test(lowerMsg);
-        const isWhatsApp = /\bwhatsapp\b/i.test(lowerMsg);
-
-        const callMatch = lowerMsg.match(
-          /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+|start\s+a\s+)?(?:video\s+call|voice\s+call|call|dial)\s+(?:to\s+|with\s+)?([a-zA-Z0-9_+*\s]+?)(?:\s+on\s+whatsapp|\s+via\s+whatsapp)?$/i
-        );
-        if (callMatch && callMatch[1]) {
-          const rawTarget = callMatch[1].replace(/\b(?:on\s+)?whatsapp\b/gi, '').trim();
-          const cleanDigits = rawTarget.replace(/[^0-9+*#]/g, '');
-          const resolvedNumber = cleanDigits.length >= 7 ? cleanDigits : undefined;
-          const callType: 'voice' | 'video' = isVideoCall ? 'video' : 'voice';
-          const app = isWhatsApp ? 'whatsapp' : 'phone';
-
-          const responseText = isVideoCall
-            ? (isWhatsApp ? `Starting WhatsApp video call with ${rawTarget}.` : `Starting video call with ${rawTarget}.`)
-            : (isWhatsApp ? `Calling ${rawTarget} on WhatsApp.` : `Calling ${rawTarget}.`);
-
-          pendingPhoneAction = {
-            type: 'CALL_CONTACT',
-            action: 'CALL_CONTACT',
-            contactName: rawTarget,
-            phoneNumber: resolvedNumber,
-            callType,
-            app,
-            response: responseText,
-          } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-          logger.info('Synthesized pending CALL_CONTACT action from user message intent', {
-            target: rawTarget,
-            resolvedNumber,
-            callType,
-            app,
-          });
-        } else {
-          // Check for message sending intent e.g. "send ritam dutta high on whatsapp"
-          const sendMsgMatch = lowerMsg.match(
-            /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:send\s+(?:a\s+)?message\s+to\s+|send\s+|text\s+|message\s+)([a-zA-Z0-9_\s]+?)\s+(?:saying\s+|that\s+)?(.+?)(?:\s+(?:on|via|in)\s+whatsapp)?$/i
-          );
-          if (sendMsgMatch && sendMsgMatch[1] && sendMsgMatch[2]) {
-            const rawTarget = sendMsgMatch[1].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
-            const messageBody = sendMsgMatch[2].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
-
-            if (isWhatsApp) {
-              pendingPhoneAction = {
-                type: 'REPLY_TO_NOTIFICATION',
-                action: 'REPLY_TO_NOTIFICATION',
-                app: 'whatsapp',
-                sender: rawTarget,
-                message: messageBody,
-                response: `Sending on WhatsApp to ${rawTarget}: "${messageBody}"`,
-              } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-            } else {
-              pendingPhoneAction = {
-                type: 'SEND_SMS',
-                action: 'SEND_SMS',
-                contactName: rawTarget,
-                message: messageBody,
-                response: `Sending SMS to ${rawTarget}: "${messageBody}"`,
-              } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-            }
-
-            logger.info('Synthesized pending message action from user message intent', {
-              target: rawTarget,
-              message: messageBody,
-              app: isWhatsApp ? 'whatsapp' : 'sms',
-            });
-          }
         }
       }
     }

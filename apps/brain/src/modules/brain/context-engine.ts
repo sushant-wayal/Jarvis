@@ -165,7 +165,10 @@ export class ContextEngine {
         contextStr += `- Contact Aliases Configured: ${JSON.stringify(params.phoneContext.aliases)}\n`;
       }
       if (params.phoneContext.contacts && params.phoneContext.contacts.length > 0) {
-        contextStr += `- Contacts Loaded: ${params.phoneContext.contacts.length} contacts synchronized from device (use 'lookup_contact' to query).\n`;
+        contextStr += `- Contacts Loaded (${params.phoneContext.contacts.length} total):\n`;
+        for (const c of params.phoneContext.contacts.slice(0, 150)) {
+          contextStr += `  • "${c.name}" (${c.label || 'mobile'}: ${c.number})\n`;
+        }
       }
 
       if (recentNotifications.length > 0) {

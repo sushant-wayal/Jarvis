@@ -123,66 +123,8 @@ export class SemanticEntityResolver {
       };
     }
 
-    // ── Fast Path 4: Multi-Word Token Match (e.g. "ritam dutta" in "Ritam Dutta") ───
-    const qWords = qLower.split(/[\s,._-]+/).filter((w) => w.length > 0);
-    if (qWords.length > 1) {
-      const allWordsMatch = contacts.find((c) => {
-        const cLower = c.name.toLowerCase();
-        return qWords.every((qw) => cLower.includes(qw));
-      });
-      if (allWordsMatch) {
-        return {
-          found: true,
-          status: 'EXACT_MATCH',
-          contact: {
-            id: allWordsMatch.id || allWordsMatch.name,
-            name: allWordsMatch.name,
-            number: allWordsMatch.number,
-            label: allWordsMatch.label || 'mobile',
-            formatted: `${allWordsMatch.name}: ${allWordsMatch.number}`,
-          },
-          confidence: 0.96,
-          reasoning: `Matched contact containing all query words "${allWordsMatch.name}"`,
-        };
-      }
-    }
-
-    // ── Fast Path 5: Relationship Synonyms (e.g. "mummy" -> "Mom") ──────────
-    const MOM_SYNS = ['mummy', 'mom', 'mother', 'maa', 'aai', 'amma', 'mommy', 'mataji'];
-    const DAD_SYNS = ['dad', 'father', 'papa', 'daddy', 'baba', 'appa', 'pitaji'];
-    let relSyns: string[] | null = null;
-    if (MOM_SYNS.includes(qLower)) relSyns = MOM_SYNS;
-    else if (DAD_SYNS.includes(qLower)) relSyns = DAD_SYNS;
-
-    if (relSyns) {
-      const relMatch = contacts.find((c) => {
-        const cLower = c.name.toLowerCase();
-        if (/^[a-zA-Z]+'s\s+/i.test(cLower) && !cLower.startsWith(userPossessivePrefix)) {
-          return false;
-        }
-        const cWords = cLower.split(/[\s,._-]+/);
-        return relSyns!.some((syn) => cWords.includes(syn) || cLower === syn);
-      });
-
-      if (relMatch) {
-        return {
-          found: true,
-          status: 'EXACT_MATCH',
-          contact: {
-            id: relMatch.id || relMatch.name,
-            name: relMatch.name,
-            number: relMatch.number,
-            label: relMatch.label || 'mobile',
-            formatted: `${relMatch.name}: ${relMatch.number}`,
-          },
-          confidence: 0.98,
-          reasoning: `Matched relationship synonym for "${q}" -> "${relMatch.name}"`,
-        };
-      }
-    }
-
     // ── LLM Privacy-Masked Relational Resolution ────────────────────────────
-    // Filter down candidates to a relevant pool to save tokens
+    // Filter down candidates to a relevant pool to save tokens (pass full pool if under 100 contacts)
     const candidatePool = this.filterCandidatePool(contacts, qLower, userName);
     if (candidatePool.length === 0) {
       return {
@@ -226,7 +168,13 @@ Instructions:
       const text = response.text?.trim() || '{}';
       const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
       if (!cleanJson) {
-        return this.fallbackFuzzyMatch(candidatePool, qLower);
+        return {
+          found: false,
+          status: 'NO_MATCH',
+          confidence: 0,
+          disambiguationMessage: `I looked through your contacts but couldn't find anyone matching "${query}".`,
+          reasoning: 'No JSON returned from LLM',
+        };
       }
 
       const parsed = JSON.parse(cleanJson) as {
@@ -277,10 +225,16 @@ Instructions:
         reasoning: parsed.reasoning,
       };
     } catch (err) {
-      logger.warn('SemanticEntityResolver LLM resolution failed, falling back to safe heuristic', {
+      logger.warn('SemanticEntityResolver LLM resolution error', {
         error: String(err),
       });
-      return this.fallbackFuzzyMatch(candidatePool, qLower);
+      return {
+        found: false,
+        status: 'NO_MATCH',
+        confidence: 0,
+        disambiguationMessage: `I couldn't find "${query}" in your contacts.`,
+        reasoning: 'LLM resolution error',
+      };
     }
   }
 
@@ -289,68 +243,20 @@ Instructions:
     qLower: string,
     userName: string
   ): ContactCandidate[] {
-    if (contacts.length <= 25) {
+    // LLM context window easily handles up to 200 contacts
+    if (contacts.length <= 200) {
       return contacts;
     }
 
-    const queryWords = qLower.split(/\s+/).filter((w) => w.length > 2);
-    const userWords = userName.toLowerCase().split(/\s+/);
+    const queryWords = qLower.split(/\s+/).filter((w) => w.length > 1);
+    const userWords = userName.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
 
-    return contacts.filter((c) => {
+    const filtered = contacts.filter((c) => {
       const nameLower = c.name.toLowerCase();
-      // Keep if contains any query word or user word
-      return (
-        queryWords.some((w) => nameLower.includes(w)) ||
-        userWords.some((w) => nameLower.includes(w)) ||
-        nameLower.includes('mom') ||
-        nameLower.includes('mummy') ||
-        nameLower.includes('maa') ||
-        nameLower.includes('aai') ||
-        nameLower.includes('dad') ||
-        nameLower.includes('papa') ||
-        nameLower.includes('baba') ||
-        nameLower.includes('mother') ||
-        nameLower.includes('father')
-      );
-    });
-  }
-
-  private fallbackFuzzyMatch(
-    candidates: ContactCandidate[],
-    qLower: string
-  ): ResolvedContactResult {
-    // Only match if exact word boundary matches and NOT a third-party possessive
-    const isThirdPartyPossessive = /^[a-zA-Z]+'s\s+/i.test(qLower);
-    const matched = candidates.find((c) => {
-      const cName = c.name.toLowerCase();
-      if (!isThirdPartyPossessive && /^[a-zA-Z]+'s\s+/i.test(cName)) {
-        return false; // Skip third party possessives in fallback
-      }
-      return cName.includes(qLower);
+      return queryWords.some((w) => nameLower.includes(w)) || userWords.some((w) => nameLower.includes(w));
     });
 
-    if (matched) {
-      return {
-        found: true,
-        status: 'EXACT_MATCH',
-        contact: {
-          id: matched.id || matched.name,
-          name: matched.name,
-          number: matched.number,
-          label: matched.label || 'mobile',
-          formatted: `${matched.name}: ${matched.number}`,
-        },
-        confidence: 0.75,
-        reasoning: 'Fallback word boundary match',
-      };
-    }
-
-    return {
-      found: false,
-      status: 'NO_MATCH',
-      confidence: 0,
-      disambiguationMessage: `Could not find any contact matching "${qLower}".`,
-    };
+    return filtered.length > 0 ? filtered : contacts.slice(0, 150);
   }
 }
 

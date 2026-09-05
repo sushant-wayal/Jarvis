@@ -106,13 +106,53 @@ export const initiatePhoneCallTool: JarvisTool<{
   requiresConfirmation: false,
   inputSchema: z.object({
     contactName: z.string().describe('The name of the contact or phone number to call, as spoken by the user.'),
-    phoneNumber: z.string().optional().describe('Direct phone number if provided by user or looked up.'),
+    phoneNumber: z.string().optional().describe('Direct phone number if provided by user or looked up from synchronized contacts.'),
     callType: z.enum(['voice', 'video']).optional().describe('Type of call: "voice" (default) or "video".'),
     app: z.string().optional().describe('App to use: "phone" (cellular default) or "whatsapp".'),
   }),
-  execute: async (input) => {
-    const digits = input.contactName.replace(/[^0-9+]/g, '');
-    const resolvedNumber = input.phoneNumber || (digits.length >= 7 ? input.contactName : undefined);
+  execute: async (input, context) => {
+    const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
+    const userName = context.userName || 'Sushant';
+
+    const cleanContact = input.contactName
+      .replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '')
+      .replace(/\bwhatsapp\b/gi, '')
+      .trim() || input.contactName;
+
+    let targetContactName = cleanContact;
+    let resolvedNumber = input.phoneNumber;
+
+    // If phone number not passed by LLM, query semantic resolver
+    if (!resolvedNumber) {
+      const digits = cleanContact.replace(/[^0-9+]/g, '');
+      if (digits.length >= 7) {
+        resolvedNumber = digits;
+      } else if (phone?.contacts && phone.contacts.length > 0) {
+        const resolved = await semanticEntityResolver.resolveContact(
+          cleanContact,
+          userName,
+          phone.contacts,
+          phone.aliases
+        );
+        if (resolved.found && resolved.contact) {
+          targetContactName = resolved.contact.name;
+          resolvedNumber = resolved.contact.number;
+        } else if (resolved.status === 'AMBIGUOUS') {
+          return {
+            type: 'CLARIFY',
+            success: false,
+            response: resolved.disambiguationMessage || `I found multiple contacts matching "${cleanContact}". Which one would you like to call?`,
+          };
+        } else if (resolved.status === 'NO_MATCH') {
+          return {
+            type: 'NOT_FOUND',
+            success: false,
+            response: resolved.disambiguationMessage || `I couldn't find "${cleanContact}" in your contacts.`,
+          };
+        }
+      }
+    }
+
     const callType = input.callType === 'video' ? 'video' : 'voice';
     const isWhatsApp = Boolean(
       input.app?.toLowerCase().includes('whatsapp') ||
@@ -120,16 +160,14 @@ export const initiatePhoneCallTool: JarvisTool<{
     );
     const app = isWhatsApp ? 'whatsapp' : (input.app || 'phone');
 
-    const cleanContact = input.contactName.replace(/\b(?:on\s+)?whatsapp\b/gi, '').trim() || input.contactName;
-
     const responseText = callType === 'video'
-      ? (isWhatsApp ? `Starting WhatsApp video call with ${cleanContact}.` : `Starting video call with ${cleanContact}.`)
-      : (isWhatsApp ? `Calling ${cleanContact} on WhatsApp.` : `Calling ${cleanContact}.`);
+      ? (isWhatsApp ? `Starting WhatsApp video call with ${targetContactName}.` : `Starting video call with ${targetContactName}.`)
+      : (isWhatsApp ? `Calling ${targetContactName} on WhatsApp.` : `Calling ${targetContactName}.`);
 
     return {
       type: 'CALL_CONTACT' as const,
       action: 'CALL_CONTACT' as const,
-      contactName: cleanContact,
+      contactName: targetContactName,
       phoneNumber: resolvedNumber,
       callType,
       app,
@@ -140,6 +178,7 @@ export const initiatePhoneCallTool: JarvisTool<{
 
 export const sendMessageToContactTool: JarvisTool<{
   contactName: string;
+  phoneNumber?: string;
   message: string;
   preferredApp?: string;
 }> = {
@@ -151,6 +190,7 @@ export const sendMessageToContactTool: JarvisTool<{
   requiresConfirmation: false,
   inputSchema: z.object({
     contactName: z.string().describe('Name of the contact to message.'),
+    phoneNumber: z.string().optional().describe('Phone number of the contact if resolved from synchronized contacts list.'),
     message: z.string().describe('The message text to send.'),
     preferredApp: z
       .string()
@@ -175,25 +215,37 @@ export const sendMessageToContactTool: JarvisTool<{
       .trim() || input.contactName;
 
     let targetContactName = cleanContactName;
+    let resolvedPhoneNumber = input.phoneNumber;
 
-    // Resolve target contact name semantically if contacts exist
-    let resolvedPhoneNumber: string | undefined;
-    if (phone?.contacts && phone.contacts.length > 0) {
-      const resolved = await semanticEntityResolver.resolveContact(
-        cleanContactName,
-        userName,
-        phone.contacts,
-        phone.aliases
-      );
-      if (resolved.found && resolved.contact) {
-        targetContactName = resolved.contact.name;
-        resolvedPhoneNumber = resolved.contact.number;
+    // Resolve target contact name semantically if not pre-resolved
+    if (!resolvedPhoneNumber) {
+      const digits = cleanContactName.replace(/[^0-9+]/g, '');
+      if (digits.length >= 7) {
+        resolvedPhoneNumber = digits;
+      } else if (phone?.contacts && phone.contacts.length > 0) {
+        const resolved = await semanticEntityResolver.resolveContact(
+          cleanContactName,
+          userName,
+          phone.contacts,
+          phone.aliases
+        );
+        if (resolved.found && resolved.contact) {
+          targetContactName = resolved.contact.name;
+          resolvedPhoneNumber = resolved.contact.number;
+        } else if (resolved.status === 'AMBIGUOUS') {
+          return {
+            type: 'CLARIFY',
+            success: false,
+            response: resolved.disambiguationMessage || `I found multiple contacts matching "${cleanContactName}". Which one would you like to message?`,
+          };
+        } else if (resolved.status === 'NO_MATCH') {
+          return {
+            type: 'NOT_FOUND',
+            success: false,
+            response: resolved.disambiguationMessage || `I couldn't find "${cleanContactName}" in your contacts.`,
+          };
+        }
       }
-    }
-
-    const digits = cleanContactName.replace(/[^0-9+]/g, '');
-    if (!resolvedPhoneNumber && digits.length >= 7) {
-      resolvedPhoneNumber = digits;
     }
 
     // Try to find recent notification to determine the preferred channel
