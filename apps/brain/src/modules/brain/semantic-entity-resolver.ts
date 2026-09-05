@@ -123,6 +123,64 @@ export class SemanticEntityResolver {
       };
     }
 
+    // ── Fast Path 4: Multi-Word Token Match (e.g. "ritam dutta" in "Ritam Dutta") ───
+    const qWords = qLower.split(/[\s,._-]+/).filter((w) => w.length > 0);
+    if (qWords.length > 1) {
+      const allWordsMatch = contacts.find((c) => {
+        const cLower = c.name.toLowerCase();
+        return qWords.every((qw) => cLower.includes(qw));
+      });
+      if (allWordsMatch) {
+        return {
+          found: true,
+          status: 'EXACT_MATCH',
+          contact: {
+            id: allWordsMatch.id || allWordsMatch.name,
+            name: allWordsMatch.name,
+            number: allWordsMatch.number,
+            label: allWordsMatch.label || 'mobile',
+            formatted: `${allWordsMatch.name}: ${allWordsMatch.number}`,
+          },
+          confidence: 0.96,
+          reasoning: `Matched contact containing all query words "${allWordsMatch.name}"`,
+        };
+      }
+    }
+
+    // ── Fast Path 5: Relationship Synonyms (e.g. "mummy" -> "Mom") ──────────
+    const MOM_SYNS = ['mummy', 'mom', 'mother', 'maa', 'aai', 'amma', 'mommy', 'mataji'];
+    const DAD_SYNS = ['dad', 'father', 'papa', 'daddy', 'baba', 'appa', 'pitaji'];
+    let relSyns: string[] | null = null;
+    if (MOM_SYNS.includes(qLower)) relSyns = MOM_SYNS;
+    else if (DAD_SYNS.includes(qLower)) relSyns = DAD_SYNS;
+
+    if (relSyns) {
+      const relMatch = contacts.find((c) => {
+        const cLower = c.name.toLowerCase();
+        if (/^[a-zA-Z]+'s\s+/i.test(cLower) && !cLower.startsWith(userPossessivePrefix)) {
+          return false;
+        }
+        const cWords = cLower.split(/[\s,._-]+/);
+        return relSyns!.some((syn) => cWords.includes(syn) || cLower === syn);
+      });
+
+      if (relMatch) {
+        return {
+          found: true,
+          status: 'EXACT_MATCH',
+          contact: {
+            id: relMatch.id || relMatch.name,
+            name: relMatch.name,
+            number: relMatch.number,
+            label: relMatch.label || 'mobile',
+            formatted: `${relMatch.name}: ${relMatch.number}`,
+          },
+          confidence: 0.98,
+          reasoning: `Matched relationship synonym for "${q}" -> "${relMatch.name}"`,
+        };
+      }
+    }
+
     // ── LLM Privacy-Masked Relational Resolution ────────────────────────────
     // Filter down candidates to a relevant pool to save tokens
     const candidatePool = this.filterCandidatePool(contacts, qLower, userName);
@@ -245,7 +303,12 @@ Instructions:
         queryWords.some((w) => nameLower.includes(w)) ||
         userWords.some((w) => nameLower.includes(w)) ||
         nameLower.includes('mom') ||
+        nameLower.includes('mummy') ||
+        nameLower.includes('maa') ||
+        nameLower.includes('aai') ||
         nameLower.includes('dad') ||
+        nameLower.includes('papa') ||
+        nameLower.includes('baba') ||
         nameLower.includes('mother') ||
         nameLower.includes('father')
       );

@@ -397,6 +397,40 @@ Timezone & Scheduling Directive:
             callType,
             app,
           });
+        } else {
+          // Check for message sending intent e.g. "send ritam dutta high on whatsapp"
+          const sendMsgMatch = lowerMsg.match(
+            /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:send\s+(?:a\s+)?message\s+to\s+|send\s+|text\s+|message\s+)([a-zA-Z0-9_\s]+?)\s+(?:saying\s+|that\s+)?(.+?)(?:\s+(?:on|via|in)\s+whatsapp)?$/i
+          );
+          if (sendMsgMatch && sendMsgMatch[1] && sendMsgMatch[2]) {
+            const rawTarget = sendMsgMatch[1].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
+            const messageBody = sendMsgMatch[2].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
+
+            if (isWhatsApp) {
+              pendingPhoneAction = {
+                type: 'REPLY_TO_NOTIFICATION',
+                action: 'REPLY_TO_NOTIFICATION',
+                app: 'whatsapp',
+                sender: rawTarget,
+                message: messageBody,
+                response: `Sending on WhatsApp to ${rawTarget}: "${messageBody}"`,
+              } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+            } else {
+              pendingPhoneAction = {
+                type: 'SEND_SMS',
+                action: 'SEND_SMS',
+                contactName: rawTarget,
+                message: messageBody,
+                response: `Sending SMS to ${rawTarget}: "${messageBody}"`,
+              } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+            }
+
+            logger.info('Synthesized pending message action from user message intent', {
+              target: rawTarget,
+              message: messageBody,
+              app: isWhatsApp ? 'whatsapp' : 'sms',
+            });
+          }
         }
       }
     }

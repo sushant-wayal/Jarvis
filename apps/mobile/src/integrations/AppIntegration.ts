@@ -5,6 +5,7 @@
  */
 
 import { Linking, NativeModules, Platform } from 'react-native';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { ActionResult } from '@jarvis/shared';
 import { APP_DEEP_LINKS, APP_PACKAGE_CANDIDATES, APP_TO_PACKAGE } from './constants';
 
@@ -81,6 +82,14 @@ export class AppIntegration {
           } catch {
             // Fall through
           }
+        }
+
+        // Standard Android package launcher (works in Expo Go & standalone APK)
+        try {
+          await IntentLauncher.openApplication(pkg);
+          return { success: true, message: `Opened ${appName}.` };
+        } catch {
+          // Fall through to next candidate or URL scheme
         }
       }
     }

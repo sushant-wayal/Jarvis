@@ -162,13 +162,25 @@ export const sendMessageToContactTool: JarvisTool<{
   execute: async (input, context) => {
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
     const userName = context.userName || 'Sushant';
-    let targetContactName = input.contactName;
+
+    // Strip "on whatsapp", "via whatsapp", etc. from contactName
+    const isExplicitWhatsApp = Boolean(
+      input.preferredApp?.toLowerCase().includes('whatsapp') ||
+      /\b(?:on|via|in)\s+whatsapp\b/i.test(input.contactName) ||
+      /\bwhatsapp\b/i.test(input.contactName)
+    );
+    const cleanContactName = input.contactName
+      .replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '')
+      .replace(/\bwhatsapp\b/gi, '')
+      .trim() || input.contactName;
+
+    let targetContactName = cleanContactName;
 
     // Resolve target contact name semantically if contacts exist
     let resolvedPhoneNumber: string | undefined;
     if (phone?.contacts && phone.contacts.length > 0) {
       const resolved = await semanticEntityResolver.resolveContact(
-        input.contactName,
+        cleanContactName,
         userName,
         phone.contacts,
         phone.aliases
@@ -179,7 +191,7 @@ export const sendMessageToContactTool: JarvisTool<{
       }
     }
 
-    const digits = input.contactName.replace(/[^0-9+]/g, '');
+    const digits = cleanContactName.replace(/[^0-9+]/g, '');
     if (!resolvedPhoneNumber && digits.length >= 7) {
       resolvedPhoneNumber = digits;
     }
@@ -195,7 +207,9 @@ export const sendMessageToContactTool: JarvisTool<{
       return s.includes(targetLower);
     });
 
-    const resolvedApp = input.preferredApp ?? recentEvent?.app ?? 'sms';
+    const resolvedApp = isExplicitWhatsApp
+      ? 'whatsapp'
+      : (input.preferredApp ?? recentEvent?.app ?? 'sms');
 
     if (resolvedApp === 'sms') {
       return {
