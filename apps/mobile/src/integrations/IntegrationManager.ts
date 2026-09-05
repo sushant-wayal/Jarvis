@@ -238,6 +238,7 @@ export class IntegrationManager {
     conversationKey?: string;
     message: string;
     notificationId?: string;
+    phoneNumber?: string;
   }): Promise<ActionResult> {
     // Find the matching notification event for canReply + replyActionKey
     const event: PhoneNotificationEvent | null =
@@ -245,11 +246,25 @@ export class IntegrationManager {
       notificationContextStore.getMostRecent(action.sender);
 
     if (!event) {
-      // No stored event — fall back to opening the app/conversation
+      // Look up contact in device address book to get their phone number if not pre-resolved
+      let resolvedNumber = action.phoneNumber;
+      if (!resolvedNumber && action.sender) {
+        try {
+          const resolution = await contactsIntegration.findContact(action.sender);
+          if (resolution.contact?.phoneNumbers?.[0]?.number) {
+            resolvedNumber = resolution.contact.phoneNumbers[0].number;
+          }
+        } catch {
+          // Fall back
+        }
+      }
+
+      // No stored event (or in Expo Go) — open conversation with pre-filled message
       return appIntegration.openConversation(
         action.app,
         action.conversationKey,
-        undefined
+        resolvedNumber,
+        action.message
       );
     }
 

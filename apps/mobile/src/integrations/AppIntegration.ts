@@ -155,25 +155,85 @@ export class AppIntegration {
   async openConversation(
     appName: string,
     conversationKey?: string,
-    phoneNumber?: string
+    phoneNumber?: string,
+    text?: string
   ): Promise<ActionResult> {
     const cleanApp = appName.toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
-    const linkConfig = APP_DEEP_LINKS[cleanApp];
 
+    // Clean phone number
+    const cleanPhone = phoneNumber ? phoneNumber.replace(/[^0-9+]/g, '').replace(/^\+/, '') : undefined;
+    const hasValidPhone = Boolean(cleanPhone && cleanPhone.length >= 7);
+
+    if (cleanApp === 'whatsapp' || cleanApp === 'whatsapp_business') {
+      const candidates: string[] = [];
+      if (hasValidPhone) {
+        const textParam = text ? `&text=${encodeURIComponent(text)}` : '';
+        candidates.push(
+          `whatsapp://send?phone=${cleanPhone}${textParam}`,
+          `https://api.whatsapp.com/send?phone=${cleanPhone}${textParam}`,
+          `https://wa.me/${cleanPhone}${text ? `?text=${encodeURIComponent(text)}` : ''}`
+        );
+      } else if (text) {
+        // No phone number known: open WhatsApp share composer with pre-filled text so user can pick recipient
+        candidates.push(
+          `whatsapp://send?text=${encodeURIComponent(text)}`,
+          `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`
+        );
+      } else {
+        return this.openApp(appName);
+      }
+
+      for (const url of candidates) {
+        try {
+          await Linking.openURL(url);
+          return { success: true, message: `Opened ${appName}.` };
+        } catch {
+          // Try next candidate
+        }
+      }
+      return this.openApp(appName);
+    }
+
+    if (cleanApp === 'telegram') {
+      const candidates: string[] = [];
+      if (conversationKey && !conversationKey.includes('{')) {
+        candidates.push(`tg://resolve?domain=${encodeURIComponent(conversationKey)}`);
+      } else if (hasValidPhone) {
+        candidates.push(`https://t.me/+${cleanPhone}`);
+      }
+      if (text) {
+        candidates.push(`tg://msg?text=${encodeURIComponent(text)}`);
+      }
+      for (const url of candidates) {
+        try {
+          await Linking.openURL(url);
+          return { success: true, message: `Opened conversation on Telegram.` };
+        } catch {
+          // Try next
+        }
+      }
+      return this.openApp(appName);
+    }
+
+    // Generic fallback for other apps with registered APP_DEEP_LINKS
+    const linkConfig = APP_DEEP_LINKS[cleanApp];
     if (linkConfig?.conversation) {
       let conversationUrl = linkConfig.conversation;
-      if (phoneNumber) {
-        conversationUrl = conversationUrl.replace('{phone}', phoneNumber.replace(/\s+/g, ''));
-      } else if (conversationKey) {
-        conversationUrl = conversationUrl.replace('{phone}', conversationKey);
+      if (hasValidPhone && cleanPhone) {
+        conversationUrl = conversationUrl.replace('{phone}', cleanPhone);
+      }
+      if (conversationKey && !conversationKey.includes('{')) {
         conversationUrl = conversationUrl.replace('{username}', conversationKey);
       }
 
-      try {
-        await Linking.openURL(conversationUrl);
-        return { success: true, message: `Opened conversation on ${appName}.` };
-      } catch {
-        // Fall back to opening root
+      // CRITICAL: NEVER open a URL that still contains literal template variables like {phone}
+      if (!conversationUrl.includes('{phone}') && !conversationUrl.includes('{username}')) {
+        try {
+          await Linking.openURL(conversationUrl);
+          return { success: true, message: `Opened conversation on ${appName}.` };
+        } catch {
+          // Fall through to opening root
+        }
       }
     }
 

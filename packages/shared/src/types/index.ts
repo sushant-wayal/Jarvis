@@ -417,6 +417,7 @@ export interface JarvisReplyToNotificationAction {
   type: 'REPLY_TO_NOTIFICATION';
   app: string;
   sender: string;
+  phoneNumber?: string;
   conversationKey?: string;
   message: string;
   /** Original notification id for RemoteInput targeting */

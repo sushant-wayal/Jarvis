@@ -143,6 +143,7 @@ export const sendMessageToContactTool: JarvisTool<{
     let targetContactName = input.contactName;
 
     // Resolve target contact name semantically if contacts exist
+    let resolvedPhoneNumber: string | undefined;
     if (phone?.contacts && phone.contacts.length > 0) {
       const resolved = await semanticEntityResolver.resolveContact(
         input.contactName,
@@ -152,7 +153,13 @@ export const sendMessageToContactTool: JarvisTool<{
       );
       if (resolved.found && resolved.contact) {
         targetContactName = resolved.contact.name;
+        resolvedPhoneNumber = resolved.contact.number;
       }
+    }
+
+    const digits = input.contactName.replace(/[^0-9+]/g, '');
+    if (!resolvedPhoneNumber && digits.length >= 7) {
+      resolvedPhoneNumber = digits;
     }
 
     // Try to find recent notification to determine the preferred channel
@@ -173,6 +180,7 @@ export const sendMessageToContactTool: JarvisTool<{
         type: 'SEND_SMS' as const,
         action: 'SEND_SMS' as const,
         contactName: targetContactName,
+        phoneNumber: resolvedPhoneNumber,
         message: input.message,
         response: `Sending SMS to ${targetContactName}: "${input.message}"`,
       };
@@ -183,6 +191,7 @@ export const sendMessageToContactTool: JarvisTool<{
       action: 'REPLY_TO_NOTIFICATION' as const,
       app: resolvedApp,
       sender: targetContactName,
+      phoneNumber: resolvedPhoneNumber,
       conversationKey: recentEvent?.conversationKey,
       message: input.message,
       notificationId: recentEvent?.id,
