@@ -149,4 +149,23 @@ describe('Phone Tools (Brain)', () => {
     expect(resYT.app).toBe('youtube');
     expect(resYT.response).toContain('YouTube');
   });
+
+  it('playMediaTool aggressively cleans query and infers target app', async () => {
+    // Strips trailing 'on spotify' and leading 'play'
+    const resClean = (await playMediaTool.execute({ query: 'play tum mere ho by anuv jain on spotify' }, mockToolContext)) as Record<string, any>;
+    expect(resClean.action).toBe('PLAY_MEDIA');
+    expect(resClean.query).toBe('tum mere ho by anuv jain');
+    expect(resClean.app).toBe('spotify');
+    expect(resClean.response).toBe('Playing "tum mere ho by anuv jain" on Spotify.');
+
+    // Strips 'on youtube' and infers youtube app
+    const resYT = (await playMediaTool.execute({ query: 'coldplay viva la vida on youtube' }, mockToolContext)) as Record<string, any>;
+    expect(resYT.query).toBe('coldplay viva la vida');
+    expect(resYT.app).toBe('youtube');
+
+    // Infers youtube_music
+    const resYTM = (await playMediaTool.execute({ query: 'starboy on youtube music' }, mockToolContext)) as Record<string, any>;
+    expect(resYTM.query).toBe('starboy');
+    expect(resYTM.app).toBe('youtube_music');
+  });
 });

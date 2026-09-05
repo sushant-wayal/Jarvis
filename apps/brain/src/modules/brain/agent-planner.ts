@@ -136,9 +136,12 @@ Phone & Contact Intelligence:
      - DO NOT attempt to call or send a message!
      - Tell the user directly: "I couldn't find anyone named [Name] in your contacts."
 - Media Playback (Music & Videos):
-  • When user says "play [song/artist/playlist/video]" (e.g. "play Believer on Spotify", "play funny cat videos on YouTube", "play Arijit Singh"):
-    Invoke 'play_media' passing query (the song or video name) and app ('spotify' | 'youtube' | 'youtube_music').
-    DO NOT call 'open_application' for playback requests — 'open_application' only opens the app home screen, whereas 'play_media' triggers direct playback!
+  • When user says "play [song/artist/playlist/video]" (e.g. "play Believer on Spotify", "play funny cat videos on YouTube", "play Arijit Singh", "play tum mere ho by anuv jain on spotify"):
+    - ZERO PROMPTING RULE: NEVER ask the user to choose between Spotify and YouTube! NEVER ask "Which app would you like to use?".
+    - If the user specifies an app (e.g. "on Spotify", "on YouTube"), IMMEDIATELY invoke 'play_media' with that app (e.g. app: 'spotify').
+    - If the user does NOT specify an app, default to app: 'spotify' for songs/music, and app: 'youtube' for videos, and invoke 'play_media' immediately!
+    - In 'query', pass ONLY the clean song or video name (e.g. query: "tum mere ho by anuv jain", app: "spotify"). NEVER include "on spotify" or "on youtube" in the 'query' argument!
+    - DO NOT call 'open_application' for playback requests — 'open_application' only opens the app home screen, whereas 'play_media' triggers direct playback!
 - MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call' or 'play_media') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" or "Playing Believer" without executing the tool, because native launchers and media players ONLY trigger when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
@@ -365,7 +368,11 @@ Timezone & Scheduling Directive:
       const callMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+)?(?:call|dial|phone|ring)\s+(?:to\s+)?(.+?)(?:\s+(?:on|via|in)\s+(whatsapp|phone))?$/i);
 
       if (playMatch && playMatch[1]) {
-        const rawQuery = playMatch[1].trim();
+        let rawQuery = playMatch[1]
+          .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+          .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+          .trim();
+        if (!rawQuery) rawQuery = playMatch[1].trim();
         const rawApp = (playMatch[2] || (lowerMsg.includes('spotify') ? 'spotify' : (lowerMsg.includes('youtube') ? 'youtube' : 'spotify'))).toLowerCase();
         const app = rawApp.includes('youtube') ? (rawApp.includes('music') ? 'youtube_music' : 'youtube') : 'spotify';
         pendingPhoneAction = {

@@ -258,20 +258,49 @@ export class AppIntegration {
     appName = 'spotify',
     videoId?: string
   ): Promise<ActionResult> {
-    const cleanApp = appName.toLowerCase().trim();
-    const cleanQuery = query.trim();
+    let cleanApp = appName.toLowerCase().trim();
+    // Aggressively clean query: remove "on spotify", "on youtube", leading "play", etc.
+    let cleanQuery = query
+      .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+      .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+      .replace(/^(?:please\s+|can\s+you\s+)?play\s+/i, '')
+      .trim();
+    if (!cleanQuery) cleanQuery = query.trim();
+
+    if (query.toLowerCase().includes('spotify') && !cleanApp.includes('youtube')) {
+      cleanApp = 'spotify';
+    } else if (query.toLowerCase().includes('youtube') && !cleanApp.includes('spotify')) {
+      cleanApp = query.toLowerCase().includes('music') ? 'youtube_music' : 'youtube';
+    }
 
     // ── 1. Spotify Direct Playback ──────────────────────────────────────────
     if (cleanApp.includes('spotify')) {
       if (Platform.OS === 'android') {
+        // First try implicit MEDIA_PLAY_FROM_SEARCH intent (routed by Android OS)
         try {
-          // Launch standard Android MEDIA_PLAY_FROM_SEARCH intent directed to Spotify
           await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
-            packageName: 'com.spotify.music',
             extra: {
               'query': cleanQuery,
               'android.intent.extra.focus': 'vnd.android.cursor.item/*',
               'android.intent.extra.title': cleanQuery,
+              'SearchManager.QUERY': cleanQuery,
+            },
+          });
+          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+        } catch {
+          // Fall through
+        }
+
+        // Second try explicit intent targeting Spotify's MainActivity
+        try {
+          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
+            packageName: 'com.spotify.music',
+            className: 'com.spotify.music.MainActivity',
+            extra: {
+              'query': cleanQuery,
+              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
+              'android.intent.extra.title': cleanQuery,
+              'SearchManager.QUERY': cleanQuery,
             },
           });
           return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
@@ -280,7 +309,7 @@ export class AppIntegration {
         }
       }
 
-      // Deep link fallback for Spotify (works on Android & iOS)
+      // Deep link fallback for Spotify (works on Android & iOS and in Expo Go)
       const spotifyUrls = [
         `spotify:search:${encodeURIComponent(cleanQuery)}`,
         `https://open.spotify.com/search/${encodeURIComponent(cleanQuery)}`,
@@ -319,6 +348,7 @@ export class AppIntegration {
         try {
           await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
             packageName: 'com.google.android.apps.youtube.music',
+            className: 'com.google.android.apps.youtube.music.activities.MusicActivity',
             extra: {
               'query': cleanQuery,
               'android.intent.extra.focus': 'vnd.android.cursor.item/*',

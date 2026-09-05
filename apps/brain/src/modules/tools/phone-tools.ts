@@ -421,15 +421,36 @@ export const playMediaTool: JarvisTool<{
     videoId: z.string().optional().describe('YouTube video ID if resolved, e.g. "dQw4w9WgXcQ".'),
   }),
   execute: async (input) => {
-    const rawApp = input.app || (input.query.toLowerCase().includes('video') ? 'youtube' : 'spotify');
-    const appNameFormatted = rawApp === 'spotify' ? 'Spotify' : (rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube');
+    // Aggressively clean the query so trailing "on spotify", "on youtube", leading "play" are removed
+    let cleanQuery = input.query
+      .replace(/\b(?:on|in|via)\s+(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+      .replace(/\b(?:spotify|youtube(?:\s+music)?)\b/gi, '')
+      .replace(/^(?:please\s+|can\s+you\s+)?play\s+/i, '')
+      .trim();
+    if (!cleanQuery) cleanQuery = input.query.trim();
+
+    // Determine target app
+    let rawApp = input.app;
+    if (!rawApp) {
+      if (/youtube\s+music/i.test(input.query)) {
+        rawApp = 'youtube_music';
+      } else if (/\byoutube\b|video/i.test(input.query)) {
+        rawApp = 'youtube';
+      } else {
+        rawApp = 'spotify';
+      }
+    }
+
+    const appNameFormatted =
+      rawApp === 'spotify' ? 'Spotify' : rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube';
+
     return {
       type: 'PLAY_MEDIA' as const,
       action: 'PLAY_MEDIA' as const,
-      query: input.query,
+      query: cleanQuery,
       app: rawApp,
       videoId: input.videoId,
-      response: `Playing "${input.query}" on ${appNameFormatted}.`,
+      response: `Playing "${cleanQuery}" on ${appNameFormatted}.`,
     };
   },
 };
