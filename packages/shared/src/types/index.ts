@@ -448,13 +448,19 @@ export interface JarvisPlayMediaAction {
   videoId?: string;
 }
 
+export interface JarvisOpenUrlAction {
+  type: 'OPEN_URL';
+  url: string;
+}
+
 export type JarvisPhoneAction =
   | JarvisCallAction
   | JarvisSendSmsAction
   | JarvisReplyToNotificationAction
   | JarvisOpenAppAction
   | JarvisOpenConversationAction
-  | JarvisPlayMediaAction;
+  | JarvisPlayMediaAction
+  | JarvisOpenUrlAction;
 
 /** Result of executing a JarvisPhoneAction on the mobile side */
 export interface ActionResult {

@@ -320,7 +320,13 @@ Timezone & Scheduling Directive:
     }
 
     const PHONE_ACTION_TYPES = new Set([
-      'CALL_CONTACT', 'SEND_SMS', 'REPLY_TO_NOTIFICATION', 'OPEN_APP', 'OPEN_CONVERSATION', 'PLAY_MEDIA',
+      'CALL_CONTACT',
+      'SEND_SMS',
+      'REPLY_TO_NOTIFICATION',
+      'OPEN_APP',
+      'OPEN_CONVERSATION',
+      'PLAY_MEDIA',
+      'OPEN_URL',
     ]);
 
     let pendingPhoneAction: import('@jarvis/shared').JarvisPhoneAction | undefined;
@@ -329,12 +335,12 @@ Timezone & Scheduling Directive:
     for (const toolResult of executedToolResults) {
       const output = toolResult.output as Record<string, unknown> | null;
       if (output) {
-        const actionType = (output.type as string) || (output.action as string);
-        if (typeof actionType === 'string' && PHONE_ACTION_TYPES.has(actionType)) {
+        const rawActionType = ((output.type as string) || (output.action as string) || '').toUpperCase();
+        if (PHONE_ACTION_TYPES.has(rawActionType)) {
           pendingPhoneAction = {
             ...output,
-            type: actionType,
-            action: actionType,
+            type: rawActionType,
+            action: rawActionType,
           } as unknown as import('@jarvis/shared').JarvisPhoneAction;
         }
       }
@@ -349,13 +355,14 @@ Timezone & Scheduling Directive:
       }
     }
 
-    // Robustness Guard: If the user explicitly requested to open an app, make a call, or play media,
+    // Robustness Guard: If the user explicitly requested an action (open app, play media, make call, send message),
     // but the LLM directly replied with text instead of executing the tool,
     // synthesize the pending phone action so the user's phone still executes the action!
     if (!pendingPhoneAction) {
       const lowerMsg = message.toLowerCase().trim();
       const openMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:open|launch|start)\s+([a-zA-Z0-9_\s]+)$/i);
       const playMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?play\s+(.+?)(?:\s+(?:on|via|in)\s+(spotify|youtube(?:\s+music)?))?$/i);
+      const callMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+)?(?:call|dial|phone|ring)\s+(?:to\s+)?(.+?)(?:\s+(?:on|via|in)\s+(whatsapp|phone))?$/i);
 
       if (playMatch && playMatch[1]) {
         const rawQuery = playMatch[1].trim();
@@ -369,6 +376,19 @@ Timezone & Scheduling Directive:
           response: `Playing "${rawQuery}" on ${app === 'spotify' ? 'Spotify' : 'YouTube'}.`,
         } as unknown as import('@jarvis/shared').JarvisPhoneAction;
         logger.info('Synthesized pending PLAY_MEDIA action from user message intent', { query: rawQuery, app });
+      } else if (callMatch && callMatch[1]) {
+        const targetContact = callMatch[1].replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '').trim();
+        const isWhatsApp = lowerMsg.includes('whatsapp') || Boolean(callMatch[2]?.toLowerCase().includes('whatsapp'));
+        const callType = lowerMsg.includes('video') ? 'video' : 'voice';
+        pendingPhoneAction = {
+          type: 'CALL_CONTACT',
+          action: 'CALL_CONTACT',
+          contactName: targetContact,
+          callType,
+          app: isWhatsApp ? 'whatsapp' : 'phone',
+          response: `Calling ${targetContact}${isWhatsApp ? ' on WhatsApp' : ''}.`,
+        } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+        logger.info('Synthesized pending CALL_CONTACT action from user message intent', { contact: targetContact, isWhatsApp });
       } else if (openMatch && openMatch[1]) {
         const candidateApp = openMatch[1].replace(/\b(?:the\s+)?app\b/gi, '').trim();
         if (candidateApp && candidateApp.length >= 2) {

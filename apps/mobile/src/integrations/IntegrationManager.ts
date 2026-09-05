@@ -118,7 +118,7 @@ export class IntegrationManager {
    * Returns an ActionResult that the earbud manager can speak back to the user.
    */
   async executeAction(action: JarvisPhoneAction): Promise<ActionResult> {
-    const actionType = action.type || (action as any).action;
+    const actionType = ((action.type || (action as any).action || '') as string).toUpperCase();
     switch (actionType) {
       case 'CALL_CONTACT':
         return this.executeCall(
@@ -141,7 +141,8 @@ export class IntegrationManager {
         return appIntegration.openConversation(
           (action as any).app,
           (action as any).conversationKey,
-          undefined,
+          (action as any).phoneNumber,
+          (action as any).message,
         );
 
       case 'PLAY_MEDIA':
@@ -150,6 +151,9 @@ export class IntegrationManager {
           (action as any).app,
           (action as any).videoId,
         );
+
+      case 'OPEN_URL':
+        return appIntegration.openUrl((action as any).url);
 
       default:
         return { success: false, error: `Unknown action type: "${actionType}".` };

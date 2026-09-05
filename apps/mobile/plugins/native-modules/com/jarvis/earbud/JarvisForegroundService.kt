@@ -1175,6 +1175,82 @@ class JarvisForegroundService : Service() {
                             }
                         }
                     }
+
+                    "OPEN_CONVERSATION" -> {
+                        val app = action.optString("app", "whatsapp").lowercase()
+                        val phoneNumber = action.optString("phoneNumber").replace(Regex("[^0-9]"), "")
+                        val message = action.optString("message")
+                        if (app.contains("whatsapp")) {
+                            val uri = if (phoneNumber.isNotBlank()) {
+                                if (message.isNotBlank()) "whatsapp://send?phone=$phoneNumber&text=" + Uri.encode(message)
+                                else "https://wa.me/$phoneNumber"
+                            } else {
+                                "whatsapp://send?text=" + Uri.encode(message)
+                            }
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                                setPackage("com.whatsapp")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        } else if (app.contains("telegram")) {
+                            val uri = if (phoneNumber.isNotBlank()) "https://t.me/+$phoneNumber" else "tg://"
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                    }
+
+                    "REPLY_TO_NOTIFICATION" -> {
+                        val replyKey = action.optString("replyActionKey").ifEmpty { action.optString("notificationId") }
+                        val message = action.optString("message")
+                        val sender = action.optString("sender")
+                        val app = action.optString("app", "whatsapp")
+                        val phoneNumber = action.optString("phoneNumber")
+
+                        var replied = false
+                        if (replyKey.isNotBlank()) {
+                            val replyAction = com.jarvis.notification.JarvisNotificationListenerService.replyActionCache[replyKey]
+                            if (replyAction != null) {
+                                try {
+                                    val replyIntent = Intent()
+                                    val bundle = Bundle().apply {
+                                        putCharSequence(replyAction.remoteInput.resultKey, message)
+                                    }
+                                    RemoteInput.addResultsToIntent(arrayOf(replyAction.remoteInput), replyIntent, bundle)
+                                    replyAction.pendingIntent.send(this@JarvisForegroundService, 0, replyIntent)
+                                    replied = true
+                                    Log.d(TAG, "Native RemoteInput replied to: $sender")
+                                } catch (re: Exception) {
+                                    Log.e(TAG, "RemoteInput reply error: ${re.message}")
+                                }
+                            }
+                        }
+
+                        if (!replied && app.contains("whatsapp")) {
+                            val cleanDigits = phoneNumber.replace(Regex("[^0-9]"), "")
+                            val uri = if (cleanDigits.isNotBlank()) {
+                                "whatsapp://send?phone=$cleanDigits&text=" + Uri.encode(message)
+                            } else {
+                                "whatsapp://send?text=" + Uri.encode(message)
+                            }
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                                setPackage("com.whatsapp")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                    }
+
+                    "OPEN_URL" -> {
+                        val url = action.optString("url")
+                        if (url.isNotBlank()) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to execute native phone action: ${e.message}", e)
