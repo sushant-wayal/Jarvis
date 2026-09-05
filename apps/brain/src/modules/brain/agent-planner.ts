@@ -136,7 +136,13 @@ Phone Integration (V3):
   - 'get_contact_interaction_summary': Summarize conversation history with a specific person across channels.
 - Phone actions are executed by the mobile app AFTER you speak. Your text response should confirm the intent (e.g., "Calling Rahul." or "Opening WhatsApp.") and the action will happen automatically.
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
-- If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.`,
+- If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
+
+Timezone & Scheduling Directive:
+- User active timezone is "${toolContext.timezone || 'UTC'}".
+- When creating reminders or tasks ('task_create') or events ('event_create'), user times are ALWAYS in their local timezone.
+- You MUST pass the 'schedule' argument as an ISO 8601 string including the user's timezone offset (e.g. 'YYYY-MM-DDTHH:mm:ss+05:30') or properly converted to UTC with 'Z'.
+- NEVER assume user local time is UTC and NEVER attach 'Z' directly to user local hours (e.g. 9:30 AM local in Asia/Kolkata is NOT 09:30:00Z; it is 09:30:00+05:30 or 04:00:00Z).`,
           contents: contents as never,
           toolsConfig: toolsConfig as never,
         });
@@ -162,7 +168,25 @@ Phone Integration (V3):
           break;
         }
 
-        // Process Tool Calls
+        // 1. Preserve model turn containing functionCall parts and thought_signature
+        const candidateContent = response.candidates?.[0]?.content;
+        if (candidateContent) {
+          contents.push(candidateContent as any);
+        } else {
+          contents.push({
+            role: 'model',
+            parts: functionCalls.map((fc) => ({
+              functionCall: {
+                name: fc.name || '',
+                args: (fc.args as Record<string, unknown>) || {},
+              },
+            })),
+          });
+        }
+
+        // 2. Process Tool Calls and collect functionResponse parts
+        const responseParts: Array<{ functionResponse: { name: string; response: Record<string, unknown> } }> = [];
+
         for (const fc of functionCalls) {
           const fcName = fc.name || '';
           if (!fcName) continue;
@@ -234,21 +258,31 @@ Phone Integration (V3):
             },
           });
 
-          // Feed observation back to model
-          contents.push({
-            role: 'model',
-            parts: [{ text: `Executed tool ${fcName}` }],
+          responseParts.push({
+            functionResponse: {
+              name: fcName,
+              response: (toolRes.output as Record<string, unknown>) || { success: toolRes.success },
+            },
           });
+        }
+
+        if (responseParts.length > 0) {
           contents.push({
             role: 'user',
-            parts: [{ text: `[Observation for ${fcName}]: ${JSON.stringify(toolRes.output)}` }],
+            parts: responseParts,
           });
         }
       }
 
-      // If loop finished due to step limit
+      // If loop finished due to step limit, synthesize from executed tool outputs
       if (!finalText) {
-        finalText = 'Task processed.';
+        if (executedToolResults.length > 0) {
+          const lastTool = executedToolCalls[executedToolCalls.length - 1];
+          const lastRes = executedToolResults[executedToolResults.length - 1];
+          finalText = this.formatDirectOutput(lastTool?.name || '', lastRes?.output);
+        } else {
+          finalText = 'I have completed your request.';
+        }
       }
 
       // Update AgentRun to COMPLETED
@@ -282,8 +316,15 @@ Phone Integration (V3):
 
     for (const toolResult of executedToolResults) {
       const output = toolResult.output as Record<string, unknown> | null;
-      if (output && typeof output.action === 'string' && PHONE_ACTION_TYPES.has(output.action)) {
-        pendingPhoneAction = output as unknown as import('@jarvis/shared').JarvisPhoneAction;
+      if (output) {
+        const actionType = (output.type as string) || (output.action as string);
+        if (typeof actionType === 'string' && PHONE_ACTION_TYPES.has(actionType)) {
+          pendingPhoneAction = {
+            ...output,
+            type: actionType,
+            action: actionType,
+          } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+        }
       }
       if (toolResult.toolName === 'task_create' && toolResult.success && output) {
         if (output.taskId && output.title && output.scheduledFor) {
@@ -340,6 +381,27 @@ Phone Integration (V3):
     if (toolName === 'location_get') {
       const locStr = [output.city, output.state, output.country].filter(Boolean).join(', ');
       return locStr ? `You are currently in ${locStr}.` : 'Location currently unavailable.';
+    }
+    if (toolName === 'open_application') {
+      if (typeof output.response === 'string') return output.response;
+      return `Opening ${output.app || 'application'}.`;
+    }
+    if (
+      toolName === 'generate_message_briefing' ||
+      toolName === 'read_phone_messages' ||
+      toolName === 'detect_unanswered_messages' ||
+      toolName === 'get_contact_interaction_summary' ||
+      toolName === 'lookup_contact'
+    ) {
+      if (typeof output.summary === 'string') return output.summary;
+      if (typeof output.response === 'string') return output.response;
+    }
+    if (toolName === 'task_list') {
+      if (Array.isArray(output.tasks)) {
+        return output.tasks.length === 0
+          ? 'You have no active tasks or reminders.'
+          : `You have ${output.tasks.length} active task${output.tasks.length === 1 ? '' : 's'}: ${output.tasks.map((t: any) => t.title).join(', ')}.`;
+      }
     }
     if ('result' in output) {
       return `${output.result}`;

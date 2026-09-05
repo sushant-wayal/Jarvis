@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { JarvisTool } from './types';
+import { parseScheduleDate } from '@/modules/tasks/date-parser';
 
 const CreateTaskInputSchema = z.object({
   title: z.string().describe('Clear title or reminder summary, e.g. "Call Mom", "Submit monthly tax report"'),
@@ -12,7 +13,7 @@ const CreateTaskInputSchema = z.object({
   schedule: z
     .string()
     .optional()
-    .describe('ISO datetime string or description of when the task should trigger, e.g. "2026-08-19T08:00:00Z" or "tomorrow at 8 AM"'),
+    .describe('ISO datetime string with timezone offset (e.g. "2026-09-05T09:30:00+05:30") or natural expression ("9:30 AM", "tomorrow at 9:30 AM", "in 15 minutes"). Always respect the user local timezone.'),
   description: z.string().optional().describe('Optional detailed notes or instructions for the task'),
 });
 
@@ -26,21 +27,7 @@ export const createTaskTool: JarvisTool<z.infer<typeof CreateTaskInputSchema>, {
     let nextRun: Date | undefined;
 
     if (input.schedule) {
-      const parsedDate = new Date(input.schedule);
-      if (!isNaN(parsedDate.getTime())) {
-        nextRun = parsedDate;
-      } else {
-        // Simple relative parser for tomorrow or hours
-        const lower = input.schedule.toLowerCase();
-        if (lower.includes('tomorrow')) {
-          const d = new Date();
-          d.setDate(d.getDate() + 1);
-          d.setHours(8, 0, 0, 0);
-          nextRun = d;
-        } else {
-          nextRun = new Date(Date.now() + 60 * 60 * 1000); // 1 hour default
-        }
-      }
+      nextRun = parseScheduleDate(input.schedule, context.timezone || 'UTC');
     }
 
     const task = await prisma.task.create({

@@ -95,6 +95,7 @@ export const initiatePhoneCallTool: JarvisTool<{ contactName: string }> = {
   }),
   execute: async (input) => {
     return {
+      type: 'CALL_CONTACT' as const,
       action: 'CALL_CONTACT' as const,
       contactName: input.contactName,
       response: `Calling ${input.contactName}.`,
@@ -134,6 +135,7 @@ export const sendMessageToContactTool: JarvisTool<{
 
     if (resolvedApp === 'sms') {
       return {
+        type: 'SEND_SMS' as const,
         action: 'SEND_SMS' as const,
         contactName: input.contactName,
         message: input.message,
@@ -142,6 +144,7 @@ export const sendMessageToContactTool: JarvisTool<{
     }
 
     return {
+      type: 'REPLY_TO_NOTIFICATION' as const,
       action: 'REPLY_TO_NOTIFICATION' as const,
       app: resolvedApp,
       sender: input.contactName,
@@ -252,6 +255,7 @@ export const openApplicationTool: JarvisTool<{ appName: string }> = {
   }),
   execute: async (input) => {
     return {
+      type: 'OPEN_APP' as const,
       action: 'OPEN_APP' as const,
       app: input.appName.toLowerCase(),
       response: `Opening ${input.appName}.`,

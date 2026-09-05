@@ -67,14 +67,14 @@ export const APP_DEEP_LINKS: Record<
   }
 > = {
   whatsapp: {
-    android: 'whatsapp://',
+    android: 'whatsapp://send',
     ios: 'whatsapp://',
-    fallbacks: ['whatsapp://send', 'intent:#Intent;package=com.whatsapp;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+    fallbacks: ['whatsapp://', 'whatsapp://app', 'https://wa.me/'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   whatsapp_business: {
-    android: 'whatsapp://',
-    fallbacks: ['whatsapp://send', 'intent:#Intent;package=com.whatsapp.w4b;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end'],
+    android: 'whatsapp://send',
+    fallbacks: ['whatsapp://', 'whatsapp://app', 'https://wa.me/'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   instagram: {

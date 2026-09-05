@@ -2,6 +2,7 @@ import { ChatMessage, LocationContext, MemoryItem, PhoneContext, TaskItem, UserE
 import { prisma } from '@/lib/db/prisma';
 import { memoryService } from '@/modules/memory/memory-service';
 import { workingMemoryService } from '@/modules/memory/working-memory';
+import { getLocalIsoString, getTimezoneOffsetString } from '@/modules/tasks/date-parser';
 
 export interface ContextParams {
   userId: string;
@@ -122,9 +123,15 @@ export class ContextEngine {
     };
 
     // 2. Compose structured, concise context string for the prompt
+    const now = new Date();
+    const tzOffset = getTimezoneOffsetString(now, timezone);
+    const localIso = getLocalIsoString(now, timezone);
+
     let contextStr = `Current User: ${userProfile.name}\n`;
-    contextStr += `Current Time: ${new Date().toLocaleString(locale, { timeZone: timezone })}\n`;
-    contextStr += `Timezone: ${timezone}\n`;
+    contextStr += `Current Time: ${now.toLocaleString(locale, { timeZone: timezone, dateStyle: 'full', timeStyle: 'medium' })}\n`;
+    contextStr += `Timezone: ${timezone} (UTC${tzOffset})\n`;
+    contextStr += `Current Local ISO: ${localIso}\n`;
+    contextStr += `Current UTC Time: ${now.toISOString()}\n`;
 
     if (locationContext && (locationContext.city || locationContext.state)) {
       contextStr += `Current User Location: ${[locationContext.city, locationContext.state, locationContext.country].filter(Boolean).join(', ')}\n`;

@@ -134,9 +134,9 @@ export class NotificationIntegration {
    */
   parseRawNotification(raw: Record<string, unknown>): PhoneNotificationEvent | null {
     const packageName = String(raw.packageName ?? '');
-    const app = PACKAGE_TO_APP[packageName];
+    const app = PACKAGE_TO_APP[packageName] || (packageName ? packageName.split('.').pop() || packageName : '');
 
-    if (!app) return null; // Not a tracked app
+    if (!app) return null; // Can't determine app source
 
     const sender = String(
       raw.sender || raw.title || raw.extraTitle || raw.subText || app

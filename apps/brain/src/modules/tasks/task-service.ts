@@ -1,5 +1,6 @@
 import { CreateTaskRequest, TaskItem, UpdateTaskRequest } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
+import { parseScheduleDate } from './date-parser';
 
 export class TaskService {
   async createTask(input: CreateTaskRequest): Promise<TaskItem> {
@@ -9,10 +10,7 @@ export class TaskService {
     if (input.nextRunAt) {
       nextRun = new Date(input.nextRunAt);
     } else if (input.schedule) {
-      const parsed = new Date(input.schedule);
-      if (!isNaN(parsed.getTime())) {
-        nextRun = parsed;
-      }
+      nextRun = parseScheduleDate(input.schedule, input.timezone || 'UTC');
     }
 
     const task = await prisma.task.create({

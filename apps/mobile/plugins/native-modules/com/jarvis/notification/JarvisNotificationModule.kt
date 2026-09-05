@@ -93,6 +93,23 @@ class JarvisNotificationModule(private val reactContext: ReactApplicationContext
     }
 
     @ReactMethod
+    fun launchApplication(packageName: String, promise: Promise) {
+        try {
+            val pm = reactContext.packageManager
+            val intent = pm.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactContext.startActivity(intent)
+                promise.resolve(true)
+            } else {
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            promise.reject("ERR_LAUNCH_APP", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun requestListenerPermission(promise: Promise) {
         try {
             val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {

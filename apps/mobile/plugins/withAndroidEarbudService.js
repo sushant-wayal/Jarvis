@@ -74,18 +74,38 @@ const withAndroidEarbudService = (config) => {
     const manifest = modConfig.modResults.manifest;
     const app = manifest.application[0];
 
+    // ── Permissions ──────────────────────────────────────────────────────
+    if (!manifest['uses-permission']) manifest['uses-permission'] = [];
+    const requiredPermissions = [
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+      'android.permission.FOREGROUND_SERVICE_MICROPHONE',
+      'android.permission.RECORD_AUDIO',
+      'android.permission.MODIFY_AUDIO_SETTINGS',
+      'android.permission.BLUETOOTH',
+      'android.permission.BLUETOOTH_CONNECT',
+    ];
+    for (const perm of requiredPermissions) {
+      if (!manifest['uses-permission'].some((p) => p.$ && p.$['android:name'] === perm)) {
+        manifest['uses-permission'].push({ $: { 'android:name': perm } });
+      }
+    }
+
     // ── Service ──────────────────────────────────────────────────────────
     if (!app.service) app.service = [];
 
     const serviceName = 'com.jarvis.earbud.JarvisForegroundService';
-    const serviceExists = app.service.some(
+    const existingService = app.service.find(
       (s) => s.$ && s.$['android:name'] === serviceName
     );
-    if (!serviceExists) {
+    if (existingService) {
+      existingService.$['android:foregroundServiceType'] = 'mediaPlayback|microphone';
+      existingService.$['android:exported'] = 'false';
+    } else {
       app.service.push({
         $: {
           'android:name': serviceName,
-          'android:foregroundServiceType': 'mediaPlayback',
+          'android:foregroundServiceType': 'mediaPlayback|microphone',
           'android:exported': 'false',
         },
       });

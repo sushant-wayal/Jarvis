@@ -2,7 +2,9 @@ package com.jarvis.earbud
 
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.facebook.react.bridge.*
+import com.facebook.react.common.LifecycleState
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
 /**
@@ -18,20 +20,45 @@ class JarvisEarbudModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     companion object {
+        private const val TAG = "JarvisEarbudModule"
         const val MODULE_NAME = "JarvisEarbudModule"
         const val EARBUD_TAP_EVENT = "JarvisEarbudTap"
 
         @Volatile
         private var instance: JarvisEarbudModule? = null
 
-        /** Called by JarvisForegroundService to emit an event to the JS layer. */
-        fun emitEarbudEvent(eventType: String) {
-            instance?.emitToJS(EARBUD_TAP_EVENT, eventType)
+        /** Called by JarvisForegroundService to emit an event to the JS layer. Returns true if delivered. */
+        fun emitEarbudEvent(eventType: String): Boolean {
+            val mod = instance ?: return false
+            return mod.emitToJS(EARBUD_TAP_EVENT, eventType)
+        }
+
+        /**
+         * Returns true only if the React Native app is active and in the foreground (resumed).
+         * When true, media button taps should route to the JS layer.
+         */
+        fun isAppInForeground(): Boolean {
+            val ctx = instance?.reactContext ?: return false
+            val isAlive = try {
+                ctx.hasActiveReactInstance()
+            } catch (_: Throwable) {
+                @Suppress("DEPRECATION")
+                ctx.hasActiveCatalystInstance()
+            }
+            if (!isAlive) return false
+            return ctx.lifecycleState == LifecycleState.RESUMED
         }
 
         /** Returns true if the React context is alive and JS can receive events. */
-        fun isReactContextAlive(): Boolean =
-            instance?.reactContext?.hasActiveCatalystInstance() == true
+        fun isReactContextAlive(): Boolean {
+            val ctx = instance?.reactContext ?: return false
+            return try {
+                ctx.hasActiveReactInstance()
+            } catch (_: Throwable) {
+                @Suppress("DEPRECATION")
+                ctx.hasActiveCatalystInstance()
+            }
+        }
     }
 
     init {
@@ -79,11 +106,25 @@ class JarvisEarbudModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun removeListeners(@Suppress("UNUSED_PARAMETER") count: Int) {}
 
-    private fun emitToJS(eventName: String, data: String) {
-        if (reactContext.hasActiveCatalystInstance()) {
-            reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit(eventName, data)
+    private fun emitToJS(eventName: String, data: String): Boolean {
+        return try {
+            val isAlive = try {
+                reactContext.hasActiveReactInstance()
+            } catch (_: Throwable) {
+                @Suppress("DEPRECATION")
+                reactContext.hasActiveCatalystInstance()
+            }
+            if (isAlive) {
+                reactContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(eventName, data)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to emit $eventName to JS: ${e.message}")
+            false
         }
     }
 

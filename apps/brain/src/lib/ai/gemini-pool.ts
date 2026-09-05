@@ -82,10 +82,10 @@ export class GeminiKeyPoolManager {
       }
     }
 
-    // Deduplicate and filter out demo placeholder if real keys exist
+    // Deduplicate and filter out demo placeholder if other keys exist
     const uniqueKeys = Array.from(new Set(rawKeys));
     const validKeys = uniqueKeys.filter(
-      (k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here' && k.length > 20
+      (k) => k !== 'demo-api-key' && k !== 'your-gemini-api-key-here'
     );
 
     if (validKeys.length > 0) {

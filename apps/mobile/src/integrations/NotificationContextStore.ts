@@ -79,7 +79,7 @@ export class NotificationContextStore {
   ingest(event: PhoneNotificationEvent): void {
     const isAppEnabled =
       this.settings.enabledApps[event.app] ??
-      (event.app === 'whatsapp_business' ? this.settings.enabledApps['whatsapp'] : false);
+      (event.app === 'whatsapp_business' ? this.settings.enabledApps['whatsapp'] ?? true : true);
     if (!isAppEnabled) return;
 
     const processed: PhoneNotificationEvent = {

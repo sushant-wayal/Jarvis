@@ -49,6 +49,8 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: false,
+        interruptionModeAndroid: 1, // DoNotMix
+        interruptionModeIOS: 1,     // DoNotMix
       });
 
       const { recording } = await Audio.Recording.createAsync(

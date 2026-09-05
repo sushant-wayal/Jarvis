@@ -4,19 +4,32 @@
  * Works without being blocked by Android 11+ package visibility queries.
  */
 
-import { Linking, Platform } from 'react-native';
+import { Linking, NativeModules, Platform } from 'react-native';
 import { ActionResult } from '@jarvis/shared';
 import { APP_DEEP_LINKS, APP_TO_PACKAGE } from './constants';
 
 export class AppIntegration {
   /**
    * Open any app by its friendly or typed name (e.g. 'whatsapp', 'youtube', 'spotify', 'calculator').
-   * Employs cascading fallback: custom scheme -> registered fallbacks -> android launcher intent -> generic scheme.
+   * Employs cascading fallback: native launcher intent -> custom scheme -> registered fallbacks -> generic scheme.
    */
   async openApp(appName: string): Promise<ActionResult> {
     const cleanApp = appName.toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
     if (!cleanApp) {
       return { success: false, error: 'App name cannot be empty.' };
+    }
+
+    // 0. On Android, try native package launcher first via Android PackageManager
+    const knownPackage = APP_TO_PACKAGE[cleanApp] || (cleanApp.startsWith('com.') ? cleanApp : null);
+    if (Platform.OS === 'android' && knownPackage && NativeModules.JarvisNotificationListener?.launchApplication) {
+      try {
+        const launched = await NativeModules.JarvisNotificationListener.launchApplication(knownPackage);
+        if (launched) {
+          return { success: true, message: `Opened ${appName}.` };
+        }
+      } catch {
+        // Fall back to URL schemes
+      }
     }
 
     const candidates: string[] = [];
@@ -35,7 +48,6 @@ export class AppIntegration {
     }
 
     // 2. If known package exists on Android, add direct launcher Intent URI
-    const knownPackage = APP_TO_PACKAGE[cleanApp];
     if (knownPackage && Platform.OS === 'android') {
       candidates.push(
         `intent:#Intent;package=${knownPackage};action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`

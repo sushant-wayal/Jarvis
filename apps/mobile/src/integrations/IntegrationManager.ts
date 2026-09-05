@@ -71,6 +71,12 @@ export class IntegrationManager {
   /** Build a lightweight PhoneContext snapshot to send with brain requests. */
   async buildPhoneContext(): Promise<PhoneContext> {
     const capabilities = await this.getCapabilities();
+
+    // Proactively sync latest status bar notifications if listener is available
+    if (capabilities.notificationListener) {
+      await notificationIntegration.syncActiveNotifications().catch(() => false);
+    }
+
     const recentNotifications = notificationContextStore.getRecentEvents(
       undefined,
       MAX_CONTEXT_EVENTS
@@ -112,28 +118,29 @@ export class IntegrationManager {
    * Returns an ActionResult that the earbud manager can speak back to the user.
    */
   async executeAction(action: JarvisPhoneAction): Promise<ActionResult> {
-    switch (action.type) {
+    const actionType = action.type || (action as any).action;
+    switch (actionType) {
       case 'CALL_CONTACT':
-        return this.executeCall(action.contactName, action.phoneNumber);
+        return this.executeCall((action as any).contactName, (action as any).phoneNumber);
 
       case 'SEND_SMS':
-        return this.executeSms(action.contactName, action.message, action.phoneNumber);
+        return this.executeSms((action as any).contactName, (action as any).message, (action as any).phoneNumber);
 
       case 'REPLY_TO_NOTIFICATION':
-        return this.executeReply(action);
+        return this.executeReply(action as any);
 
       case 'OPEN_APP':
-        return appIntegration.openApp(action.app);
+        return appIntegration.openApp((action as any).app);
 
       case 'OPEN_CONVERSATION':
         return appIntegration.openConversation(
-          action.app,
-          action.conversationKey,
+          (action as any).app,
+          (action as any).conversationKey,
           undefined,
         );
 
       default:
-        return { success: false, error: 'Unknown action type.' };
+        return { success: false, error: `Unknown action type: "${actionType}".` };
     }
   }
 

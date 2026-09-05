@@ -8,6 +8,7 @@ import {
   SILENT_CARRIER_BASE64,
   WAKE_CHIME_BASE64,
 } from '../utils/audioChimes';
+import { apiClient } from './apiClient';
 
 type EarbudListener = (event: EarbudEventType) => void;
 
@@ -133,15 +134,21 @@ class EarbudService {
 
   private async initNativeService(): Promise<void> {
     try {
+      const brainUrl = await apiClient.initializeUrl();
       // Start the foreground service — it keeps itself alive via START_STICKY
-      await JarvisEarbudModule!.startService(DEFAULT_BRAIN_URL);
+      await JarvisEarbudModule!.startService(brainUrl);
       this.isStandbyRunning = true;
       this.status.isStandbyActive = true;
 
       // Subscribe to native media button events from the service
+      if (this.nativeEventSubscription) {
+        this.nativeEventSubscription.remove();
+        this.nativeEventSubscription = null;
+      }
       const emitter = new NativeEventEmitter(NativeModules.JarvisEarbudModule);
+      const eventName = JarvisEarbudModule?.EARBUD_TAP_EVENT || 'JarvisEarbudTap';
       this.nativeEventSubscription = emitter.addListener(
-        JarvisEarbudModule!.EARBUD_TAP_EVENT,
+        eventName,
         (eventType: string) => {
           this.emitEvent(eventType as EarbudEventType);
         }

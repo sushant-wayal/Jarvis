@@ -93,6 +93,7 @@ describe('Phone Tools (Brain)', () => {
 
   it('openApplicationTool returns OPEN_APP action', async () => {
     const res = (await openApplicationTool.execute({ appName: 'WhatsApp' }, mockToolContext)) as Record<string, any>;
+    expect(res.type).toBe('OPEN_APP');
     expect(res.action).toBe('OPEN_APP');
     expect(res.app).toBe('whatsapp');
   });
