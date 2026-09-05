@@ -18,7 +18,9 @@ import androidx.media.session.MediaButtonReceiver
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
+import com.jarvis.notification.JarvisNotificationListenerService
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -65,6 +67,9 @@ class JarvisForegroundService : Service() {
 
         // Auto-stop recording after this many ms of silence (allows natural speaking pauses)
         private const val SILENCE_THRESHOLD_MS = 4500L
+        // Timeout when user never spoke at all (cancels without sending to brain)
+        private const val NO_SPEECH_TIMEOUT_MS = 3800L
+        private const val SPEECH_AMPLITUDE = 1800
         private const val SILENCE_AMPLITUDE = 900
 
         // Max recording duration
@@ -82,6 +87,7 @@ class JarvisForegroundService : Service() {
     private var state = State.IDLE
 
     private var lastTapTs = 0L
+    private var userSpoke = false
 
     // ─── Native audio ─────────────────────────────────────────────────────────
 
@@ -109,12 +115,24 @@ class JarvisForegroundService : Service() {
 
             val amplitude = try { recorder.maxAmplitude } catch (e: Exception) { return }
 
-            if (amplitude < SILENCE_AMPLITUDE) {
-                if (silenceStartTs == 0L) silenceStartTs = System.currentTimeMillis()
-                else if (System.currentTimeMillis() - silenceStartTs >= SILENCE_THRESHOLD_MS) {
-                    Log.d(TAG, "Silence detected → stopping recording")
-                    stopNativeRecording()
-                    return
+            if (amplitude >= SPEECH_AMPLITUDE) {
+                userSpoke = true
+                silenceStartTs = 0L
+            } else if (amplitude < SILENCE_AMPLITUDE) {
+                if (userSpoke) {
+                    if (silenceStartTs == 0L) silenceStartTs = System.currentTimeMillis()
+                    else if (System.currentTimeMillis() - silenceStartTs >= SILENCE_THRESHOLD_MS) {
+                        Log.d(TAG, "Silence detected after speech → stopping and sending to brain")
+                        stopNativeRecording(sendToBrain = true)
+                        return
+                    }
+                } else {
+                    if (silenceStartTs == 0L) silenceStartTs = System.currentTimeMillis()
+                    else if (System.currentTimeMillis() - silenceStartTs >= NO_SPEECH_TIMEOUT_MS) {
+                        Log.d(TAG, "No speech detected during listen window → peacefully returning to IDLE without calling brain")
+                        stopNativeRecording(sendToBrain = false)
+                        return
+                    }
                 }
             } else {
                 silenceStartTs = 0L
@@ -126,7 +144,7 @@ class JarvisForegroundService : Service() {
     private val maxDurationStopper = Runnable {
         if (state == State.RECORDING) {
             Log.d(TAG, "Max duration reached → stopping recording")
-            stopNativeRecording()
+            stopNativeRecording(sendToBrain = userSpoke)
         }
     }
 
@@ -568,6 +586,7 @@ class JarvisForegroundService : Service() {
         if (state != State.IDLE) return
         state = State.RECORDING
         silenceStartTs = 0L
+        userSpoke = false
 
         pauseSilentAudioCarrier()
         updateNotification("🎙 Listening… Tap earbud to stop")
@@ -593,8 +612,8 @@ class JarvisForegroundService : Service() {
                 start()
             }
 
-            // Start silence-detection polling (after 2.5s to let user start speaking)
-            mainHandler.postDelayed({ mainHandler.post(silencePoller) }, 2500)
+            // Start silence-detection polling directly
+            mainHandler.postDelayed(silencePoller, 300)
 
             // Hard cap on recording duration
             mainHandler.postDelayed(maxDurationStopper, MAX_RECORD_MS)
@@ -610,15 +629,11 @@ class JarvisForegroundService : Service() {
         }
     }
 
-    private fun stopNativeRecording() {
+    private fun stopNativeRecording(sendToBrain: Boolean = true) {
         if (state != State.RECORDING) return
-        state = State.PROCESSING
 
         mainHandler.removeCallbacks(silencePoller)
         mainHandler.removeCallbacks(maxDurationStopper)
-
-        updateNotification("🧠 Thinking…")
-        playProcessChime()
 
         val recorder = mediaRecorder
         val file = recordingFile
@@ -633,12 +648,17 @@ class JarvisForegroundService : Service() {
         recordingFile = null
         releaseBluetoothAudioRouting()
 
-        if (file == null || !file.exists() || file.length() == 0L) {
+        if (!sendToBrain || file == null || !file.exists() || file.length() == 0L) {
+            file?.delete()
             state = State.IDLE
             resumeSilentAudioCarrier()
             updateNotification("Jarvis · Tap earbud to speak")
             return
         }
+
+        state = State.PROCESSING
+        updateNotification("🧠 Thinking…")
+        playProcessChime()
 
         // Process audio on a background thread
         Thread {
@@ -681,6 +701,89 @@ class JarvisForegroundService : Service() {
         }
     }
 
+    private fun buildNativePhoneContext(): JSONObject {
+        val phoneContext = JSONObject()
+        val notifListener = JarvisNotificationListenerService.instance
+        val isConnected = JarvisNotificationListenerService.isServiceConnected
+
+        val capabilities = JSONObject().apply {
+            put("contacts", false)
+            put("phoneCall", true)
+            put("sms", true)
+            put("notificationListener", isConnected)
+            put("notificationReply", isConnected)
+            put("openApp", true)
+        }
+        phoneContext.put("capabilities", capabilities)
+        phoneContext.put(
+            "timestamp",
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }.format(java.util.Date())
+        )
+
+        val notificationsArray = JSONArray()
+        try {
+            val active = notifListener?.activeNotifications
+            if (active != null) {
+                val maxItems = Math.min(active.size, 20)
+                for (i in 0 until maxItems) {
+                    val sbn = active[i]
+                    val notif = sbn.notification ?: continue
+                    val extras = notif.extras ?: continue
+                    val pkg = sbn.packageName ?: ""
+
+                    val title = extras.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString() ?: ""
+                    val text = extras.getCharSequence(android.app.Notification.EXTRA_TEXT)?.toString() ?: ""
+                    val bigText = extras.getCharSequence(android.app.Notification.EXTRA_BIG_TEXT)?.toString() ?: text
+                    val subText = extras.getCharSequence(android.app.Notification.EXTRA_SUB_TEXT)?.toString() ?: ""
+                    val convTitle = extras.getCharSequence(android.app.Notification.EXTRA_CONVERSATION_TITLE)?.toString() ?: ""
+
+                    val sender = when {
+                        title.isNotBlank() -> title
+                        convTitle.isNotBlank() -> convTitle
+                        subText.isNotBlank() -> subText
+                        else -> pkg
+                    }
+                    val content = when {
+                        bigText.isNotBlank() -> bigText
+                        text.isNotBlank() -> text
+                        else -> ""
+                    }
+
+                    val appName = when {
+                        pkg.contains("whatsapp") -> "whatsapp"
+                        pkg.contains("telegram") -> "telegram"
+                        pkg.contains("instagram") -> "instagram"
+                        pkg.contains("messaging") || pkg.contains("mms") -> "sms"
+                        pkg.contains("gm") || pkg.contains("email") -> "gmail"
+                        else -> pkg.substringAfterLast('.')
+                    }
+
+                    val notifObj = JSONObject().apply {
+                        put("id", sbn.key ?: sbn.id.toString())
+                        put("app", appName)
+                        put("packageName", pkg)
+                        put("sender", sender)
+                        put("content", content)
+                        put(
+                            "timestamp",
+                            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+                                timeZone = java.util.TimeZone.getTimeZone("UTC")
+                            }.format(java.util.Date(sbn.postTime))
+                        )
+                        put("canReply", isConnected)
+                    }
+                    notificationsArray.put(notifObj)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error collecting notifications for phoneContext: ${e.message}")
+        }
+        phoneContext.put("recentNotifications", notificationsArray)
+        return phoneContext
+    }
+
     private fun callBrainApi(audioBase64: String, mimeType: String) {
         val url = getVoiceApiUrl()
         Log.d(TAG, "Calling brain voice endpoint: $url")
@@ -692,6 +795,7 @@ class JarvisForegroundService : Service() {
                 put("timezone", java.util.TimeZone.getDefault().id)
                 put("locale", java.util.Locale.getDefault().toLanguageTag())
                 put("userId", "default-user")
+                put("phoneContext", buildNativePhoneContext())
             }.toString()
 
             val request = Request.Builder()
@@ -719,13 +823,21 @@ class JarvisForegroundService : Service() {
 
                 val textResponse = (dataJson?.optString("response") ?: rootJson.optString("response", "")).trim()
                 val audioB64 = (dataJson?.optString("audioBase64") ?: rootJson.optString("audioBase64", "")).trim()
+                val continuous = dataJson?.optBoolean("continuousListening", true) ?: rootJson.optBoolean("continuousListening", true)
 
-                Log.d(TAG, "Brain response: text len=${textResponse.length}, audio len=${audioB64.length}")
+                Log.d(TAG, "Brain response: text len=${textResponse.length}, audio len=${audioB64.length}, continuous=$continuous")
+
+                // If Brain returned an empty silence turn, remain in IDLE without speaking or restarting listening
+                if (textResponse.isEmpty() && audioB64.isEmpty()) {
+                    Log.d(TAG, "Empty/silence response received from brain; remaining peacefully in IDLE")
+                    updateNotification("Jarvis · Tap earbud to speak")
+                    return
+                }
 
                 // Play audio response through earbuds if available
                 if (audioB64.isNotEmpty()) {
-                    playAudioResponse(audioB64)
-                } else {
+                    playAudioResponse(audioB64, autoListenAfter = continuous)
+                } else if (continuous && textResponse.isNotEmpty()) {
                     // Continuous conversation: if text-only, auto-listen after short delay
                     mainHandler.postDelayed({
                         if (state == State.IDLE) {
@@ -754,7 +866,7 @@ class JarvisForegroundService : Service() {
 
     // ─── Audio playback ───────────────────────────────────────────────────────
 
-    private fun playAudioResponse(base64Audio: String) {
+    private fun playAudioResponse(base64Audio: String, autoListenAfter: Boolean = true) {
         try {
             val audioBytes = Base64.decode(base64Audio, Base64.NO_WRAP)
             val tmpFile = File(cacheDir, "jarvis_resp_${System.currentTimeMillis()}.mp3")
@@ -773,13 +885,16 @@ class JarvisForegroundService : Service() {
                 setOnCompletionListener { mp ->
                     mp.release()
                     tmpFile.delete()
-                    // Continuous conversation: after speech completes, transition directly into listening mode!
-                    mainHandler.postDelayed({
-                        if (state == State.IDLE) {
-                            Log.d(TAG, "Continuous conversation: auto-starting native recording after speech")
-                            startNativeRecording()
-                        }
-                    }, 400)
+                    if (autoListenAfter) {
+                        mainHandler.postDelayed({
+                            if (state == State.IDLE) {
+                                Log.d(TAG, "Continuous conversation: auto-starting native recording after speech")
+                                startNativeRecording()
+                            }
+                        }, 400)
+                    } else {
+                        Log.d(TAG, "Conversation finished; staying in IDLE")
+                    }
                 }
                 setOnErrorListener { mp, _, _ ->
                     mp.release()

@@ -26,6 +26,121 @@ function maskKey(key: string): string {
   return `${key.slice(0, 6)}...${key.slice(-4)}`;
 }
 
+// Global cache for thought signatures required by Gemini 3+ across function calling turns
+const thoughtSignatureCache = new Map<string, string>();
+
+let isThoughtSignatureInterceptorInstalled = false;
+
+/**
+ * Patch @google/genai ApiClient to capture and re-inject thoughtSignature for Gemini 3 models.
+ * Google Gemini 3 strictly requires thought_signature across multi-turn tool calling, but
+ * the SDK currently strips this field during serialization/deserialization.
+ */
+function installThoughtSignatureInterceptor() {
+  if (isThoughtSignatureInterceptorInstalled) return;
+
+  try {
+    const dummy = new GoogleGenAI({ apiKey: 'init-probe' });
+    const proto = Object.getPrototypeOf((dummy as unknown as { apiClient: unknown }).apiClient);
+    if (!proto || !proto.request || !proto.unaryApiCall) {
+      return;
+    }
+
+    const origRequest = proto.request;
+    const origUnaryApiCall = proto.unaryApiCall;
+
+    proto.request = async function (req: { body?: string; [key: string]: unknown }) {
+      if (req.body && typeof req.body === 'string') {
+        try {
+          const bodyObj = JSON.parse(req.body) as {
+            contents?: Array<{
+              role?: string;
+              parts?: Array<{
+                functionCall?: { id?: string; name?: string };
+                thoughtSignature?: string;
+                thought_signature?: string;
+              }>;
+            }>;
+          };
+
+          let modified = false;
+          if (Array.isArray(bodyObj.contents)) {
+            for (const content of bodyObj.contents) {
+              if (content.role === 'model' && Array.isArray(content.parts)) {
+                for (const part of content.parts) {
+                  if (part.functionCall && !part.thoughtSignature && !part.thought_signature) {
+                    const fc = part.functionCall;
+                    const sig =
+                      (fc.id && thoughtSignatureCache.get(fc.id)) ||
+                      (fc.name && thoughtSignatureCache.get(fc.name)) ||
+                      thoughtSignatureCache.get('__latest__');
+                    if (sig) {
+                      part.thoughtSignature = sig;
+                      modified = true;
+                      logger.info(`[Gemini3] Re-injected thoughtSignature for ${fc.name || 'tool'}`, {
+                        callId: fc.id,
+                        toolName: fc.name,
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          if (modified) {
+            req.body = JSON.stringify(bodyObj);
+          }
+        } catch (err) {
+          logger.warn('[Gemini3] Error inspecting request body for thoughtSignature', { err });
+        }
+      }
+
+      return origRequest.call(this, req);
+    };
+
+    proto.unaryApiCall = async function (url: unknown, requestInit: unknown, httpMethod: unknown) {
+      const res = await origUnaryApiCall.call(this, url, requestInit, httpMethod);
+      const origJson = res.json.bind(res);
+
+      res.json = async function () {
+        const data = await origJson();
+        try {
+          if (data && Array.isArray(data.candidates)) {
+            for (const cand of data.candidates) {
+              if (cand.content && Array.isArray(cand.content.parts)) {
+                for (const part of cand.content.parts) {
+                  const sig = part.thoughtSignature || part.thought_signature;
+                  if (part.functionCall && sig) {
+                    const fc = part.functionCall;
+                    if (fc.id) thoughtSignatureCache.set(fc.id, sig);
+                    if (fc.name) thoughtSignatureCache.set(fc.name, sig);
+                    thoughtSignatureCache.set('__latest__', sig);
+                    logger.info(`[Gemini3] Captured thoughtSignature for ${fc.name || 'tool'}`, {
+                      callId: fc.id,
+                      toolName: fc.name,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          logger.warn('[Gemini3] Error capturing thoughtSignature from response', { e });
+        }
+        return data;
+      };
+
+      return res;
+    };
+
+    isThoughtSignatureInterceptorInstalled = true;
+    logger.info('Installed Gemini 3 Thought Signature interceptor successfully');
+  } catch (err) {
+    logger.error('Failed to install Gemini 3 Thought Signature interceptor', err);
+  }
+}
+
 /**
  * Detect if an error is related to quota, rate-limiting, or 429
  */
@@ -45,6 +160,9 @@ function isRateLimitError(err: unknown): boolean {
     msg.includes('resource exhausted')
   );
 }
+
+// Auto-install interceptor on module evaluation
+installThoughtSignatureInterceptor();
 
 export class GeminiKeyPoolManager {
   private slots: PoolSlot[] = [];

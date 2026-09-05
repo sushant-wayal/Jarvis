@@ -196,17 +196,34 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           .catch(() => {});
       }
 
+      const shouldContinue =
+        Boolean(response.response) &&
+        !response.response.includes('Understood. Goodbye') &&
+        (response as unknown as { continuousListening?: boolean }).continuousListening !== false;
+
       if (response.audioBase64) {
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
           // After Jarvis finishes speaking, execute any pending phone action
           await handlePendingPhoneAction(response);
-          // Directly enter continuous listening mode for fluid UX!
-          await startVoiceListening();
+          if (shouldContinue) {
+            await startVoiceListening();
+          } else {
+            setJarvisState('IDLE');
+            earbudService.resumeTapDetection(200);
+          }
         });
-      } else {
+      } else if (response.response) {
         await handlePendingPhoneAction(response);
-        await startVoiceListening();
+        if (shouldContinue) {
+          await startVoiceListening();
+        } else {
+          setJarvisState('IDLE');
+          earbudService.resumeTapDetection(200);
+        }
+      } else {
+        setJarvisState('IDLE');
+        earbudService.resumeTapDetection(200);
       }
     } catch (err: unknown) {
       setJarvisState('ERROR');
@@ -275,14 +292,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [jarvisState, recordingLevel, settings.autoSilenceStop, settings.silenceThresholdSeconds, stopAndProcessVoice]);
 
-  // Idle timeout: if in continuous listening mode and user says nothing for 12s, peacefully return to IDLE
+  // Idle timeout: if in continuous listening mode and user says nothing for 4.5s, peacefully return to IDLE
   React.useEffect(() => {
     if (jarvisState !== 'LISTENING') return;
     const idleTimer = setTimeout(() => {
       if (stateRef.current.jarvisState === 'LISTENING' && !speechDetectedRef.current) {
         void interruptOrStop();
       }
-    }, 12000);
+    }, 4500);
     return () => clearTimeout(idleTimer);
   }, [jarvisState, interruptOrStop]);
 

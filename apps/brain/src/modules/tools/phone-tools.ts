@@ -210,10 +210,13 @@ export const readPhoneMessagesTool: JarvisTool<{
   }),
   execute: async (input, context) => {
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
-    if (!phone?.recentNotifications.length) {
+    if (!phone || !phone.recentNotifications.length) {
+      const listenerActive = phone?.capabilities?.notificationListener;
       return {
         messages: [],
-        summary: 'No messages available. Notification access requires an APK build.',
+        summary: listenerActive
+          ? 'You currently have no unread notifications or new messages in your status bar.'
+          : 'Notification Access is not enabled for Jarvis. Please grant Notification Access in Android Settings (Special app access > Device & app notifications) so I can read incoming messages.',
         noContext: true,
       };
     }
@@ -250,10 +253,13 @@ export const searchPhoneMessagesTool: JarvisTool<{
   }),
   execute: async (input, context) => {
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
-    if (!phone?.recentNotifications.length) {
+    if (!phone || !phone.recentNotifications.length) {
+      const listenerActive = phone?.capabilities?.notificationListener;
       return {
         results: [],
-        summary: 'No messages available. Notification access requires an APK build.',
+        summary: listenerActive
+          ? 'You currently have no unread notifications or messages in your status bar.'
+          : 'Notification Access is not enabled for Jarvis. Please grant Notification Access in Android Settings (Special app access > Device & app notifications) so I can read incoming messages.',
       };
     }
 

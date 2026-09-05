@@ -14,6 +14,7 @@ import { StatusHeader } from '../src/components/StatusHeader';
 import { EtherealOrb } from '../src/components/EtherealOrb';
 import { MarkdownText } from '../src/components/MarkdownText';
 import { useEarbudManager } from '../src/hooks/useEarbudManager';
+import { useIntegrationBridge } from '../src/hooks/useIntegrationBridge';
 import { adaptiveLocationEngine } from '../src/services/adaptiveLocationEngine';
 import { apiClient } from '../src/services/apiClient';
 import { appSettingsService } from '../src/services/appSettingsService';
@@ -38,6 +39,7 @@ export default function HomeScreen(): React.ReactElement {
     triggerSimulatedTap,
   } = useEarbudManager();
 
+  const { capabilities, requestNotificationPermission } = useIntegrationBridge();
   const [isOnline, setIsOnline] = React.useState<boolean>(true);
 
   // Dynamic context info
@@ -335,6 +337,21 @@ export default function HomeScreen(): React.ReactElement {
                 <Text style={[typography.labelCaps, styles.earbudIndicatorText]}>
                   EARBUD LINK ACTIVE · TAP TO SIMULATE
                 </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {capabilities && !capabilities.notificationListener ? (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={requestNotificationPermission}
+                style={styles.notifWarningBanner}
+                accessibilityLabel="Enable notification listener"
+              >
+                <Icon name="bolt" size={13} color={colors.tertiaryFixed} />
+                <Text style={styles.notifWarningText}>
+                  Notification access needed to read messages · Tap to grant
+                </Text>
+                <Icon name="arrow_forward" size={13} color={colors.tertiaryFixed} />
               </TouchableOpacity>
             ) : null}
 
@@ -703,6 +720,23 @@ const styles = StyleSheet.create({
     color: colors.primaryFixed,
     fontSize: 9,
     letterSpacing: 1.2,
+  },
+  notifWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255, 179, 0, 0.08)',
+    borderColor: 'rgba(255, 179, 0, 0.28)',
+    borderWidth: 1,
+    borderRadius: rounded.full,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginTop: 6,
+  },
+  notifWarningText: {
+    color: colors.tertiaryFixed,
+    fontSize: 11,
+    fontWeight: '500',
   },
 });
 

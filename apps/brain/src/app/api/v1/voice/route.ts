@@ -29,14 +29,57 @@ export async function POST(req: NextRequest) {
     const audioBuffer = Buffer.from(audioBase64, 'base64');
     const { transcript } = await sttProvider.transcribe(audioBuffer, mimeType);
 
-    if (!transcript) {
+    if (!transcript || transcript.trim().length === 0) {
+      logger.info('Voice STT returned empty/silence transcript; terminating turn cleanly without re-prompting');
       return successResponse(
         {
           transcript: '',
-          response: "I didn't catch that. Could you say that again?",
+          response: '',
+          audioBase64: '',
           conversationId: conversationId || '',
           requestId,
-          shouldSpeak: true,
+          shouldSpeak: false,
+          continuousListening: false,
+        },
+        requestId
+      );
+    }
+
+    const cleanLower = transcript.toLowerCase().replace(/[.,!?;:"']/g, '').trim();
+    const closurePhrases = [
+      'stop',
+      'stop listening',
+      'bye',
+      'goodbye',
+      'cancel',
+      'never mind',
+      'nevermind',
+      'that is all',
+      'thats all',
+      'that is it',
+      'thats it',
+      'nothing',
+      'nothing else',
+      'done',
+      'i am done',
+      'im done',
+      'no thanks',
+      'no thank you',
+      'i am good',
+      'im good',
+    ];
+
+    if (closurePhrases.includes(cleanLower)) {
+      logger.info('User requested conversation closure', { transcript });
+      return successResponse(
+        {
+          transcript,
+          response: 'Understood. Goodbye.',
+          audioBase64: '',
+          conversationId: conversationId || '',
+          requestId,
+          shouldSpeak: false,
+          continuousListening: false,
         },
         requestId
       );

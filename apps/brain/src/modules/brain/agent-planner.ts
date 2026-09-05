@@ -288,7 +288,7 @@ Timezone & Scheduling Directive:
           const lastRes = executedToolResults[executedToolResults.length - 1];
           finalText = this.formatDirectOutput(lastTool?.name || '', lastRes?.output);
         } else {
-          finalText = 'I have completed your request.';
+          finalText = 'I reached the step limit before completing this task. Please try a simpler request.';
         }
       }
 
@@ -302,7 +302,7 @@ Timezone & Scheduling Directive:
       });
     } catch (err) {
       logger.error('AgentPlanner error during execution', err, { agentRunId: agentRun.id });
-      finalText = this.getFallbackAnswer(message, executedToolResults);
+      finalText = this.getFallbackAnswer(message, executedToolCalls, executedToolResults, err);
 
       await prisma.agentRun.update({
         where: { id: agentRun.id },
@@ -396,12 +396,16 @@ Timezone & Scheduling Directive:
     if (
       toolName === 'generate_message_briefing' ||
       toolName === 'read_phone_messages' ||
+      toolName === 'search_phone_messages' ||
       toolName === 'detect_unanswered_messages' ||
       toolName === 'get_contact_interaction_summary' ||
       toolName === 'lookup_contact'
     ) {
       if (typeof output.summary === 'string') return output.summary;
       if (typeof output.response === 'string') return output.response;
+    }
+    if (typeof output.message === 'string') {
+      return output.message;
     }
     if (toolName === 'task_list') {
       if (Array.isArray(output.tasks)) {
@@ -416,11 +420,17 @@ Timezone & Scheduling Directive:
     return JSON.stringify(output);
   }
 
-  private getFallbackAnswer(message: string, toolResults: ToolResult[]): string {
+  private getFallbackAnswer(
+    message: string,
+    toolCalls: ToolCall[],
+    toolResults: ToolResult[],
+    err?: unknown
+  ): string {
     if (toolResults.length > 0) {
-      const last = toolResults[toolResults.length - 1];
-      if (last.success && last.output && typeof last.output === 'object' && 'result' in last.output) {
-        return `${(last.output as Record<string, unknown>).result}`;
+      const lastTool = toolCalls[toolCalls.length - 1];
+      const lastRes = toolResults[toolResults.length - 1];
+      if (lastRes.output) {
+        return this.formatDirectOutput(lastTool?.name || '', lastRes.output);
       }
     }
 
@@ -437,7 +447,12 @@ Timezone & Scheduling Directive:
       if (msg.includes('/') || msg.includes('divided')) return `${num2 !== 0 ? num1 / num2 : 'Error'}.`;
     }
 
-    return 'I have completed your request.';
+    const errDetail = err instanceof Error ? err.message : '';
+    if (errDetail) {
+      return `I encountered an issue processing that: ${errDetail}. Please try again.`;
+    }
+
+    return 'I was unable to process that request. Please try again.';
   }
 
   private async generateWithFallback(params: {

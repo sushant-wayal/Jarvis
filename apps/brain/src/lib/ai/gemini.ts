@@ -15,9 +15,9 @@ export const aiClient = {
 };
 
 const envModel = process.env.GEMINI_MODEL?.trim();
-// Automatically sanitize against non-existent models (e.g. gemini-3.5-flash)
+// Automatically sanitize against non-existent models
 export const DEFAULT_MODEL =
-  envModel && !envModel.includes('3.5') && !envModel.includes('2.0')
+  envModel && !envModel.includes('3.5') && !envModel.includes('2.0') && !envModel.includes('2.5')
     ? envModel
     : 'gemini-3-flash-preview';
 
