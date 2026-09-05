@@ -102,9 +102,12 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       // don't false-trigger the carrier tap detector
       earbudService.suppressTapDetection();
 
+      // 1. Play the wake chime in full through earbuds FIRST
       await earbudService.playWakeChime();
-      await startRecording();
+
+      // 2. ONLY THEN switch state to LISTENING and start microphone recording
       setJarvisState('LISTENING');
+      await startRecording();
     } catch (err: unknown) {
       // On failure, restore tap detection immediately
       earbudService.resumeTapDetection(200);
@@ -148,9 +151,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
   const stopAndProcessVoice = React.useCallback(async (): Promise<void> => {
     try {
-      setJarvisState('PROCESSING');
-      await earbudService.playProcessChime();
+      // 1. Stop audio recording first so the microphone is released
       const audioData = await stopRecording();
+
+      // 2. Play the process chime in full through earbuds FIRST
+      await earbudService.playProcessChime();
+
+      // 3. ONLY THEN switch state to PROCESSING / THINKING
+      setJarvisState('PROCESSING');
 
       if (!audioData || !audioData.audioBase64) {
         setJarvisState('ERROR');

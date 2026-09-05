@@ -466,7 +466,14 @@ class JarvisForegroundService : Service() {
 
     // ─── Native audio feedback (PCM Chimes matching the mobile app) ───────────
 
-    private fun playChimePcm(freq1: Double, dur1Ms: Int, freq2: Double, dur2Ms: Int, volume: Float = 1.0f) {
+    private fun playChimePcm(
+        freq1: Double,
+        dur1Ms: Int,
+        freq2: Double,
+        dur2Ms: Int,
+        volume: Float = 1.0f,
+        onComplete: (() -> Unit)? = null
+    ) {
         Thread {
             try {
                 val sampleRate = 22050
@@ -526,18 +533,25 @@ class JarvisForegroundService : Service() {
                 track.write(pcm, 0, pcm.size)
                 track.setVolume(volume)
                 track.play()
-                Thread.sleep((dur1Ms + dur2Ms + 100).toLong())
+                Thread.sleep((dur1Ms + dur2Ms + 80).toLong())
                 track.stop()
                 track.release()
             } catch (e: Exception) {
                 Log.w(TAG, "Chime playback error: ${e.message}")
+            } finally {
+                onComplete?.let { mainHandler.post(it) }
             }
         }.start()
     }
 
-    private fun playWakeChime()    = playChimePcm(587.33, 140, 880.0, 220, 1.0f)
-    private fun playProcessChime() = playChimePcm(1046.5, 90, 1318.5, 120, 1.0f)
-    private fun playErrorChime()   = playChimePcm(392.0, 150, 311.13, 200, 1.0f)
+    private fun playWakeChime(onComplete: (() -> Unit)? = null) =
+        playChimePcm(587.33, 140, 880.0, 220, 1.0f, onComplete)
+
+    private fun playProcessChime(onComplete: (() -> Unit)? = null) =
+        playChimePcm(1046.5, 90, 1318.5, 120, 1.0f, onComplete)
+
+    private fun playErrorChime(onComplete: (() -> Unit)? = null) =
+        playChimePcm(392.0, 150, 311.13, 200, 1.0f, onComplete)
 
     private fun enableBluetoothAudioRouting() {
         try {
@@ -584,48 +598,52 @@ class JarvisForegroundService : Service() {
 
     private fun startNativeRecording() {
         if (state != State.IDLE) return
-        state = State.RECORDING
-        silenceStartTs = 0L
-        userSpoke = false
-
         pauseSilentAudioCarrier()
-        updateNotification("🎙 Listening… Tap earbud to stop")
-        playWakeChime()
 
-        try {
-            val file = File(cacheDir, "jarvis_rec_${System.currentTimeMillis()}.m4a")
-            recordingFile = file
+        // 1. Play the wake chime in full through earbuds FIRST
+        playWakeChime {
+            // 2. ONLY THEN switch state to RECORDING and start mic recording
+            if (state != State.IDLE) return@playWakeChime
+            state = State.RECORDING
+            silenceStartTs = 0L
+            userSpoke = false
+            updateNotification("🎙 Listening… Tap earbud to stop")
 
-            enableBluetoothAudioRouting()
+            try {
+                val file = File(cacheDir, "jarvis_rec_${System.currentTimeMillis()}.m4a")
+                recordingFile = file
 
-            mediaRecorder = (
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this)
-                else @Suppress("DEPRECATION") MediaRecorder()
-            ).apply {
-                setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioSamplingRate(44100)
-                setAudioEncodingBitRate(128000)
-                setOutputFile(file.absolutePath)
-                prepare()
-                start()
+                enableBluetoothAudioRouting()
+
+                mediaRecorder = (
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this)
+                    else @Suppress("DEPRECATION") MediaRecorder()
+                ).apply {
+                    setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioSamplingRate(44100)
+                    setAudioEncodingBitRate(128000)
+                    setOutputFile(file.absolutePath)
+                    prepare()
+                    start()
+                }
+
+                // Start silence-detection polling directly
+                mainHandler.postDelayed(silencePoller, 300)
+
+                // Hard cap on recording duration
+                mainHandler.postDelayed(maxDurationStopper, MAX_RECORD_MS)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Recording start failed: ${e.message}", e)
+                releaseBluetoothAudioRouting()
+                cleanupRecorder()
+                resumeSilentAudioCarrier()
+                state = State.IDLE
+                updateNotification("Jarvis · Tap earbud to speak")
+                playErrorChime()
             }
-
-            // Start silence-detection polling directly
-            mainHandler.postDelayed(silencePoller, 300)
-
-            // Hard cap on recording duration
-            mainHandler.postDelayed(maxDurationStopper, MAX_RECORD_MS)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Recording start failed: ${e.message}", e)
-            releaseBluetoothAudioRouting()
-            cleanupRecorder()
-            resumeSilentAudioCarrier()
-            state = State.IDLE
-            updateNotification("Jarvis · Tap earbud to speak")
-            playErrorChime()
         }
     }
 
@@ -656,26 +674,29 @@ class JarvisForegroundService : Service() {
             return
         }
 
-        state = State.PROCESSING
-        updateNotification("🧠 Thinking…")
-        playProcessChime()
+        // 1. Play the process chime in full through earbuds FIRST
+        playProcessChime {
+            // 2. ONLY THEN switch state to PROCESSING and call brain
+            state = State.PROCESSING
+            updateNotification("🧠 Thinking…")
 
-        // Process audio on a background thread
-        Thread {
-            try {
-                val bytes = file.readBytes()
-                file.delete()
-                val base64Audio = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                callBrainApi(base64Audio, "audio/m4a")
-            } catch (e: Exception) {
-                Log.e(TAG, "Audio processing failed: ${e.message}", e)
-                state = State.IDLE
-                resumeSilentAudioCarrier()
-                playErrorChime()
-                showResultNotification("Jarvis couldn't process that. Try again.")
-                updateNotification("Jarvis · Tap earbud to speak")
-            }
-        }.start()
+            // Process audio on a background thread
+            Thread {
+                try {
+                    val bytes = file.readBytes()
+                    file.delete()
+                    val base64Audio = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    callBrainApi(base64Audio, "audio/m4a")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Audio processing failed: ${e.message}", e)
+                    state = State.IDLE
+                    resumeSilentAudioCarrier()
+                    playErrorChime()
+                    showResultNotification("Jarvis couldn't process that. Try again.")
+                    updateNotification("Jarvis · Tap earbud to speak")
+                }
+            }.start()
+        }
     }
 
     private fun cleanupRecorder() {
