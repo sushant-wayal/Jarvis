@@ -144,6 +144,13 @@ export class IntegrationManager {
           undefined,
         );
 
+      case 'PLAY_MEDIA':
+        return appIntegration.playMedia(
+          (action as any).query,
+          (action as any).app,
+          (action as any).videoId,
+        );
+
       default:
         return { success: false, error: `Unknown action type: "${actionType}".` };
     }

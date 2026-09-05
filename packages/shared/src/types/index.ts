@@ -441,12 +441,20 @@ export interface JarvisOpenConversationAction {
   contactName?: string;
 }
 
+export interface JarvisPlayMediaAction {
+  type: 'PLAY_MEDIA';
+  query: string;
+  app?: 'spotify' | 'youtube' | 'youtube_music';
+  videoId?: string;
+}
+
 export type JarvisPhoneAction =
   | JarvisCallAction
   | JarvisSendSmsAction
   | JarvisReplyToNotificationAction
   | JarvisOpenAppAction
-  | JarvisOpenConversationAction;
+  | JarvisOpenConversationAction
+  | JarvisPlayMediaAction;
 
 /** Result of executing a JarvisPhoneAction on the mobile side */
 export interface ActionResult {

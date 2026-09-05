@@ -249,6 +249,108 @@ export class AppIntegration {
     return this.openApp(appName);
   }
 
+  /**
+   * Play a song, track, artist, playlist, or video directly on Spotify, YouTube, or YouTube Music.
+   * Leverages Android MEDIA_PLAY_FROM_SEARCH for instant playback.
+   */
+  async playMedia(
+    query: string,
+    appName = 'spotify',
+    videoId?: string
+  ): Promise<ActionResult> {
+    const cleanApp = appName.toLowerCase().trim();
+    const cleanQuery = query.trim();
+
+    // ── 1. Spotify Direct Playback ──────────────────────────────────────────
+    if (cleanApp.includes('spotify')) {
+      if (Platform.OS === 'android') {
+        try {
+          // Launch standard Android MEDIA_PLAY_FROM_SEARCH intent directed to Spotify
+          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
+            packageName: 'com.spotify.music',
+            extra: {
+              'query': cleanQuery,
+              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
+              'android.intent.extra.title': cleanQuery,
+            },
+          });
+          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+        } catch {
+          // Fall through to deep link
+        }
+      }
+
+      // Deep link fallback for Spotify (works on Android & iOS)
+      const spotifyUrls = [
+        `spotify:search:${encodeURIComponent(cleanQuery)}`,
+        `https://open.spotify.com/search/${encodeURIComponent(cleanQuery)}`,
+      ];
+      for (const url of spotifyUrls) {
+        try {
+          await Linking.openURL(url);
+          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+        } catch {
+          // Try next
+        }
+      }
+      return this.openApp('spotify');
+    }
+
+    // ── 2. YouTube & YouTube Music Playback ──────────────────────────────────
+    if (cleanApp.includes('youtube')) {
+      // If a specific video ID was provided or resolved, open it directly to start playing instantly!
+      if (videoId) {
+        const directUrls = [
+          `vnd.youtube:${videoId}`,
+          `https://www.youtube.com/watch?v=${videoId}`,
+        ];
+        for (const url of directUrls) {
+          try {
+            await Linking.openURL(url);
+            return { success: true, message: `Playing "${cleanQuery}" on YouTube.` };
+          } catch {
+            // Try next
+          }
+        }
+      }
+
+      // If YouTube Music is targeted or preferred:
+      if (cleanApp.includes('music') && Platform.OS === 'android') {
+        try {
+          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
+            packageName: 'com.google.android.apps.youtube.music',
+            extra: {
+              'query': cleanQuery,
+              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
+              'android.intent.extra.title': cleanQuery,
+            },
+          });
+          return { success: true, message: `Playing "${cleanQuery}" on YouTube Music.` };
+        } catch {
+          // Fall through
+        }
+      }
+
+      // Standard YouTube App Search & Play links
+      const ytCandidates = [
+        `vnd.youtube://search?q=${encodeURIComponent(cleanQuery)}`,
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`,
+      ];
+      for (const url of ytCandidates) {
+        try {
+          await Linking.openURL(url);
+          return { success: true, message: `Playing "${cleanQuery}" on YouTube.` };
+        } catch {
+          // Try next
+        }
+      }
+      return this.openApp('youtube');
+    }
+
+    // Default fallback: open the requested app
+    return this.openApp(appName);
+  }
+
   /** Open a tel: or https: URL directly */
   async openUrl(url: string): Promise<ActionResult> {
     try {

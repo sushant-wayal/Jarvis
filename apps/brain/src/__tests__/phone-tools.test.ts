@@ -3,6 +3,7 @@ import {
   getPhoneCapabilitiesTool,
   initiatePhoneCallTool,
   openApplicationTool,
+  playMediaTool,
   readPhoneMessagesTool,
   searchPhoneMessagesTool,
   sendMessageToContactTool,
@@ -133,5 +134,19 @@ describe('Phone Tools (Brain)', () => {
     expect(resVideo.callType).toBe('video');
     expect(resVideo.app).toBe('whatsapp');
     expect(resVideo.response).toBe('Starting WhatsApp video call with Rahul.');
+  });
+
+  it('playMediaTool creates PLAY_MEDIA action for Spotify and YouTube', async () => {
+    const resSpotify = (await playMediaTool.execute({ query: 'Believer', app: 'spotify' }, mockToolContext)) as Record<string, any>;
+    expect(resSpotify.type).toBe('PLAY_MEDIA');
+    expect(resSpotify.action).toBe('PLAY_MEDIA');
+    expect(resSpotify.query).toBe('Believer');
+    expect(resSpotify.app).toBe('spotify');
+    expect(resSpotify.response).toContain('Spotify');
+
+    const resYT = (await playMediaTool.execute({ query: 'Arijit Singh live', app: 'youtube' }, mockToolContext)) as Record<string, any>;
+    expect(resYT.type).toBe('PLAY_MEDIA');
+    expect(resYT.app).toBe('youtube');
+    expect(resYT.response).toContain('YouTube');
   });
 });

@@ -401,6 +401,39 @@ export const openApplicationTool: JarvisTool<{ appName: string }> = {
   },
 };
 
+export const playMediaTool: JarvisTool<{
+  query: string;
+  app?: 'spotify' | 'youtube' | 'youtube_music';
+  videoId?: string;
+}> = {
+  name: 'play_media',
+  description:
+    'Play a song, artist, playlist, track, or video directly on Spotify, YouTube, or YouTube Music. Triggers immediate playback instead of just opening the app home screen. Use when user says "play [song/video]", "play [song] on Spotify", "play [video] on YouTube".',
+  category: 'SYSTEM',
+  riskLevel: 'SAFE',
+  requiresConfirmation: false,
+  inputSchema: z.object({
+    query: z.string().describe('The name of the song, artist, album, playlist, or video to play.'),
+    app: z
+      .enum(['spotify', 'youtube', 'youtube_music'])
+      .optional()
+      .describe('Target media app: "spotify" (default for music) or "youtube" (default for videos) or "youtube_music".'),
+    videoId: z.string().optional().describe('YouTube video ID if resolved, e.g. "dQw4w9WgXcQ".'),
+  }),
+  execute: async (input) => {
+    const rawApp = input.app || (input.query.toLowerCase().includes('video') ? 'youtube' : 'spotify');
+    const appNameFormatted = rawApp === 'spotify' ? 'Spotify' : (rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube');
+    return {
+      type: 'PLAY_MEDIA' as const,
+      action: 'PLAY_MEDIA' as const,
+      query: input.query,
+      app: rawApp,
+      videoId: input.videoId,
+      response: `Playing "${input.query}" on ${appNameFormatted}.`,
+    };
+  },
+};
+
 export const getPhoneCapabilitiesTool: JarvisTool<Record<string, never>> = {
   name: 'get_phone_capabilities',
   description:
@@ -588,6 +621,7 @@ export const phoneTools = [
   readPhoneMessagesTool,
   searchPhoneMessagesTool,
   openApplicationTool,
+  playMediaTool,
   getPhoneCapabilitiesTool,
   generateMessageBriefingTool,
   detectUnansweredMessagesTool,
