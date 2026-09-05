@@ -104,4 +104,11 @@ describe('Phone Tools (Brain)', () => {
     expect(res.capabilities?.contacts).toBe(true);
     expect(res.recentNotificationCount).toBe(2);
   });
+
+  it('initiatePhoneCallTool resolves direct numbers without needing contact book', async () => {
+    const res = (await initiatePhoneCallTool.execute({ contactName: '9876543210' }, mockToolContext)) as Record<string, any>;
+    expect(res.action).toBe('CALL_CONTACT');
+    expect(res.phoneNumber).toBe('9876543210');
+    expect(res.response).toBe('Calling 9876543210.');
+  });
 });

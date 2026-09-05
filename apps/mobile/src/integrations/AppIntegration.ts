@@ -6,7 +6,7 @@
 
 import { Linking, NativeModules, Platform } from 'react-native';
 import { ActionResult } from '@jarvis/shared';
-import { APP_DEEP_LINKS, APP_TO_PACKAGE } from './constants';
+import { APP_DEEP_LINKS, APP_PACKAGE_CANDIDATES, APP_TO_PACKAGE } from './constants';
 
 export class AppIntegration {
   /**
@@ -14,32 +14,73 @@ export class AppIntegration {
    * Employs cascading fallback: native launcher intent -> custom scheme -> registered fallbacks -> generic scheme.
    */
   async openApp(appName: string): Promise<ActionResult> {
-    const cleanApp = appName.toLowerCase().replace(/[^a-z0-9_]/g, '').trim();
-    if (!cleanApp) {
+    const raw = appName.toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+    if (!raw) {
       return { success: false, error: 'App name cannot be empty.' };
     }
 
+    // Normalized alias matching for common voice typos and colloquial names
+    let cleanApp = raw;
+    if (raw.includes('whatsapp') || raw.includes('watsapp') || raw.includes('wjatsapp') || raw.includes('wa')) {
+      cleanApp = 'whatsapp';
+    } else if (raw.includes('instagram') || raw.includes('insta')) {
+      cleanApp = 'instagram';
+    } else if (raw.includes('telegram')) {
+      cleanApp = 'telegram';
+    } else if (raw.includes('youtube') || raw.includes('yt')) {
+      cleanApp = 'youtube';
+    } else if (raw.includes('spotify')) {
+      cleanApp = 'spotify';
+    } else if (raw.includes('chrome') || raw.includes('browser')) {
+      cleanApp = 'chrome';
+    } else if (raw.includes('calc')) {
+      cleanApp = 'calculator';
+    } else if (raw.includes('camera')) {
+      cleanApp = 'camera';
+    } else if (raw.includes('clock') || raw.includes('alarm')) {
+      cleanApp = 'clock';
+    } else if (raw.includes('map')) {
+      cleanApp = 'maps';
+    } else if (raw.includes('setting')) {
+      cleanApp = 'settings';
+    } else if (raw.includes('message') || raw.includes('sms')) {
+      cleanApp = 'sms';
+    }
+
+    // Collect all candidate package names for this app in priority order
+    const packagesToTry: string[] = [];
+    if (APP_PACKAGE_CANDIDATES[cleanApp]) {
+      packagesToTry.push(...APP_PACKAGE_CANDIDATES[cleanApp]);
+    }
+    if (APP_TO_PACKAGE[cleanApp] && !packagesToTry.includes(APP_TO_PACKAGE[cleanApp])) {
+      packagesToTry.push(APP_TO_PACKAGE[cleanApp]);
+    }
+    if (cleanApp.startsWith('com.') && !packagesToTry.includes(cleanApp)) {
+      packagesToTry.push(cleanApp);
+    }
+
     // 0. On Android, try native package launcher first via Android PackageManager
-    const knownPackage = APP_TO_PACKAGE[cleanApp] || (cleanApp.startsWith('com.') ? cleanApp : null);
-    if (Platform.OS === 'android' && knownPackage) {
-      if (NativeModules.JarvisEarbudModule?.launchApp) {
-        try {
-          const launched = await NativeModules.JarvisEarbudModule.launchApp(knownPackage);
-          if (launched) {
-            return { success: true, message: `Opened ${appName}.` };
+    if (Platform.OS === 'android' && packagesToTry.length > 0) {
+      for (const pkg of packagesToTry) {
+        if (NativeModules.JarvisEarbudModule?.launchApp) {
+          try {
+            const launched = await NativeModules.JarvisEarbudModule.launchApp(pkg);
+            if (launched) {
+              return { success: true, message: `Opened ${appName}.` };
+            }
+          } catch {
+            // Fall through
           }
-        } catch {
-          // Fall back
         }
-      }
-      if (NativeModules.JarvisNotificationListener?.launchApplication) {
-        try {
-          const launched = await NativeModules.JarvisNotificationListener.launchApplication(knownPackage);
-          if (launched) {
-            return { success: true, message: `Opened ${appName}.` };
+        if (NativeModules.JarvisNotificationListener?.launchApplication) {
+          try {
+            const launched = await NativeModules.JarvisNotificationListener.launchApplication(pkg);
+            if (launched) {
+              return { success: true, message: `Opened ${appName}.` };
+            }
+          } catch {
+            // Fall through
           }
-        } catch {
-          // Fall back to URL schemes
         }
       }
     }
@@ -59,11 +100,13 @@ export class AppIntegration {
       }
     }
 
-    // 2. If known package exists on Android, add direct launcher Intent URI
-    if (knownPackage && Platform.OS === 'android') {
-      candidates.push(
-        `intent:#Intent;package=${knownPackage};action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`
-      );
+    // 2. Direct launcher Intent URIs for candidate packages
+    if (Platform.OS === 'android') {
+      for (const pkg of packagesToTry) {
+        candidates.push(
+          `intent:#Intent;package=${pkg};action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;end`
+        );
+      }
     }
 
     // 3. Generic custom scheme e.g. "youtube://", "spotify://", "uber://"

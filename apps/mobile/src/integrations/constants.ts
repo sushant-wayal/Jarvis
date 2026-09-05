@@ -51,10 +51,59 @@ export const PACKAGE_TO_APP: Record<string, string> = {
   'net.one97.paytm': 'paytm',
 };
 
-/** Friendly app name → Android package name */
-export const APP_TO_PACKAGE: Record<string, string> = Object.fromEntries(
-  Object.entries(PACKAGE_TO_APP).map(([pkg, app]) => [app, pkg])
-);
+/** Friendly app name → Android package name (explicitly ordered with primary consumer packages first) */
+export const APP_TO_PACKAGE: Record<string, string> = {
+  whatsapp: 'com.whatsapp',
+  whatsapp_business: 'com.whatsapp.w4b',
+  instagram: 'com.instagram.android',
+  telegram: 'org.telegram.messenger',
+  messenger: 'com.facebook.orca',
+  discord: 'com.discord',
+  slack: 'com.Slack',
+  snapchat: 'com.snapchat.android',
+  twitter: 'com.twitter.android',
+  x: 'com.twitter.android',
+  linkedin: 'com.linkedin.android',
+  youtube: 'com.google.android.youtube',
+  spotify: 'com.spotify.music',
+  netflix: 'com.netflix.mediaclient',
+  prime_video: 'com.amazon.avod.thirdpartyclient',
+  chrome: 'com.android.chrome',
+  gmail: 'com.google.android.gm',
+  maps: 'com.google.android.apps.maps',
+  calculator: 'com.google.android.calculator',
+  clock: 'com.google.android.deskclock',
+  calendar: 'com.google.android.calendar',
+  photos: 'com.google.android.apps.photos',
+  sms: 'com.google.android.apps.messaging',
+  uber: 'com.ubercab',
+  ola: 'com.olacabs.customer',
+  swiggy: 'in.swiggy.android',
+  zomato: 'com.application.zomato',
+  amazon: 'in.amazon.mShop.android.shopping',
+  flipkart: 'com.flipkart.android',
+  phonepe: 'com.phonepe.app',
+  gpay: 'com.google.android.apps.nbu.paisa.user',
+  paytm: 'net.one97.paytm',
+};
+
+/** Candidate packages to try per app, in priority order */
+export const APP_PACKAGE_CANDIDATES: Record<string, string[]> = {
+  whatsapp: ['com.whatsapp', 'com.whatsapp.w4b'],
+  whatsapp_business: ['com.whatsapp.w4b', 'com.whatsapp'],
+  sms: ['com.google.android.apps.messaging', 'com.android.mms', 'com.samsung.android.messaging'],
+  calculator: ['com.google.android.calculator', 'com.android.calculator2', 'com.sec.android.app.popupcalculator'],
+  clock: ['com.google.android.deskclock', 'com.sec.android.app.clockpackage', 'com.android.deskclock'],
+  calendar: ['com.google.android.calendar', 'com.android.calendar'],
+  photos: ['com.google.android.apps.photos', 'com.sec.android.gallery3d'],
+  maps: ['com.google.android.apps.maps'],
+  chrome: ['com.android.chrome'],
+  youtube: ['com.google.android.youtube'],
+  spotify: ['com.spotify.music'],
+  instagram: ['com.instagram.android'],
+  telegram: ['org.telegram.messenger', 'org.telegram.messenger.web'],
+  amazon: ['in.amazon.mShop.android.shopping', 'com.amazon.mShop.android.shopping'],
+};
 
 /** Deep-link schemes for opening apps (Android + iOS where applicable) */
 export const APP_DEEP_LINKS: Record<
@@ -67,14 +116,14 @@ export const APP_DEEP_LINKS: Record<
   }
 > = {
   whatsapp: {
-    android: 'whatsapp://',
+    android: 'whatsapp://send',
     ios: 'whatsapp://',
-    fallbacks: ['whatsapp://app', 'whatsapp://send', 'https://wa.me/'],
+    fallbacks: ['https://wa.me/', 'whatsapp://', 'whatsapp://app', 'https://api.whatsapp.com/send'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   whatsapp_business: {
-    android: 'whatsapp://',
-    fallbacks: ['whatsapp://app', 'whatsapp://send', 'https://wa.me/'],
+    android: 'whatsapp://send',
+    fallbacks: ['https://wa.me/', 'whatsapp://', 'whatsapp://app', 'https://api.whatsapp.com/send'],
     conversation: 'whatsapp://send?phone={phone}',
   },
   instagram: {

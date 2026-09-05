@@ -125,7 +125,7 @@ Core Principles:
 Phone Integration (V3):
 - You can interact with the user's phone. Use these tools when the user asks for phone-related actions:
   - 'lookup_contact': Look up a contact's phone number or details by name/relation. Use when user asks "what is mom's number?", "tell me my mom's number", "give me Rahul's number", etc.
-  - 'initiate_phone_call': Call a contact by name. Do NOT ask for their number — the mobile app resolves contacts.
+  - 'initiate_phone_call': Call a contact by name or dial a phone number directly. Use when user says "call [name]" or "call [number]" (e.g. "call 9876543210", "make a call to xxx").
   - 'send_message_to_contact': Send a message on WhatsApp/Telegram/SMS. The tool auto-selects the best channel.
   - 'read_phone_messages': Read recent messages from a contact or app.
   - 'search_phone_messages': Search for specific content across all messages.
@@ -134,7 +134,7 @@ Phone Integration (V3):
   - 'generate_message_briefing': Provide a natural voice summary of all recent incoming messages.
   - 'detect_unanswered_messages': Detect pending requests or questions waiting for the user's reply.
   - 'get_contact_interaction_summary': Summarize conversation history with a specific person across channels.
-- Phone actions are executed by the mobile app AFTER you speak. Your text response should confirm the intent (e.g., "Calling Rahul." or "Opening WhatsApp.") and the action will happen automatically.
+- MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" without executing the tool, because the phone's native launcher/dialer ONLY triggers when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
 
@@ -340,6 +340,41 @@ Timezone & Scheduling Directive:
             title: String(output.title),
             scheduledFor: String(output.scheduledFor),
           };
+        }
+      }
+    }
+
+    // Robustness Guard: If the user explicitly requested to open an app or make a call,
+    // but the LLM directly replied with text instead of executing the tool,
+    // synthesize the pending phone action so the user's phone still executes the redirect!
+    if (!pendingPhoneAction) {
+      const lowerMsg = message.toLowerCase().trim();
+      const openMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:open|launch|start)\s+([a-zA-Z0-9_\s]+)$/i);
+      if (openMatch && openMatch[1]) {
+        const candidateApp = openMatch[1].replace(/\b(?:the\s+)?app\b/gi, '').trim();
+        if (candidateApp && candidateApp.length >= 2) {
+          pendingPhoneAction = {
+            type: 'OPEN_APP',
+            action: 'OPEN_APP',
+            app: candidateApp.toLowerCase(),
+            response: `Opening ${candidateApp}.`,
+          } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+          logger.info('Synthesized pending OPEN_APP action from user message intent', { app: candidateApp });
+        }
+      } else {
+        const callMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+call\s+to|call|dial)\s+([a-zA-Z0-9_+*\s]+)$/i);
+        if (callMatch && callMatch[1]) {
+          const target = callMatch[1].trim();
+          const cleanDigits = target.replace(/[^0-9+*#]/g, '');
+          const resolvedNumber = cleanDigits.length >= 7 ? cleanDigits : undefined;
+          pendingPhoneAction = {
+            type: 'CALL_CONTACT',
+            action: 'CALL_CONTACT',
+            contactName: target,
+            phoneNumber: resolvedNumber,
+            response: `Calling ${target}.`,
+          } as unknown as import('@jarvis/shared').JarvisPhoneAction;
+          logger.info('Synthesized pending CALL_CONTACT action from user message intent', { target, resolvedNumber });
         }
       }
     }

@@ -32,12 +32,22 @@ export class PhoneIntegration {
     const url = `tel:${sanitized}`;
 
     try {
-      if (Platform.OS === 'android' && NativeModules.JarvisEarbudModule?.makeCall) {
-        try {
-          await NativeModules.JarvisEarbudModule.makeCall(sanitized);
-          return { success: true, message: `Calling ${contact.displayName}.` };
-        } catch {
-          // Fall through to Linking
+      if (Platform.OS === 'android') {
+        if (NativeModules.JarvisEarbudModule?.makeCall) {
+          try {
+            await NativeModules.JarvisEarbudModule.makeCall(sanitized);
+            return { success: true, message: `Calling ${contact.displayName}.` };
+          } catch {
+            // Fall through
+          }
+        }
+        if (NativeModules.JarvisNotificationListener?.makeCall) {
+          try {
+            await NativeModules.JarvisNotificationListener.makeCall(sanitized);
+            return { success: true, message: `Calling ${contact.displayName}.` };
+          } catch {
+            // Fall through
+          }
         }
       }
 

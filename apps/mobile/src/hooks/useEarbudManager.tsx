@@ -141,6 +141,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         return;
       }
 
+      // Surface action failure directly in UI so the user knows if the app is missing or dialer failed
+      if (!result.success && result.error) {
+        setAssistantSpokenText((prev) => `${prev}\n\n⚠️ ${result.error}`);
+      }
+
       // Report result to brain for awareness in future turns
       if (convId) {
         void apiClient.reportPhoneActionResult({ conversationId: convId, action, result });
@@ -211,11 +216,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         !hasPhoneAction &&
         (response as unknown as { continuousListening?: boolean }).continuousListening !== false;
 
+      // Immediately execute pending phone action so app switch / call dialer isn't delayed by speech
+      if (hasPhoneAction) {
+        void handlePendingPhoneAction(response);
+      }
+
       if (response.audioBase64) {
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
-          // After Jarvis finishes speaking, execute any pending phone action
-          await handlePendingPhoneAction(response);
           if (shouldContinue) {
             await startVoiceListening();
           } else {
@@ -223,17 +231,13 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
             earbudService.resumeTapDetection(200);
           }
         });
-      } else if (response.response) {
-        await handlePendingPhoneAction(response);
+      } else {
         if (shouldContinue) {
           await startVoiceListening();
         } else {
           setJarvisState('IDLE');
           earbudService.resumeTapDetection(200);
         }
-      } else {
-        setJarvisState('IDLE');
-        earbudService.resumeTapDetection(200);
       }
     } catch (err: unknown) {
       setJarvisState('ERROR');

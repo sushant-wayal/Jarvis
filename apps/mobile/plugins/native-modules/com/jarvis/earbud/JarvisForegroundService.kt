@@ -864,23 +864,20 @@ class JarvisForegroundService : Service() {
                 // If phone action is executing, do not restart listening
                 val shouldAutoListen = continuous && (phoneAction == null)
 
+                // Execute phone action immediately without delaying for audio playback
+                if (phoneAction != null) {
+                    executeNativePhoneAction(phoneAction)
+                }
+
                 // Play audio response through earbuds if available
                 if (audioB64.isNotEmpty()) {
-                    playAudioResponse(audioB64, autoListenAfter = shouldAutoListen) {
-                        if (phoneAction != null) {
-                            executeNativePhoneAction(phoneAction)
+                    playAudioResponse(audioB64, autoListenAfter = shouldAutoListen)
+                } else if (shouldAutoListen && textResponse.isNotEmpty()) {
+                    mainHandler.postDelayed({
+                        if (state == State.IDLE) {
+                            startNativeRecording()
                         }
-                    }
-                } else {
-                    if (phoneAction != null) {
-                        executeNativePhoneAction(phoneAction)
-                    } else if (shouldAutoListen && textResponse.isNotEmpty()) {
-                        mainHandler.postDelayed({
-                            if (state == State.IDLE) {
-                                startNativeRecording()
-                            }
-                        }, 800)
-                    }
+                    }, 800)
                 }
 
                 // Show notification with the text response
@@ -999,7 +996,8 @@ class JarvisForegroundService : Service() {
                         if (!launched) {
                             // Fallback to Uri scheme
                             val uriScheme = when (app) {
-                                "whatsapp" -> "whatsapp://"
+                                "whatsapp" -> "whatsapp://send"
+                                "whatsapp_business" -> "whatsapp://send"
                                 "instagram" -> "instagram://app"
                                 "youtube" -> "vnd.youtube://"
                                 "spotify" -> "spotify://"
