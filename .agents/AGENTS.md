@@ -41,3 +41,10 @@ When working on this repository, all AI agents must follow these strictly enforc
 34. **Keep mobile location collection separate from brain logic.** UI components and background handlers only submit GPS updates.
 35. **Never fake location or background capabilities.** Accurately reflect operating system and permission states.
 36. **Keep trigger architecture extensible.** Maintain modular schemas for time, location, event, weather, and composite triggers.
+
+## Natural Language Understanding & LLM-First Architecture Rules
+
+37. **Never use custom regex, string slicing, or deterministic heuristics for parsing user input.** Natural user requests do not adhere to rigid formulas (e.g. varying word order, colloquialisms, multilingual phrasing, slang like "on spotify play X", "play X on spotify", "spotify pe X chalao", "put on X"). Deterministic pattern matchers, token strip regexes, and heuristic keyword fallbacks are strictly prohibited for natural language processing.
+38. **The LLM is the sole semantic engine for entity extraction, contact resolution, and parameter normalization.** Always feed the raw user request and relevant context directly to the LLM. Design tool schemas and system prompts with precise guidelines and varied phrasing examples so the LLM extracts clean, normalized parameters (e.g., pure song/video title without platform names or command verbs; exact contact names and numbers).
+39. **Execution tools and mobile integration must remain pure executors.** Tool implementations (`execute()`) and mobile modules (e.g., `AppIntegration.ts`, `ContactsIntegration.ts`) must NEVER attempt to sanitize, clean, or regex-replace natural language strings. They receive pre-extracted, clean parameters directly from the LLM and execute them directly.
+40. **Never prompt the user unnecessarily when an action or preference is clear.** When the user specifies an app or platform (e.g. "on Spotify"), immediately execute using that platform. When unspecified, apply sensible defaults (e.g. Spotify for music, YouTube for videos) rather than halting to ask the user options.
