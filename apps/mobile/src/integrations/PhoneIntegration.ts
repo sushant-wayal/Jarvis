@@ -18,8 +18,12 @@ import * as SMS from 'expo-sms';
 import { ActionResult, ResolvedContact } from '@jarvis/shared';
 
 export class PhoneIntegration {
-  /** Open the native dialer pre-dialled to the contact's first phone number. */
-  async makeCall(contact: ResolvedContact): Promise<ActionResult> {
+  /** Initiate a voice or video call via native dialer or WhatsApp. */
+  async makeCall(
+    contact: ResolvedContact,
+    callType: 'voice' | 'video' = 'voice',
+    app: string = 'phone'
+  ): Promise<ActionResult> {
     const number = contact.phoneNumbers[0]?.number;
     if (!number) {
       return {
@@ -29,22 +33,74 @@ export class PhoneIntegration {
     }
 
     const sanitized = number.replace(/[^0-9+*#]/g, '');
+    const isWhatsApp = app.toLowerCase().includes('whatsapp');
+    const isVideo = callType === 'video';
+
+    // 1. WhatsApp voice or video call flow
+    if (isWhatsApp) {
+      if (Platform.OS === 'android') {
+        if (NativeModules.JarvisEarbudModule?.makeWhatsAppCall) {
+          try {
+            await NativeModules.JarvisEarbudModule.makeWhatsAppCall(sanitized, isVideo);
+            return {
+              success: true,
+              message: `Starting WhatsApp ${isVideo ? 'video ' : ''}call with ${contact.displayName}.`,
+            };
+          } catch {
+            // Fall through
+          }
+        }
+        if (NativeModules.JarvisNotificationListener?.makeWhatsAppCall) {
+          try {
+            await NativeModules.JarvisNotificationListener.makeWhatsAppCall(sanitized, isVideo);
+            return {
+              success: true,
+              message: `Starting WhatsApp ${isVideo ? 'video ' : ''}call with ${contact.displayName}.`,
+            };
+          } catch {
+            // Fall through
+          }
+        }
+      }
+
+      // In Expo Go or when native WhatsApp call is unhandled:
+      // Open that contact's chat directly in WhatsApp so call & video call buttons are ready at top-right!
+      try {
+        const cleanDigits = sanitized.replace(/[^0-9]/g, '');
+        const waUrl = `https://wa.me/${cleanDigits}`;
+        await Linking.openURL(waUrl);
+        return {
+          success: true,
+          message: `Opening WhatsApp with ${contact.displayName}.`,
+        };
+      } catch {
+        // Fall back to phone dialer
+      }
+    }
+
+    // 2. Standard phone / cellular call flow
     const url = `tel:${sanitized}`;
 
     try {
       if (Platform.OS === 'android') {
         if (NativeModules.JarvisEarbudModule?.makeCall) {
           try {
-            await NativeModules.JarvisEarbudModule.makeCall(sanitized);
-            return { success: true, message: `Calling ${contact.displayName}.` };
+            await NativeModules.JarvisEarbudModule.makeCall(sanitized, isVideo);
+            return {
+              success: true,
+              message: `Calling ${contact.displayName}${isVideo ? ' with video' : ''}.`,
+            };
           } catch {
             // Fall through
           }
         }
         if (NativeModules.JarvisNotificationListener?.makeCall) {
           try {
-            await NativeModules.JarvisNotificationListener.makeCall(sanitized);
-            return { success: true, message: `Calling ${contact.displayName}.` };
+            await NativeModules.JarvisNotificationListener.makeCall(sanitized, isVideo);
+            return {
+              success: true,
+              message: `Calling ${contact.displayName}${isVideo ? ' with video' : ''}.`,
+            };
           } catch {
             // Fall through
           }

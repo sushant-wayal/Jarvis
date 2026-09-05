@@ -111,4 +111,27 @@ describe('Phone Tools (Brain)', () => {
     expect(res.phoneNumber).toBe('9876543210');
     expect(res.response).toBe('Calling 9876543210.');
   });
+
+  it('initiatePhoneCallTool supports video call', async () => {
+    const res = (await initiatePhoneCallTool.execute({ contactName: 'Rahul', callType: 'video' }, mockToolContext)) as Record<string, any>;
+    expect(res.action).toBe('CALL_CONTACT');
+    expect(res.callType).toBe('video');
+    expect(res.app).toBe('phone');
+    expect(res.response).toBe('Starting video call with Rahul.');
+  });
+
+  it('initiatePhoneCallTool supports WhatsApp voice and video call', async () => {
+    const resVoice = (await initiatePhoneCallTool.execute({ contactName: 'Rahul on WhatsApp', app: 'whatsapp' }, mockToolContext)) as Record<string, any>;
+    expect(resVoice.action).toBe('CALL_CONTACT');
+    expect(resVoice.callType).toBe('voice');
+    expect(resVoice.app).toBe('whatsapp');
+    expect(resVoice.contactName).toBe('Rahul');
+    expect(resVoice.response).toBe('Calling Rahul on WhatsApp.');
+
+    const resVideo = (await initiatePhoneCallTool.execute({ contactName: 'Rahul', app: 'whatsapp', callType: 'video' }, mockToolContext)) as Record<string, any>;
+    expect(resVideo.action).toBe('CALL_CONTACT');
+    expect(resVideo.callType).toBe('video');
+    expect(resVideo.app).toBe('whatsapp');
+    expect(resVideo.response).toBe('Starting WhatsApp video call with Rahul.');
+  });
 });

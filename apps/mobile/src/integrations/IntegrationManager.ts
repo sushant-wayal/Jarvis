@@ -121,7 +121,12 @@ export class IntegrationManager {
     const actionType = action.type || (action as any).action;
     switch (actionType) {
       case 'CALL_CONTACT':
-        return this.executeCall((action as any).contactName, (action as any).phoneNumber);
+        return this.executeCall(
+          (action as any).contactName,
+          (action as any).phoneNumber,
+          (action as any).callType,
+          (action as any).app,
+        );
 
       case 'SEND_SMS':
         return this.executeSms((action as any).contactName, (action as any).message, (action as any).phoneNumber);
@@ -149,25 +154,35 @@ export class IntegrationManager {
   private async executeCall(
     contactName: string,
     preResolvedNumber?: string,
+    callType: 'voice' | 'video' = 'voice',
+    app: string = 'phone',
   ): Promise<ActionResult> {
     if (preResolvedNumber) {
-      return phoneIntegration.makeCall({
-        id: 'resolved',
-        name: contactName,
-        displayName: contactName,
-        phoneNumbers: [{ number: preResolvedNumber, label: 'mobile' }],
-      });
+      return phoneIntegration.makeCall(
+        {
+          id: 'resolved',
+          name: contactName,
+          displayName: contactName,
+          phoneNumbers: [{ number: preResolvedNumber, label: 'mobile' }],
+        },
+        callType,
+        app,
+      );
     }
 
     // Direct phone number check: if contactName is a phone number (e.g. 7+ digits)
     const cleanDigits = contactName.replace(/[^0-9+*#]/g, '');
     if (cleanDigits.length >= 7) {
-      return phoneIntegration.makeCall({
-        id: 'direct-number',
-        name: contactName,
-        displayName: contactName,
-        phoneNumbers: [{ number: cleanDigits, label: 'mobile' }],
-      });
+      return phoneIntegration.makeCall(
+        {
+          id: 'direct-number',
+          name: contactName,
+          displayName: contactName,
+          phoneNumbers: [{ number: cleanDigits, label: 'mobile' }],
+        },
+        callType,
+        app,
+      );
     }
 
     if (!contactsIntegration.isPermissionGranted()) {
@@ -195,7 +210,7 @@ export class IntegrationManager {
       return { success: false, error: `Couldn't find ${contactName} in your contacts.` };
     }
 
-    return phoneIntegration.makeCall(resolution.contact);
+    return phoneIntegration.makeCall(resolution.contact, callType, app);
   }
 
   private async executeSms(

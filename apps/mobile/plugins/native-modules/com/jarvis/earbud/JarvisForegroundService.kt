@@ -15,6 +15,7 @@ import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
+import android.content.ContentUris
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
@@ -1019,6 +1020,10 @@ class JarvisForegroundService : Service() {
                     "CALL_CONTACT" -> {
                         val phoneNum = action.optString("phoneNumber")
                         val contactName = action.optString("contactName")
+                        val callType = action.optString("callType", "voice")
+                        val targetApp = action.optString("app", "phone")
+                        val isVideo = callType.equals("video", ignoreCase = true)
+                        val isWhatsApp = targetApp.contains("whatsapp", ignoreCase = true)
                         var numberToCall = phoneNum.ifEmpty { contactName }
 
                         // If not digits, query Contacts Provider
@@ -1044,23 +1049,79 @@ class JarvisForegroundService : Service() {
 
                         val finalDigits = numberToCall.replace(Regex("[^0-9+*#]"), "")
                         if (finalDigits.isNotBlank()) {
-                            val uri = Uri.parse("tel:$finalDigits")
-                            val isCallPermGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
-                            } else {
-                                true
-                            }
-                            val callIntent = if (isCallPermGranted) {
-                                Intent(Intent.ACTION_CALL, uri).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            if (isWhatsApp) {
+                                val mimeType = if (isVideo) {
+                                    "vnd.android.cursor.item/vnd.com.whatsapp.video.call"
+                                } else {
+                                    "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+                                }
+                                var dataId: Long? = null
+                                try {
+                                    val pureDigits = finalDigits.replace(Regex("[^0-9]"), "")
+                                    val cursor = contentResolver.query(
+                                        ContactsContract.Data.CONTENT_URI,
+                                        arrayOf(ContactsContract.Data._ID),
+                                        "${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.Data.DATA1} LIKE ?",
+                                        arrayOf(mimeType, "%$pureDigits%"),
+                                        null
+                                    )
+                                    cursor?.use {
+                                        if (it.moveToFirst()) {
+                                            dataId = it.getLong(0)
+                                        }
+                                    }
+                                } catch (ce: Exception) {
+                                    Log.w(TAG, "Contacts query for WhatsApp call error: ${ce.message}")
+                                }
+
+                                if (dataId != null) {
+                                    val waIntent = Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(
+                                            ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, dataId!!),
+                                            mimeType
+                                        )
+                                        setPackage("com.whatsapp")
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(waIntent)
+                                    Log.d(TAG, "Native initiated WhatsApp call to: $finalDigits (video=$isVideo)")
+                                } else {
+                                    val pureDigits = finalDigits.replace(Regex("[^0-9]"), "")
+                                    val waUri = Uri.parse("https://wa.me/$pureDigits")
+                                    val waIntent = Intent(Intent.ACTION_VIEW, waUri).apply {
+                                        setPackage("com.whatsapp")
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(waIntent)
+                                    Log.d(TAG, "Native initiated WhatsApp chat to: $finalDigits")
                                 }
                             } else {
-                                Intent(Intent.ACTION_DIAL, uri).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                val uri = Uri.parse("tel:$finalDigits")
+                                val isCallPermGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    checkSelfPermission(android.Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
+                                } else {
+                                    true
                                 }
+                                val callIntent = if (isCallPermGranted) {
+                                    Intent(Intent.ACTION_CALL, uri).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        if (isVideo) {
+                                            putExtra("android.telecom.extra.START_CALL_WITH_VIDEO_STATE", 3)
+                                            putExtra("android.telephony.extra.IS_VIDEO_CALL", true)
+                                        }
+                                    }
+                                } else {
+                                    Intent(Intent.ACTION_DIAL, uri).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        if (isVideo) {
+                                            putExtra("android.telecom.extra.START_CALL_WITH_VIDEO_STATE", 3)
+                                            putExtra("android.telephony.extra.IS_VIDEO_CALL", true)
+                                        }
+                                    }
+                                }
+                                startActivity(callIntent)
+                                Log.d(TAG, "Native initiated phone call to: $finalDigits (video=$isVideo)")
                             }
-                            startActivity(callIntent)
-                            Log.d(TAG, "Native initiated phone call to: $finalDigits")
                         }
                     }
 

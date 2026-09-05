@@ -1,9 +1,11 @@
 package com.jarvis.earbud
 
+import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.ContactsContract
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.common.LifecycleState
@@ -121,7 +123,7 @@ class JarvisEarbudModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
-    fun makeCall(phoneNumber: String, promise: Promise) {
+    fun makeCall(phoneNumber: String, isVideo: Boolean, promise: Promise) {
         try {
             val sanitized = phoneNumber.replace(Regex("[^0-9+*#]"), "")
             val uri = Uri.parse("tel:$sanitized")
@@ -133,16 +135,78 @@ class JarvisEarbudModule(private val reactContext: ReactApplicationContext) :
             val intent = if (isCallPermGranted) {
                 Intent(Intent.ACTION_CALL, uri).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (isVideo) {
+                        putExtra("android.telecom.extra.START_CALL_WITH_VIDEO_STATE", 3)
+                        putExtra("android.telephony.extra.IS_VIDEO_CALL", true)
+                    }
                 }
             } else {
                 Intent(Intent.ACTION_DIAL, uri).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (isVideo) {
+                        putExtra("android.telecom.extra.START_CALL_WITH_VIDEO_STATE", 3)
+                        putExtra("android.telephony.extra.IS_VIDEO_CALL", true)
+                    }
                 }
             }
             reactContext.startActivity(intent)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("ERR_CALL", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun makeWhatsAppCall(phoneNumber: String, isVideo: Boolean, promise: Promise) {
+        try {
+            val sanitized = phoneNumber.replace(Regex("[^0-9]"), "")
+            val mimeType = if (isVideo) {
+                "vnd.android.cursor.item/vnd.com.whatsapp.video.call"
+            } else {
+                "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+            }
+
+            var dataId: Long? = null
+            try {
+                val cursor = reactContext.contentResolver.query(
+                    ContactsContract.Data.CONTENT_URI,
+                    arrayOf(ContactsContract.Data._ID),
+                    "${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.Data.DATA1} LIKE ?",
+                    arrayOf(mimeType, "%$sanitized%"),
+                    null
+                )
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        dataId = it.getLong(0)
+                    }
+                }
+            } catch (ce: Exception) {
+                Log.w(TAG, "Contacts query for WhatsApp call failed: ${ce.message}")
+            }
+
+            if (dataId != null) {
+                val callIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(
+                        ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, dataId!!),
+                        mimeType
+                    )
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                reactContext.startActivity(callIntent)
+                promise.resolve(true)
+            } else {
+                // Fallback: Open WhatsApp conversation directly
+                val waUri = Uri.parse("https://wa.me/$sanitized")
+                val intent = Intent(Intent.ACTION_VIEW, waUri).apply {
+                    setPackage("com.whatsapp")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                reactContext.startActivity(intent)
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            promise.reject("ERR_WHATSAPP_CALL", e.message, e)
         }
     }
 

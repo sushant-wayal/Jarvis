@@ -92,26 +92,48 @@ function formatNotificationsForBrain(events: PhoneNotificationEvent[]): string {
 
 // ── Tools ────────────────────────────────────────────────────────────────────
 
-export const initiatePhoneCallTool: JarvisTool<{ contactName: string; phoneNumber?: string }> = {
+export const initiatePhoneCallTool: JarvisTool<{
+  contactName: string;
+  phoneNumber?: string;
+  callType?: 'voice' | 'video';
+  app?: string;
+}> = {
   name: 'initiate_phone_call',
   description:
-    'Initiate a phone call to a named contact or direct phone number. Returns an action descriptor for the mobile app to execute. Use when the user says "call [name]" or "call [number]".',
+    'Initiate a phone call, voice call, or video call to a named contact or direct phone number. Supports standard phone dialer as well as WhatsApp. Use when the user says "call [name]", "video call [name]", "voice call [name]", "whatsapp call [name]".',
   category: 'COMMUNICATION',
   riskLevel: 'LOW_RISK',
   requiresConfirmation: false,
   inputSchema: z.object({
     contactName: z.string().describe('The name of the contact or phone number to call, as spoken by the user.'),
     phoneNumber: z.string().optional().describe('Direct phone number if provided by user or looked up.'),
+    callType: z.enum(['voice', 'video']).optional().describe('Type of call: "voice" (default) or "video".'),
+    app: z.string().optional().describe('App to use: "phone" (cellular default) or "whatsapp".'),
   }),
   execute: async (input) => {
     const digits = input.contactName.replace(/[^0-9+]/g, '');
     const resolvedNumber = input.phoneNumber || (digits.length >= 7 ? input.contactName : undefined);
+    const callType = input.callType === 'video' ? 'video' : 'voice';
+    const isWhatsApp = Boolean(
+      input.app?.toLowerCase().includes('whatsapp') ||
+      input.contactName.toLowerCase().includes('whatsapp')
+    );
+    const app = isWhatsApp ? 'whatsapp' : (input.app || 'phone');
+
+    const cleanContact = input.contactName.replace(/\b(?:on\s+)?whatsapp\b/gi, '').trim() || input.contactName;
+
+    const responseText = callType === 'video'
+      ? (isWhatsApp ? `Starting WhatsApp video call with ${cleanContact}.` : `Starting video call with ${cleanContact}.`)
+      : (isWhatsApp ? `Calling ${cleanContact} on WhatsApp.` : `Calling ${cleanContact}.`);
+
     return {
       type: 'CALL_CONTACT' as const,
       action: 'CALL_CONTACT' as const,
-      contactName: input.contactName,
+      contactName: cleanContact,
       phoneNumber: resolvedNumber,
-      response: `Calling ${input.contactName}.`,
+      callType,
+      app,
+      response: responseText,
     };
   },
 };

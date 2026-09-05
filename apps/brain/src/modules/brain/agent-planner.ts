@@ -125,16 +125,19 @@ Core Principles:
 Phone Integration (V3):
 - You can interact with the user's phone. Use these tools when the user asks for phone-related actions:
   - 'lookup_contact': Look up a contact's phone number or details by name/relation. Use when user asks "what is mom's number?", "tell me my mom's number", "give me Rahul's number", etc.
-  - 'initiate_phone_call': Call a contact by name or dial a phone number directly. Use when user says "call [name]" or "call [number]" (e.g. "call 9876543210", "make a call to xxx").
+  - 'initiate_phone_call': Initiate a phone call, voice call, or video call to a named contact or direct phone number. Supports cellular phone and WhatsApp.
+    • For standard calls: callType: 'voice' (default)
+    • For video calls: callType: 'video' (set app: 'whatsapp' if user mentions WhatsApp, e.g. "WhatsApp video call to John")
+    • For WhatsApp calls: app: 'whatsapp'
   - 'send_message_to_contact': Send a message on WhatsApp/Telegram/SMS. The tool auto-selects the best channel.
   - 'read_phone_messages': Read recent messages from a contact or app.
   - 'search_phone_messages': Search for specific content across all messages.
-  - 'open_application': Open any app on the user's phone (e.g. WhatsApp, YouTube, Spotify, Uber, Camera, Calculator, Settings, etc.).
+  - 'open_application': Open any app on the user's phone (e.g. WhatsApp, YouTube, Spotify, Uber, Camera, Calculator, Settings, etc.). Use this when user says "open [app]" or "launch [app]" to just open the app home screen without sending any message.
   - 'get_phone_capabilities': Check what the phone integration can do right now.
   - 'generate_message_briefing': Provide a natural voice summary of all recent incoming messages.
   - 'detect_unanswered_messages': Detect pending requests or questions waiting for the user's reply.
   - 'get_contact_interaction_summary': Summarize conversation history with a specific person across channels.
-- MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" without executing the tool, because the phone's native launcher/dialer ONLY triggers when the tool runs!
+- MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube") or call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" without executing the tool, because the phone's native launcher/dialer ONLY triggers when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
 
@@ -362,19 +365,38 @@ Timezone & Scheduling Directive:
           logger.info('Synthesized pending OPEN_APP action from user message intent', { app: candidateApp });
         }
       } else {
-        const callMatch = lowerMsg.match(/^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+call\s+to|call|dial)\s+([a-zA-Z0-9_+*\s]+)$/i);
+        const isVideoCall = /\bvideo\s+call\b/i.test(lowerMsg);
+        const isWhatsApp = /\bwhatsapp\b/i.test(lowerMsg);
+
+        const callMatch = lowerMsg.match(
+          /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:make\s+a\s+|start\s+a\s+)?(?:video\s+call|voice\s+call|call|dial)\s+(?:to\s+|with\s+)?([a-zA-Z0-9_+*\s]+?)(?:\s+on\s+whatsapp|\s+via\s+whatsapp)?$/i
+        );
         if (callMatch && callMatch[1]) {
-          const target = callMatch[1].trim();
-          const cleanDigits = target.replace(/[^0-9+*#]/g, '');
+          const rawTarget = callMatch[1].replace(/\b(?:on\s+)?whatsapp\b/gi, '').trim();
+          const cleanDigits = rawTarget.replace(/[^0-9+*#]/g, '');
           const resolvedNumber = cleanDigits.length >= 7 ? cleanDigits : undefined;
+          const callType: 'voice' | 'video' = isVideoCall ? 'video' : 'voice';
+          const app = isWhatsApp ? 'whatsapp' : 'phone';
+
+          const responseText = isVideoCall
+            ? (isWhatsApp ? `Starting WhatsApp video call with ${rawTarget}.` : `Starting video call with ${rawTarget}.`)
+            : (isWhatsApp ? `Calling ${rawTarget} on WhatsApp.` : `Calling ${rawTarget}.`);
+
           pendingPhoneAction = {
             type: 'CALL_CONTACT',
             action: 'CALL_CONTACT',
-            contactName: target,
+            contactName: rawTarget,
             phoneNumber: resolvedNumber,
-            response: `Calling ${target}.`,
+            callType,
+            app,
+            response: responseText,
           } as unknown as import('@jarvis/shared').JarvisPhoneAction;
-          logger.info('Synthesized pending CALL_CONTACT action from user message intent', { target, resolvedNumber });
+          logger.info('Synthesized pending CALL_CONTACT action from user message intent', {
+            target: rawTarget,
+            resolvedNumber,
+            callType,
+            app,
+          });
         }
       }
     }

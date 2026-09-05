@@ -404,6 +404,10 @@ export interface JarvisCallAction {
   contactName: string;
   /** Pre-resolved number if available from phone context */
   phoneNumber?: string;
+  /** Call type: 'voice' | 'video' (defaults to 'voice') */
+  callType?: 'voice' | 'video';
+  /** Target app: 'phone' | 'whatsapp' | string (defaults to 'phone') */
+  app?: string;
 }
 
 export interface JarvisSendSmsAction {
