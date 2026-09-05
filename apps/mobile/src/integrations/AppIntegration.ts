@@ -263,41 +263,7 @@ export class AppIntegration {
 
     // ── 1. Spotify Direct Playback ──────────────────────────────────────────
     if (cleanApp.includes('spotify')) {
-      if (Platform.OS === 'android') {
-        // First try implicit MEDIA_PLAY_FROM_SEARCH intent (routed by Android OS)
-        try {
-          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
-            extra: {
-              'query': cleanQuery,
-              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
-              'android.intent.extra.title': cleanQuery,
-              'SearchManager.QUERY': cleanQuery,
-            },
-          });
-          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
-        } catch {
-          // Fall through
-        }
-
-        // Second try explicit intent targeting Spotify's MainActivity
-        try {
-          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
-            packageName: 'com.spotify.music',
-            className: 'com.spotify.music.MainActivity',
-            extra: {
-              'query': cleanQuery,
-              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
-              'android.intent.extra.title': cleanQuery,
-              'SearchManager.QUERY': cleanQuery,
-            },
-          });
-          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
-        } catch {
-          // Fall through to deep link
-        }
-      }
-
-      // Deep link fallback for Spotify (works on Android & iOS and in Expo Go)
+      // 1. Direct Spotify URI schemes (guaranteed 1-tap open into Spotify with zero Android chooser dialogs)
       const spotifyUrls = [
         `spotify:search:${encodeURIComponent(cleanQuery)}`,
         `https://open.spotify.com/search/${encodeURIComponent(cleanQuery)}`,
@@ -310,6 +276,26 @@ export class AppIntegration {
           // Try next
         }
       }
+
+      // 2. Direct Spotify explicit Intent (only with explicit Spotify package and launcher class)
+      if (Platform.OS === 'android') {
+        try {
+          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
+            packageName: 'com.spotify.music',
+            className: 'com.spotify.mobile.android.ui.Launcher',
+            extra: {
+              'query': cleanQuery,
+              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
+              'android.intent.extra.title': cleanQuery,
+              'SearchManager.QUERY': cleanQuery,
+            },
+          });
+          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+        } catch {
+          // Fall through
+        }
+      }
+
       return this.openApp('spotify');
     }
 
