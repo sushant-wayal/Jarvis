@@ -401,6 +401,22 @@ export const openApplicationTool: JarvisTool<{ appName: string }> = {
   },
 };
 
+async function resolveYouTubeVideoId(query: string): Promise<string | undefined> {
+  try {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+    const text = await res.text();
+    const match = text.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const playMediaTool: JarvisTool<{
   query: string;
   app?: 'spotify' | 'youtube' | 'youtube_music';
@@ -432,12 +448,17 @@ export const playMediaTool: JarvisTool<{
     const appNameFormatted =
       rawApp === 'spotify' ? 'Spotify' : rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube';
 
+    let resolvedVideoId = input.videoId;
+    if (!resolvedVideoId && rawApp.includes('youtube')) {
+      resolvedVideoId = await resolveYouTubeVideoId(cleanQuery);
+    }
+
     return {
       type: 'PLAY_MEDIA' as const,
       action: 'PLAY_MEDIA' as const,
       query: cleanQuery,
       app: rawApp,
-      videoId: input.videoId,
+      videoId: resolvedVideoId,
       response: `Playing "${cleanQuery}" on ${appNameFormatted}.`,
     };
   },
