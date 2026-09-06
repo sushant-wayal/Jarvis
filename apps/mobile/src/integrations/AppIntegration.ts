@@ -255,65 +255,38 @@ export class AppIntegration {
    */
   async playMedia(
     query: string,
-    appName = 'spotify',
+    appName?: string,
     videoId?: string
   ): Promise<ActionResult> {
-    const cleanApp = appName.toLowerCase().trim();
+    const rawApp = (appName || '').toLowerCase().trim();
     const cleanQuery = query.trim();
 
-    // ── 1. Spotify Direct Playback ──────────────────────────────────────────
-    if (cleanApp.includes('spotify')) {
-      if (Platform.OS === 'android') {
-        // 1. First priority: Native MEDIA_PLAY_FROM_SEARCH targeting Spotify's Launcher
-        // This is the official Android media playback intent used by Google Assistant to start playback directly.
-        try {
-          await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
-            packageName: 'com.spotify.music',
-            className: 'com.spotify.mobile.android.ui.Launcher',
-            flags: 268435456, // FLAG_ACTIVITY_NEW_TASK
-            extra: {
-              'query': cleanQuery,
-              'android.intent.extra.focus': 'vnd.android.cursor.item/*',
-              'android.intent.extra.title': cleanQuery,
-              'SearchManager.QUERY': cleanQuery,
-            },
-          });
-          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
-        } catch {
-          // IntentLauncher failed, fall through to Intent URI
-        }
+    // YouTube playback takes precedence if videoId is resolved,
+    // or if the app name or query explicitly specifies YouTube.
+    const isYouTube = Boolean(
+      videoId ||
+      rawApp.includes('youtube') ||
+      rawApp.includes('yt') ||
+      cleanQuery.toLowerCase().includes('youtube')
+    );
 
-        // 2. Second priority: Android Intent URI scheme targeting Spotify
-        try {
-          const intentUri = `intent:#Intent;action=android.media.action.MEDIA_PLAY_FROM_SEARCH;package=com.spotify.music;component=com.spotify.music/com.spotify.mobile.android.ui.Launcher;S.query=${encodeURIComponent(cleanQuery)};S.SearchManager.QUERY=${encodeURIComponent(cleanQuery)};end`;
-          await Linking.openURL(intentUri);
-          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
-        } catch {
-          // Fall through to standard deep links
-        }
-      }
-
-      // 3. Fallback: Spotify search deep links
-      const spotifyUrls = [
-        `spotify:search:${encodeURIComponent(cleanQuery)}`,
-        `https://open.spotify.com/search/${encodeURIComponent(cleanQuery)}`,
-      ];
-      for (const url of spotifyUrls) {
-        try {
-          await Linking.openURL(url);
-          return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
-        } catch {
-          // Try next
-        }
-      }
-
-      return this.openApp('spotify');
-    }
-
-    // ── 2. YouTube & YouTube Music Playback ──────────────────────────────────
-    if (cleanApp.includes('youtube')) {
-      // If a specific video ID was provided or resolved, open it directly to start playing instantly!
+    // ── 1. YouTube & YouTube Music Playback ──────────────────────────────────
+    if (isYouTube) {
       if (videoId) {
+        // On Android, attempt direct view intent with YouTube package
+        if (Platform.OS === 'android') {
+          try {
+            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+              data: `vnd.youtube:${videoId}`,
+              packageName: 'com.google.android.youtube',
+              flags: 268435456, // FLAG_ACTIVITY_NEW_TASK
+            });
+            return { success: true, message: `Playing "${cleanQuery}" on YouTube.` };
+          } catch {
+            // Fall through to Linking.openURL
+          }
+        }
+
         const directUrls = [
           `vnd.youtube:${videoId}`,
           `https://www.youtube.com/watch?v=${videoId}`,
@@ -329,7 +302,7 @@ export class AppIntegration {
       }
 
       // If YouTube Music is targeted or preferred:
-      if (cleanApp.includes('music') && Platform.OS === 'android') {
+      if (rawApp.includes('music') && Platform.OS === 'android') {
         try {
           await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
             packageName: 'com.google.android.apps.youtube.music',
@@ -362,8 +335,52 @@ export class AppIntegration {
       return this.openApp('youtube');
     }
 
-    // Default fallback: open the requested app
-    return this.openApp(appName);
+    // ── 2. Spotify Direct Playback ──────────────────────────────────────────
+    if (Platform.OS === 'android') {
+      // 1. First priority: Native MEDIA_PLAY_FROM_SEARCH targeting Spotify's Launcher
+      // This is the official Android media playback intent used by media apps to start playback.
+      try {
+        await IntentLauncher.startActivityAsync('android.media.action.MEDIA_PLAY_FROM_SEARCH', {
+          packageName: 'com.spotify.music',
+          className: 'com.spotify.mobile.android.ui.Launcher',
+          flags: 268435456, // FLAG_ACTIVITY_NEW_TASK
+          extra: {
+            'query': cleanQuery,
+            'android.intent.extra.focus': 'vnd.android.cursor.item/*',
+            'android.intent.extra.title': cleanQuery,
+            'SearchManager.QUERY': cleanQuery,
+          },
+        });
+        return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+      } catch {
+        // IntentLauncher failed, fall through to Intent URI
+      }
+
+      // 2. Second priority: Android Intent URI scheme targeting Spotify
+      try {
+        const intentUri = `intent:#Intent;action=android.media.action.MEDIA_PLAY_FROM_SEARCH;package=com.spotify.music;component=com.spotify.music/com.spotify.mobile.android.ui.Launcher;S.query=${encodeURIComponent(cleanQuery)};S.SearchManager.QUERY=${encodeURIComponent(cleanQuery)};end`;
+        await Linking.openURL(intentUri);
+        return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+      } catch {
+        // Fall through to standard deep links
+      }
+    }
+
+    // 3. Fallback: Spotify search deep links
+    const spotifyUrls = [
+      `spotify:search:${encodeURIComponent(cleanQuery)}`,
+      `https://open.spotify.com/search/${encodeURIComponent(cleanQuery)}`,
+    ];
+    for (const url of spotifyUrls) {
+      try {
+        await Linking.openURL(url);
+        return { success: true, message: `Playing "${cleanQuery}" on Spotify.` };
+      } catch {
+        // Try next
+      }
+    }
+
+    return this.openApp('spotify');
   }
 
   /** Open a tel: or https: URL directly */

@@ -444,7 +444,14 @@ export const playMediaTool: JarvisTool<{
   }),
   execute: async (input) => {
     const cleanQuery = input.query.trim();
-    const rawApp = input.app || (cleanQuery.toLowerCase().includes('video') ? 'youtube' : 'spotify');
+    const isYt = Boolean(
+      input.videoId ||
+      input.app === 'youtube' ||
+      input.app === 'youtube_music' ||
+      cleanQuery.toLowerCase().includes('video') ||
+      cleanQuery.toLowerCase().includes('youtube')
+    );
+    const rawApp = input.app || (isYt ? 'youtube' : 'spotify');
     const appNameFormatted =
       rawApp === 'spotify' ? 'Spotify' : rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube';
 

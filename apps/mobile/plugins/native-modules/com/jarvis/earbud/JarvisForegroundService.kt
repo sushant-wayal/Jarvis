@@ -1140,10 +1140,33 @@ class JarvisForegroundService : Service() {
 
                     "PLAY_MEDIA" -> {
                         val query = action.optString("query")
-                        val app = action.optString("app", "spotify").lowercase()
                         val videoId = action.optString("videoId")
+                        val rawApp = action.optString("app")
+                        val isYt = videoId.isNotBlank() ||
+                            rawApp.contains("youtube", ignoreCase = true) ||
+                            query.contains("youtube", ignoreCase = true)
 
-                        if (app.contains("spotify")) {
+                        if (isYt) {
+                            if (videoId.isNotBlank()) {
+                                val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
+                                    setPackage("com.google.android.youtube")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                try {
+                                    startActivity(ytIntent)
+                                } catch (e: Exception) {
+                                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$videoId")).apply {
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    }
+                                    startActivity(webIntent)
+                                }
+                            } else {
+                                val ytSearch = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(ytSearch)
+                            }
+                        } else {
                             val intent = Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).apply {
                                 setPackage("com.spotify.music")
                                 putExtra(android.app.SearchManager.QUERY, query)
@@ -1159,19 +1182,6 @@ class JarvisForegroundService : Service() {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
                                 startActivity(fallbackIntent)
-                            }
-                        } else if (app.contains("youtube")) {
-                            if (videoId.isNotBlank()) {
-                                val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
-                                    setPackage("com.google.android.youtube")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                startActivity(ytIntent)
-                            } else {
-                                val ytSearch = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                startActivity(ytSearch)
                             }
                         }
                     }
