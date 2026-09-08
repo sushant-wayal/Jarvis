@@ -401,7 +401,7 @@ export const openApplicationTool: JarvisTool<{ appName: string }> = {
   },
 };
 
-async function resolveYouTubeVideoId(query: string): Promise<string | undefined> {
+export async function resolveYouTubeVideoId(query: string): Promise<string | undefined> {
   try {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
     const res = await fetch(url, {
@@ -424,7 +424,7 @@ export const playMediaTool: JarvisTool<{
 }> = {
   name: 'play_media',
   description:
-    'Play a song, artist, playlist, track, or video directly on Spotify, YouTube, or YouTube Music. Triggers immediate playback instead of just opening the app home screen. Use whenever the user asks to play, stream, or listen to music, songs, artists, or watch videos in any phrasing (e.g. "on spotify play tum mere ho by anuv jain", "play believer on spotify", "spotify pe anuv jain chalao", "play funny cat videos on youtube", "put on viva la vida").',
+    'Play a song, artist, playlist, track, or video directly. Streams high-quality studio audio directly in the background into the user\'s earbuds without interrupting their active screen. Use whenever the user asks to play, stream, or listen to music, songs, artists, or watch videos in any phrasing (e.g. "play tum mere ho by anuv jain", "play believer", "put on viva la vida", "play anuv jain").',
   category: 'SYSTEM',
   riskLevel: 'SAFE',
   requiresConfirmation: false,
@@ -438,25 +438,43 @@ export const playMediaTool: JarvisTool<{
       .enum(['spotify', 'youtube', 'youtube_music'])
       .optional()
       .describe(
-        'The target media platform: "spotify" (default for music/songs) or "youtube" (default for videos) or "youtube_music". If the user mentions Spotify anywhere in the request, choose "spotify". If the user mentions YouTube, choose "youtube". If neither is mentioned, default to "spotify" for songs and "youtube" for videos. NEVER prompt the user to choose an app.'
+        'Optional platform preference if explicitly requested by the user. If unspecified, defaults automatically.'
       ),
     videoId: z.string().optional().describe('YouTube video ID if resolved, e.g. "dQw4w9WgXcQ".'),
   }),
   execute: async (input) => {
     const cleanQuery = input.query.trim();
-    const isYt = Boolean(
-      input.videoId ||
+    const isYtExplicit = Boolean(
       input.app === 'youtube' ||
       input.app === 'youtube_music' ||
-      cleanQuery.toLowerCase().includes('video') ||
-      cleanQuery.toLowerCase().includes('youtube')
+      cleanQuery.toLowerCase().includes('video')
     );
-    const rawApp = input.app || (isYt ? 'youtube' : 'spotify');
-    const appNameFormatted =
-      rawApp === 'spotify' ? 'Spotify' : rawApp === 'youtube_music' ? 'YouTube Music' : 'YouTube';
+    const rawApp = input.app || (isYtExplicit ? 'youtube' : 'spotify');
 
-    let resolvedVideoId = input.videoId;
-    if (!resolvedVideoId && rawApp.includes('youtube')) {
+    // 1. Resolve direct background audio track (Tier 1: JioSaavn Catalog -> Tier 2: YouTube)
+    const { resolveMusicTrack } = await import('../media/music-resolver');
+    const track = await resolveMusicTrack(cleanQuery);
+
+    if (track.audioUrl) {
+      return {
+        type: 'PLAY_MEDIA' as const,
+        action: 'PLAY_MEDIA' as const,
+        query: cleanQuery,
+        app: rawApp,
+        audioUrl: track.audioUrl,
+        title: track.title || cleanQuery,
+        artist: track.artist || '',
+        artworkUrl: track.artworkUrl,
+        duration: track.duration,
+        source: track.source,
+        videoId: track.videoId,
+        response: `Playing "${track.title || cleanQuery}" by ${track.artist || 'the artist'} in the background.`,
+      };
+    }
+
+    // 2. Fallback: YouTube video ID resolution if audio stream was unavailable
+    let resolvedVideoId = input.videoId || track.videoId;
+    if (!resolvedVideoId) {
       resolvedVideoId = await resolveYouTubeVideoId(cleanQuery);
     }
 
@@ -466,7 +484,8 @@ export const playMediaTool: JarvisTool<{
       query: cleanQuery,
       app: rawApp,
       videoId: resolvedVideoId,
-      response: `Playing "${cleanQuery}" on ${appNameFormatted}.`,
+      source: 'youtube',
+      response: `Playing "${cleanQuery}".`,
     };
   },
 };

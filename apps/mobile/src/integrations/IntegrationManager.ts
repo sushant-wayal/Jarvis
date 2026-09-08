@@ -150,6 +150,10 @@ export class IntegrationManager {
           (action as any).query,
           (action as any).app,
           (action as any).videoId,
+          (action as any).audioUrl,
+          (action as any).title,
+          (action as any).artist,
+          (action as any).artworkUrl,
         );
 
       case 'OPEN_URL':

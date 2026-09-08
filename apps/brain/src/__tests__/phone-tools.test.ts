@@ -136,30 +136,32 @@ describe('Phone Tools (Brain)', () => {
     expect(resVideo.response).toBe('Starting WhatsApp video call with Rahul.');
   });
 
-  it('playMediaTool creates PLAY_MEDIA action for Spotify and YouTube', async () => {
+  it('playMediaTool resolves background stream and creates PLAY_MEDIA action', async () => {
     const resSpotify = (await playMediaTool.execute({ query: 'Tum Mere Ho by Anuv Jain', app: 'spotify' }, mockToolContext)) as Record<string, any>;
     expect(resSpotify.type).toBe('PLAY_MEDIA');
     expect(resSpotify.action).toBe('PLAY_MEDIA');
     expect(resSpotify.query).toBe('Tum Mere Ho by Anuv Jain');
-    expect(resSpotify.app).toBe('spotify');
-    expect(resSpotify.response).toContain('Spotify');
+    expect(resSpotify.audioUrl).toBeDefined();
+    expect(resSpotify.title).toContain('Mere Ho');
+    expect(resSpotify.artist).toContain('Anuv Jain');
+    expect(resSpotify.response).toContain('in the background');
 
     const resYT = (await playMediaTool.execute({ query: 'Arijit Singh live', app: 'youtube' }, mockToolContext)) as Record<string, any>;
     expect(resYT.type).toBe('PLAY_MEDIA');
-    expect(resYT.app).toBe('youtube');
-    expect(resYT.response).toContain('YouTube');
+    expect(resYT.action).toBe('PLAY_MEDIA');
+    expect(resYT.source).toBeDefined();
   });
 
-  it('playMediaTool preserves clean query and formats playback response', async () => {
+  it('playMediaTool preserves clean query and formats playback response with audioUrl', async () => {
     const resClean = (await playMediaTool.execute({ query: 'Tum Mere Ho', app: 'spotify' }, mockToolContext)) as Record<string, any>;
     expect(resClean.action).toBe('PLAY_MEDIA');
     expect(resClean.query).toBe('Tum Mere Ho');
-    expect(resClean.app).toBe('spotify');
-    expect(resClean.response).toBe('Playing "Tum Mere Ho" on Spotify.');
+    expect(resClean.audioUrl).toBeDefined();
+    expect(resClean.response).toContain('in the background');
 
     const resYTM = (await playMediaTool.execute({ query: 'Starboy', app: 'youtube_music' }, mockToolContext)) as Record<string, any>;
     expect(resYTM.query).toBe('Starboy');
-    expect(resYTM.app).toBe('youtube_music');
-    expect(resYTM.response).toBe('Playing "Starboy" on YouTube Music.');
+    expect(resYTM.action).toBe('PLAY_MEDIA');
+    expect(resYTM.source).toBeDefined();
   });
 });

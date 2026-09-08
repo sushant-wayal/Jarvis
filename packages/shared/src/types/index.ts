@@ -446,6 +446,12 @@ export interface JarvisPlayMediaAction {
   query: string;
   app?: 'spotify' | 'youtube' | 'youtube_music';
   videoId?: string;
+  audioUrl?: string;
+  title?: string;
+  artist?: string;
+  artworkUrl?: string;
+  duration?: number;
+  source?: 'catalog' | 'youtube' | 'spotify';
 }
 
 export interface JarvisOpenUrlAction {

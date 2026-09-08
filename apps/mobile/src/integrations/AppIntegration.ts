@@ -9,6 +9,8 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import { ActionResult } from '@jarvis/shared';
 import { APP_DEEP_LINKS, APP_PACKAGE_CANDIDATES, APP_TO_PACKAGE } from './constants';
 
+import { backgroundMusicPlayer } from '../services/BackgroundMusicPlayer';
+
 export class AppIntegration {
   /**
    * Open any app by its friendly or typed name (e.g. 'whatsapp', 'youtube', 'spotify', 'calculator').
@@ -256,10 +258,33 @@ export class AppIntegration {
   async playMedia(
     query: string,
     appName?: string,
-    videoId?: string
+    videoId?: string,
+    audioUrl?: string,
+    title?: string,
+    artist?: string,
+    artworkUrl?: string
   ): Promise<ActionResult> {
     const rawApp = (appName || '').toLowerCase().trim();
     const cleanQuery = query.trim();
+
+    // ── 0. Built-in Background Earbud Audio Streaming (Zero Screen Takeover) ─────
+    // When a direct studio stream URL is resolved, stream it seamlessly in the background
+    // without opening external apps or disturbing the user's screen.
+    if (audioUrl) {
+      const started = await backgroundMusicPlayer.playTrack({
+        audioUrl,
+        title: title || cleanQuery,
+        artist,
+        artworkUrl,
+      });
+
+      if (started) {
+        return {
+          success: true,
+          message: `Streaming "${title || cleanQuery}" in the background.`,
+        };
+      }
+    }
 
     // YouTube playback takes precedence if videoId is resolved,
     // or if the app name or query explicitly specifies YouTube.
