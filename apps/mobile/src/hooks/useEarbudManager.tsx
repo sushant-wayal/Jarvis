@@ -161,6 +161,16 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
   const stopAndProcessVoice = React.useCallback(async (): Promise<void> => {
     try {
+      // Guard: if user said nothing during the listening window,
+      // peacefully return to IDLE without sending silence to the brain
+      if (!speechDetectedRef.current) {
+        await cancelRecording();
+        await backgroundMusicPlayer.resumeAfterSpeaking();
+        setJarvisState('IDLE');
+        earbudService.resumeTapDetection(200);
+        return;
+      }
+
       // 1. Stop audio recording first so the microphone is released
       const audioData = await stopRecording();
 
@@ -289,7 +299,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         earbudService.resumeTapDetection(200);
       }, 3000);
     }
-  }, [stopRecording, playBase64Audio, handlePendingPhoneAction, startVoiceListening]);
+  }, [stopRecording, cancelRecording, playBase64Audio, handlePendingPhoneAction, startVoiceListening]);
 
 
   const toggleVoiceInteraction = React.useCallback(async (): Promise<void> => {
