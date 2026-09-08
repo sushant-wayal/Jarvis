@@ -21,6 +21,7 @@ class BackgroundMusicPlayer {
   private currentTrack: TrackMetadata | null = null;
   private isAudioModeConfigured = false;
   private isCurrentlyPlaying = false;
+  private wasPlayingBeforeVoiceInput = false;
   private statusListeners: Array<(isPlaying: boolean, track: TrackMetadata | null) => void> = [];
 
   private async configureAudioMode(): Promise<void> {
@@ -122,8 +123,52 @@ class BackgroundMusicPlayer {
       this.sound = null;
     }
     this.isCurrentlyPlaying = false;
+    this.wasPlayingBeforeVoiceInput = false;
     this.currentTrack = null;
     this.notifyListeners(false, null);
+  }
+
+  /**
+   * Temporarily pause active music while the microphone is listening
+   * so that song lyrics do NOT leak into the mic and distort speech recognition.
+   */
+  async pauseForVoiceInput(): Promise<void> {
+    if (this.sound && this.isCurrentlyPlaying) {
+      try {
+        this.wasPlayingBeforeVoiceInput = true;
+        await this.sound.pauseAsync();
+        this.isCurrentlyPlaying = false;
+        this.notifyListeners(false, this.currentTrack);
+      } catch {
+        // Safe catch
+      }
+    }
+  }
+
+  /**
+   * Resume playback if music was automatically paused for voice listening,
+   * provided the user did NOT issue an explicit pause/stop command.
+   */
+  async resumeAfterVoiceInput(): Promise<void> {
+    if (this.sound && this.wasPlayingBeforeVoiceInput && !this.isCurrentlyPlaying) {
+      try {
+        this.wasPlayingBeforeVoiceInput = false;
+        await this.sound.playAsync();
+        this.isCurrentlyPlaying = true;
+        this.notifyListeners(true, this.currentTrack);
+      } catch {
+        // Safe catch
+      }
+    } else {
+      this.wasPlayingBeforeVoiceInput = false;
+    }
+  }
+
+  /**
+   * Cancel voice input resume flag when user explicitly requested media actions (pause, stop, play new).
+   */
+  cancelVoiceInputResume(): void {
+    this.wasPlayingBeforeVoiceInput = false;
   }
 
   isPlaying(): boolean {

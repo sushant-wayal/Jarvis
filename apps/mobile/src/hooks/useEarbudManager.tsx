@@ -6,6 +6,7 @@ import { reminderScheduler } from '../services/reminderScheduler';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { useAudioPlayer } from './useAudioPlayer';
 import { integrationManager } from '../integrations/IntegrationManager';
+import { backgroundMusicPlayer } from '../services/BackgroundMusicPlayer';
 
 export interface EarbudManagerContextValue {
   jarvisState: JarvisState;
@@ -72,6 +73,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
   const interruptOrStop = React.useCallback(async (): Promise<void> => {
     setErrorMessage(null);
+    await backgroundMusicPlayer.resumeAfterVoiceInput();
     if (isPlaying) {
       await stopAudio();
       setJarvisState('IDLE');
@@ -97,6 +99,9 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       if (isPlaying) {
         await stopAudio();
       }
+
+      // Temporarily pause background music so mic captures ONLY clean user voice (no song lyrics)
+      await backgroundMusicPlayer.pauseForVoiceInput();
 
       // Suppress tap detection while recording so audio mode changes
       // don't false-trigger the carrier tap detector
@@ -166,6 +171,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       setJarvisState('PROCESSING');
 
       if (!audioData || !audioData.audioBase64) {
+        await backgroundMusicPlayer.resumeAfterVoiceInput();
         setJarvisState('ERROR');
         const emptyAudioMsg = '[Step: Audio Capture · Empty Stream]\nNo voice audio was detected from your microphone.';
         setErrorMessage(emptyAudioMsg);
@@ -214,6 +220,13 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         ((response.pendingPhoneAction as any)?.type || (response.pendingPhoneAction as any)?.action || '') as string
       ).toUpperCase();
       const isPlayMedia = actionType === 'PLAY_MEDIA';
+      const isMediaAction = isPlayMedia || actionType === 'CONTROL_MEDIA';
+
+      // If user commanded media (pause, stop, resume, play new track),
+      // cancel automatic music resumption so their explicit command holds
+      if (isMediaAction) {
+        backgroundMusicPlayer.cancelVoiceInputResume();
+      }
 
       const shouldContinue =
         Boolean(response.response) &&
@@ -232,6 +245,9 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           // Play media cleanly AFTER Jarvis finishes speaking so voice and music do not collide
           if (isPlayMedia) {
             void handlePendingPhoneAction(response);
+          } else if (!isMediaAction) {
+            // Non-media response finished -> resume the music that was playing before voice input
+            await backgroundMusicPlayer.resumeAfterVoiceInput();
           }
 
           if (shouldContinue) {
@@ -244,6 +260,8 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       } else {
         if (isPlayMedia) {
           void handlePendingPhoneAction(response);
+        } else if (!isMediaAction) {
+          await backgroundMusicPlayer.resumeAfterVoiceInput();
         }
         if (shouldContinue) {
           await startVoiceListening();
@@ -253,6 +271,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         }
       }
     } catch (err: unknown) {
+      await backgroundMusicPlayer.resumeAfterVoiceInput();
       setJarvisState('ERROR');
       const errorMsg = err instanceof Error ? err.message : 'Cognitive brain link failed.';
       setErrorMessage(errorMsg);
