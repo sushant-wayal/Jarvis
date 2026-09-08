@@ -45,7 +45,7 @@ export class LocationService {
         state: address.state,
         country: address.country,
         area: address.area,
-        knownPlaceId: matchedPlace?.id,
+        knownPlaceId: matchedPlace?.id ?? null,
       },
       create: {
         userId,
@@ -56,7 +56,7 @@ export class LocationService {
         state: address.state,
         country: address.country,
         area: address.area,
-        knownPlaceId: matchedPlace?.id,
+        knownPlaceId: matchedPlace?.id ?? null,
       },
     });
 
@@ -119,7 +119,7 @@ export class LocationService {
     longitude: number;
     radiusMeters?: number;
   }): Promise<KnownPlaceItem> {
-    const { userId, name, latitude, longitude, radiusMeters = 200 } = params;
+    const { userId, name, latitude, longitude, radiusMeters = 100 } = params;
 
     const place = await prisma.knownPlace.create({
       data: {
@@ -163,6 +163,10 @@ export class LocationService {
   async deleteKnownPlace(id: string, userId: string): Promise<boolean> {
     try {
       await prisma.knownPlace.deleteMany({ where: { id, userId } });
+      await prisma.userLocationState.updateMany({
+        where: { userId, knownPlaceId: id },
+        data: { knownPlaceId: null },
+      });
       return true;
     } catch {
       return false;

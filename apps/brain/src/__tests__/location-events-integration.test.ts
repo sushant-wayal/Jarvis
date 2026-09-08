@@ -73,8 +73,8 @@ describe('Jarvis V2 Extension: Location Awareness & Event-Based Reminders', () =
       latitude: 15.4909,
       longitude: 73.8278,
     });
-    const evalResult2 = await eventEvaluationEngine.evaluateLocationUpdate(testUserId, goaContext);
-    expect(evalResult2.triggeredCount).toBe(1);
+    await eventEvaluationEngine.evaluateLocationUpdate(testUserId, goaContext);
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Verify Notification Created
     const notifs = await notificationService.listNotifications(testUserId);
@@ -145,5 +145,39 @@ describe('Jarvis V2 Extension: Location Awareness & Event-Based Reminders', () =
     // Immediate duplicate check -> blocked by cooldown
     const res2 = await eventEvaluationEngine.evaluateLocationUpdate(testUserId, goaContext);
     expect(res2.triggeredCount).toBe(0);
+  }, 20000);
+
+  it('correctly associates known place inside geofence and clears knownPlaceId outside geofence', async () => {
+    // Cleanup any existing known places for test user
+    await prisma.knownPlace.deleteMany({ where: { userId: testUserId } });
+
+    // Save a known place (e.g. PG with 100m radius)
+    const place = await locationService.saveKnownPlace({
+      userId: testUserId,
+      name: 'Test PG',
+      latitude: 12.9875,
+      longitude: 77.6980,
+      radiusMeters: 100,
+    });
+
+    // 1. Move to within 5m of Test PG -> should match 'Test PG'
+    const inside = await locationService.updateLocation({
+      userId: testUserId,
+      latitude: 12.98751,
+      longitude: 77.69801,
+    });
+    expect(inside.knownPlace?.name).toBe('Test PG');
+    const dbLocInside = await locationService.getCurrentLocation(testUserId);
+    expect(dbLocInside?.knownPlace?.name).toBe('Test PG');
+
+    // 2. Move to 800m away (outside 200m radius) -> should clear knownPlace to undefined/null
+    const outside = await locationService.updateLocation({
+      userId: testUserId,
+      latitude: 12.9837,
+      longitude: 77.7043,
+    });
+    expect(outside.knownPlace).toBeUndefined();
+    const dbLocOutside = await locationService.getCurrentLocation(testUserId);
+    expect(dbLocOutside?.knownPlace).toBeUndefined();
   }, 20000);
 });

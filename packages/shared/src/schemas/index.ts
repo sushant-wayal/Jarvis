@@ -163,7 +163,7 @@ export const CreateKnownPlaceSchema = z.object({
   name: z.string().min(1).max(100),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  radiusMeters: z.number().min(10).max(50000).optional().default(200),
+  radiusMeters: z.number().min(10).max(50000).optional().default(100),
 });
 
 export type CreateKnownPlaceRequest = z.input<typeof CreateKnownPlaceSchema>;

@@ -203,7 +203,7 @@ model KnownPlace {
   name         String   // Home, Office, Gym, Airport, etc.
   latitude     Float
   longitude    Float
-  radiusMeters Float    @default(200)
+  radiusMeters Float    @default(100)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

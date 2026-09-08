@@ -77,7 +77,7 @@ const PlaceSaveInputSchema = z.object({
   name: z.string().describe('Name of the place, e.g. "Home", "Office", "Gym"'),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
-  radiusMeters: z.number().optional().default(200),
+  radiusMeters: z.number().optional().default(100),
 });
 
 export const placeSaveTool: JarvisTool<
@@ -112,7 +112,7 @@ export const placeSaveTool: JarvisTool<
       name: input.name,
       latitude: lat,
       longitude: lon,
-      radiusMeters: input.radiusMeters || 200,
+      radiusMeters: input.radiusMeters || 100,
     });
 
     // Automatically associate current location with this known place
