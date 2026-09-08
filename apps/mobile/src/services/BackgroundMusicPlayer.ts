@@ -231,17 +231,15 @@ class BackgroundMusicPlayer {
   private onPlaybackStatusUpdate = (status: AVPlaybackStatus): void => {
     if (!status.isLoaded) {
       if (status.error) {
-        this.isCurrentlyPlaying = false;
-        this.notifyListeners(false, this.currentTrack);
+        void this.stop();
       }
       return;
     }
 
     this.isCurrentlyPlaying = status.isPlaying;
 
-    if (status.didJustFinish) {
-      this.isCurrentlyPlaying = false;
-      this.notifyListeners(false, this.currentTrack);
+    if (status.didJustFinish && !status.isLooping) {
+      void this.stop();
     }
   };
 }
