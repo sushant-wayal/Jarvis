@@ -28,12 +28,12 @@ class BackgroundMusicPlayer {
     if (this.isAudioModeConfigured) return;
     try {
       await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
+        allowsRecordingIOS: true,
         staysActiveInBackground: true,
         playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-        interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+        shouldDuckAndroid: false,
+        interruptionModeAndroid: 1, // DoNotMix - preserves carrier and earbud AVRCP routing
+        interruptionModeIOS: 1,
         playThroughEarpieceAndroid: false,
       });
       this.isAudioModeConfigured = true;
