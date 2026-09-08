@@ -146,10 +146,42 @@ class BackgroundMusicPlayer {
   }
 
   /**
-   * Resume playback if music was automatically paused for voice listening,
+   * Resume playback while Jarvis is in the PROCESSING / THINKING state
+   * so music fills the thinking silence.
+   */
+  async resumeForProcessing(): Promise<void> {
+    if (this.sound && this.wasPlayingBeforeVoiceInput && !this.isCurrentlyPlaying) {
+      try {
+        await this.sound.playAsync();
+        this.isCurrentlyPlaying = true;
+        this.notifyListeners(true, this.currentTrack);
+      } catch {
+        // Safe catch
+      }
+    }
+  }
+
+  /**
+   * Pause playback again when Jarvis enters the SPEAKING state
+   * so Jarvis speaks with zero music interference.
+   */
+  async pauseForSpeaking(): Promise<void> {
+    if (this.sound && this.isCurrentlyPlaying) {
+      try {
+        await this.sound.pauseAsync();
+        this.isCurrentlyPlaying = false;
+        this.notifyListeners(false, this.currentTrack);
+      } catch {
+        // Safe catch
+      }
+    }
+  }
+
+  /**
+   * Resume playback after Jarvis finishes speaking,
    * provided the user did NOT issue an explicit pause/stop command.
    */
-  async resumeAfterVoiceInput(): Promise<void> {
+  async resumeAfterSpeaking(): Promise<void> {
     if (this.sound && this.wasPlayingBeforeVoiceInput && !this.isCurrentlyPlaying) {
       try {
         this.wasPlayingBeforeVoiceInput = false;

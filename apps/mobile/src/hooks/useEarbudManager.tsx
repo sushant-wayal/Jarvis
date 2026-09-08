@@ -73,7 +73,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
   const interruptOrStop = React.useCallback(async (): Promise<void> => {
     setErrorMessage(null);
-    await backgroundMusicPlayer.resumeAfterVoiceInput();
+    await backgroundMusicPlayer.resumeAfterSpeaking();
     if (isPlaying) {
       await stopAudio();
       setJarvisState('IDLE');
@@ -169,9 +169,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       // 3. ONLY THEN switch state to PROCESSING / THINKING
       setJarvisState('PROCESSING');
+      // Resume background music while processing so there is no awkward silence
+      await backgroundMusicPlayer.resumeForProcessing();
 
       if (!audioData || !audioData.audioBase64) {
-        await backgroundMusicPlayer.resumeAfterVoiceInput();
+        await backgroundMusicPlayer.resumeAfterSpeaking();
         setJarvisState('ERROR');
         const emptyAudioMsg = '[Step: Audio Capture · Empty Stream]\nNo voice audio was detected from your microphone.';
         setErrorMessage(emptyAudioMsg);
@@ -240,6 +242,8 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       }
 
       if (response.audioBase64) {
+        // Pause music again while Jarvis is speaking so voice response is crystal clear!
+        await backgroundMusicPlayer.pauseForSpeaking();
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
           // Play media cleanly AFTER Jarvis finishes speaking so voice and music do not collide
@@ -247,7 +251,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
             void handlePendingPhoneAction(response);
           } else if (!isMediaAction) {
             // Non-media response finished -> resume the music that was playing before voice input
-            await backgroundMusicPlayer.resumeAfterVoiceInput();
+            await backgroundMusicPlayer.resumeAfterSpeaking();
           }
 
           if (shouldContinue) {
@@ -261,7 +265,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         if (isPlayMedia) {
           void handlePendingPhoneAction(response);
         } else if (!isMediaAction) {
-          await backgroundMusicPlayer.resumeAfterVoiceInput();
+          await backgroundMusicPlayer.resumeAfterSpeaking();
         }
         if (shouldContinue) {
           await startVoiceListening();
@@ -271,7 +275,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         }
       }
     } catch (err: unknown) {
-      await backgroundMusicPlayer.resumeAfterVoiceInput();
+      await backgroundMusicPlayer.resumeAfterSpeaking();
       setJarvisState('ERROR');
       const errorMsg = err instanceof Error ? err.message : 'Cognitive brain link failed.';
       setErrorMessage(errorMsg);
