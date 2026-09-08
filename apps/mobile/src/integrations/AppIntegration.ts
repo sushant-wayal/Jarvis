@@ -408,6 +408,31 @@ export class AppIntegration {
     return this.openApp('spotify');
   }
 
+  /**
+   * Control background audio playback (pause, resume, stop, skip).
+   */
+  async controlMedia(
+    command: 'pause' | 'resume' | 'stop' | 'next' | 'previous'
+  ): Promise<ActionResult> {
+    switch (command) {
+      case 'pause':
+        await backgroundMusicPlayer.pause();
+        return { success: true, message: 'Paused playback.' };
+      case 'resume':
+        await backgroundMusicPlayer.resume();
+        return { success: true, message: 'Resumed playback.' };
+      case 'stop':
+        await backgroundMusicPlayer.stop();
+        return { success: true, message: 'Stopped playback.' };
+      case 'next':
+      case 'previous':
+        await backgroundMusicPlayer.stop();
+        return { success: true, message: 'Track stopped.' };
+      default:
+        return { success: false, error: `Unknown media command: ${command}` };
+    }
+  }
+
   /** Open a tel: or https: URL directly */
   async openUrl(url: string): Promise<ActionResult> {
     try {

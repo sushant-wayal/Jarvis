@@ -159,6 +159,9 @@ export class IntegrationManager {
       case 'OPEN_URL':
         return appIntegration.openUrl((action as any).url);
 
+      case 'CONTROL_MEDIA':
+        return appIntegration.controlMedia((action as any).command);
+
       default:
         return { success: false, error: `Unknown action type: "${actionType}".` };
     }

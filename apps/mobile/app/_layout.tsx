@@ -4,10 +4,12 @@ import * as React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Icon } from '../src/components/Icon';
+import { MiniPlayer } from '../src/components/MiniPlayer';
 import { EarbudProvider } from '../src/hooks/useEarbudManager';
 import { useOtaUpdates } from '../src/hooks/useOtaUpdates';
 import { appSettingsService } from '../src/services/appSettingsService';
 import { integrationManager } from '../src/integrations/IntegrationManager';
+import { mediaNotificationService } from '../src/services/MediaNotificationService';
 import { colors } from '../src/theme/tokens';
 
 export default function RootLayout(): React.ReactElement {
@@ -17,6 +19,7 @@ export default function RootLayout(): React.ReactElement {
   React.useEffect(() => {
     appSettingsService.initialize().catch(() => {});
     integrationManager.initialize().catch(() => {});
+    mediaNotificationService.initialize().catch(() => {});
   }, []);
 
   return (
@@ -115,6 +118,9 @@ export default function RootLayout(): React.ReactElement {
             }}
           />
         </Tabs>
+        <View style={styles.miniPlayerWrapper} pointerEvents="box-none">
+          <MiniPlayer />
+        </View>
       </SafeAreaView>
       </EarbudProvider>
     </SafeAreaProvider>
@@ -125,6 +131,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  miniPlayerWrapper: {
+    position: 'absolute',
+    bottom: 74,
+    left: 0,
+    right: 0,
+    zIndex: 999,
   },
   tabBar: {
     backgroundColor: 'rgba(19, 19, 20, 0.95)',

@@ -51,6 +51,10 @@ export type IconName =
   | 'phone_android'
   | 'close'
   | 'bookmark'
+  | 'play_arrow'
+  | 'pause'
+  | 'stop'
+  | 'music_note'
   | 'insights';
 
 export interface IconProps {
@@ -161,6 +165,14 @@ export function Icon({
       return <MaterialIcons name="phone-android" size={size} color={color} style={style} />;
     case 'close':
       return <MaterialIcons name="close" size={size} color={color} style={style} />;
+    case 'play_arrow':
+      return <MaterialIcons name="play-arrow" size={size} color={color} style={style} />;
+    case 'pause':
+      return <MaterialIcons name="pause" size={size} color={color} style={style} />;
+    case 'stop':
+      return <MaterialIcons name="stop" size={size} color={color} style={style} />;
+    case 'music_note':
+      return <MaterialIcons name="music-note" size={size} color={color} style={style} />;
     default:
       return <MaterialIcons name="blur-on" size={size} color={color} style={style} />;
   }

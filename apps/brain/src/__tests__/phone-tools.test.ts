@@ -4,6 +4,7 @@ import {
   initiatePhoneCallTool,
   openApplicationTool,
   playMediaTool,
+  controlMediaTool,
   readPhoneMessagesTool,
   searchPhoneMessagesTool,
   sendMessageToContactTool,
@@ -163,5 +164,21 @@ describe('Phone Tools (Brain)', () => {
     expect(resYTM.query).toBe('Starboy');
     expect(resYTM.action).toBe('PLAY_MEDIA');
     expect(resYTM.source).toBeDefined();
+  });
+
+  it('controlMediaTool generates CONTROL_MEDIA actions for pause, resume, stop', async () => {
+    const pauseRes = (await controlMediaTool.execute({ command: 'pause' }, mockToolContext)) as Record<string, any>;
+    expect(pauseRes.type).toBe('CONTROL_MEDIA');
+    expect(pauseRes.action).toBe('CONTROL_MEDIA');
+    expect(pauseRes.command).toBe('pause');
+    expect(pauseRes.response).toBe('Paused the music.');
+
+    const resumeRes = (await controlMediaTool.execute({ command: 'resume' }, mockToolContext)) as Record<string, any>;
+    expect(resumeRes.command).toBe('resume');
+    expect(resumeRes.response).toBe('Resuming playback.');
+
+    const stopRes = (await controlMediaTool.execute({ command: 'stop' }, mockToolContext)) as Record<string, any>;
+    expect(stopRes.command).toBe('stop');
+    expect(stopRes.response).toBe('Stopped playback.');
   });
 });

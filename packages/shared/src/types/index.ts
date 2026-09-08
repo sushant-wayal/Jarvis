@@ -459,6 +459,11 @@ export interface JarvisOpenUrlAction {
   url: string;
 }
 
+export interface JarvisControlMediaAction {
+  type: 'CONTROL_MEDIA';
+  command: 'pause' | 'resume' | 'stop' | 'next' | 'previous';
+}
+
 export type JarvisPhoneAction =
   | JarvisCallAction
   | JarvisSendSmsAction
@@ -466,7 +471,8 @@ export type JarvisPhoneAction =
   | JarvisOpenAppAction
   | JarvisOpenConversationAction
   | JarvisPlayMediaAction
-  | JarvisOpenUrlAction;
+  | JarvisOpenUrlAction
+  | JarvisControlMediaAction;
 
 /** Result of executing a JarvisPhoneAction on the mobile side */
 export interface ActionResult {

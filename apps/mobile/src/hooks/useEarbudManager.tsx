@@ -210,20 +210,30 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       }
 
       const hasPhoneAction = Boolean(response.pendingPhoneAction);
+      const actionType = (
+        ((response.pendingPhoneAction as any)?.type || (response.pendingPhoneAction as any)?.action || '') as string
+      ).toUpperCase();
+      const isPlayMedia = actionType === 'PLAY_MEDIA';
+
       const shouldContinue =
         Boolean(response.response) &&
         !response.response.includes('Understood. Goodbye') &&
         !hasPhoneAction &&
         (response as unknown as { continuousListening?: boolean }).continuousListening !== false;
 
-      // Immediately execute pending phone action so app switch / call dialer isn't delayed by speech
-      if (hasPhoneAction) {
+      // Immediately execute non-media pending phone actions so app switch / call dialer / pause isn't delayed
+      if (hasPhoneAction && !isPlayMedia) {
         void handlePendingPhoneAction(response);
       }
 
       if (response.audioBase64) {
         setJarvisState('SPEAKING');
         await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
+          // Play media cleanly AFTER Jarvis finishes speaking so voice and music do not collide
+          if (isPlayMedia) {
+            void handlePendingPhoneAction(response);
+          }
+
           if (shouldContinue) {
             await startVoiceListening();
           } else {
@@ -232,6 +242,9 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           }
         });
       } else {
+        if (isPlayMedia) {
+          void handlePendingPhoneAction(response);
+        }
         if (shouldContinue) {
           await startVoiceListening();
         } else {

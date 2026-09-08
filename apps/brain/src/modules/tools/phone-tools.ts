@@ -490,6 +490,39 @@ export const playMediaTool: JarvisTool<{
   },
 };
 
+export const controlMediaTool: JarvisTool<{
+  command: 'pause' | 'resume' | 'stop' | 'next' | 'previous';
+}> = {
+  name: 'control_media',
+  description:
+    'Pause, resume, stop, or skip background audio/music playback. Use whenever the user asks to pause ("pause the song", "pause music", "ruk jao", "hold on"), resume ("resume music", "continue playing", "play", "chalao"), stop ("stop the music", "stop song", "band karo"), or skip ("next song", "skip", "play something else", "change song").',
+  category: 'SYSTEM',
+  riskLevel: 'SAFE',
+  requiresConfirmation: false,
+  inputSchema: z.object({
+    command: z
+      .enum(['pause', 'resume', 'stop', 'next', 'previous'])
+      .describe('The playback action to perform: "pause", "resume", "stop", "next", or "previous".'),
+  }),
+  execute: async (input) => {
+    const cmd = input.command;
+    const spokenResponses: Record<typeof cmd, string> = {
+      pause: 'Paused the music.',
+      resume: 'Resuming playback.',
+      stop: 'Stopped playback.',
+      next: 'Skipping to the next track.',
+      previous: 'Returning to previous track.',
+    };
+
+    return {
+      type: 'CONTROL_MEDIA' as const,
+      action: 'CONTROL_MEDIA' as const,
+      command: cmd,
+      response: spokenResponses[cmd] || 'Understood.',
+    };
+  },
+};
+
 export const getPhoneCapabilitiesTool: JarvisTool<Record<string, never>> = {
   name: 'get_phone_capabilities',
   description:
@@ -678,6 +711,7 @@ export const phoneTools = [
   searchPhoneMessagesTool,
   openApplicationTool,
   playMediaTool,
+  controlMediaTool,
   getPhoneCapabilitiesTool,
   generateMessageBriefingTool,
   detectUnansweredMessagesTool,
