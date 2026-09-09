@@ -9,21 +9,17 @@
   "scripts": {
     "dev:brain": "npm run dev --workspace=apps/brain",
     "dev:mobile": "npm run dev --workspace=apps/mobile",
-
     "build": "npm run build:shared && npm run build:brain",
     "vercel-build": "npm run build:shared && npm run build:brain",
     "build:brain": "npm run build --workspace=apps/brain",
     "build:shared": "npm run build --workspace=packages/shared",
-
     "mobile:build:apk": "npm run build:apk --workspace=apps/mobile",
     "mobile:build:apk:prod": "npm run build:apk:prod --workspace=apps/mobile",
     "mobile:prebuild": "npm run prebuild --workspace=apps/mobile",
     "mobile:build:local": "npm run build:local:apk:win --workspace=apps/mobile",
-
     "mobile:update:preview": "npm run update:preview --workspace=apps/mobile",
     "mobile:update:prod": "npm run update:prod --workspace=apps/mobile",
-
-    "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present",
+    "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present && npx patch-package",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
@@ -31,7 +27,9 @@
   "devDependencies": {
     "typescript": "^5.6.3"
   },
-  "dependencies": {
-    "react-native-reanimated": "~4.1.1"
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3"
   }
 }

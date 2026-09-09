@@ -54,6 +54,8 @@ export type IconName =
   | 'play_arrow'
   | 'pause'
   | 'stop'
+  | 'skip_next'
+  | 'skip_previous'
   | 'music_note'
   | 'insights';
 
@@ -61,7 +63,7 @@ export interface IconProps {
   name: IconName;
   size?: number;
   color?: string;
-  style?: StyleProp<TextStyle>;
+  style?: any;
 }
 
 export function Icon({
@@ -171,6 +173,10 @@ export function Icon({
       return <MaterialIcons name="pause" size={size} color={color} style={style} />;
     case 'stop':
       return <MaterialIcons name="stop" size={size} color={color} style={style} />;
+    case 'skip_next':
+      return <MaterialIcons name="skip-next" size={size} color={color} style={style} />;
+    case 'skip_previous':
+      return <MaterialIcons name="skip-previous" size={size} color={color} style={style} />;
     case 'music_note':
       return <MaterialIcons name="music-note" size={size} color={color} style={style} />;
     default:

@@ -9,18 +9,24 @@
 
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
 import { apiClient } from './apiClient';
 import { earbudService } from './earbudService';
 
-// Configure foreground notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Configure foreground notification behavior safely
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch (err) {
+  console.warn('[ReminderScheduler] Failed to set notification handler:', err);
+}
 
 class ReminderScheduler {
   private isInitialized = false;
@@ -162,13 +168,11 @@ class ReminderScheduler {
         const spokenText = `Sir, here is your reminder: ${title}.`;
         const speech = await apiClient.synthesizeSpeech(spokenText);
         if (speech?.audioBase64) {
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: `data:audio/mp3;base64,${speech.audioBase64}` },
-            { shouldPlay: true, volume: 1.0 }
-          );
-          sound.setOnPlaybackStatusUpdate((st) => {
+          const player = createAudioPlayer({ uri: `data:audio/mp3;base64,${speech.audioBase64}` });
+          player.play();
+          (player as any).addListener('playbackStatusUpdate', (st: any) => {
             if (st.isLoaded && st.didJustFinish) {
-              sound.unloadAsync().catch(() => {});
+              try { player.remove(); } catch {}
             }
           });
         }

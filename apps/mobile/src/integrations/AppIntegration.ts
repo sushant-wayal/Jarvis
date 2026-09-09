@@ -262,26 +262,56 @@ export class AppIntegration {
     audioUrl?: string,
     title?: string,
     artist?: string,
-    artworkUrl?: string
+    artworkUrl?: string,
+    sessionId?: string,
+    queue?: Array<{
+      id: string;
+      title: string;
+      artist: string;
+      album?: string;
+      audioUrl?: string;
+      artworkUrl?: string;
+      duration?: number;
+      explanation?: string;
+    }>,
+    autoplayEnabled?: boolean
   ): Promise<ActionResult> {
     const rawApp = (appName || '').toLowerCase().trim();
     const cleanQuery = query.trim();
 
-    // ── 0. Built-in Background Earbud Audio Streaming (Zero Screen Takeover) ─────
-    // When a direct studio stream URL is resolved, stream it seamlessly in the background
-    // without opening external apps or disturbing the user's screen.
+    // ── 0. Built-in Background Earbud Audio Streaming with Autoplay Queue ─────────
     if (audioUrl) {
-      const started = await backgroundMusicPlayer.playTrack({
-        audioUrl,
-        title: title || cleanQuery,
-        artist,
-        artworkUrl,
+      const mappedQueue = (queue || [])
+        .filter((t) => Boolean(t.audioUrl))
+        .map((t) => ({
+          id: t.id,
+          audioUrl: t.audioUrl!,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          artworkUrl: t.artworkUrl,
+          duration: t.duration,
+          explanation: t.explanation,
+        }));
+
+      const started = await backgroundMusicPlayer.startSession({
+        track: {
+          audioUrl,
+          title: title || cleanQuery,
+          artist,
+          artworkUrl,
+        },
+        queue: mappedQueue,
+        sessionId,
+        autoplay: autoplayEnabled !== false,
       });
 
       if (started) {
         return {
           success: true,
-          message: `Streaming "${title || cleanQuery}" in the background.`,
+          message: `Streaming "${title || cleanQuery}" in the background${
+            autoplayEnabled !== false ? ' with autoplay' : ''
+          }.`,
         };
       }
     }
@@ -409,10 +439,18 @@ export class AppIntegration {
   }
 
   /**
-   * Control background audio playback (pause, resume, stop, skip).
+   * Control background audio playback (pause, resume, stop, skip, like, dislike, toggle autoplay).
    */
   async controlMedia(
-    command: 'pause' | 'resume' | 'stop' | 'next' | 'previous'
+    command:
+      | 'pause'
+      | 'resume'
+      | 'stop'
+      | 'next'
+      | 'previous'
+      | 'dislike'
+      | 'like'
+      | 'toggle_autoplay'
   ): Promise<ActionResult> {
     switch (command) {
       case 'pause':
@@ -425,9 +463,23 @@ export class AppIntegration {
         await backgroundMusicPlayer.stop();
         return { success: true, message: 'Stopped playback.' };
       case 'next':
+        await backgroundMusicPlayer.skip();
+        return { success: true, message: 'Skipped to next track.' };
       case 'previous':
-        await backgroundMusicPlayer.stop();
-        return { success: true, message: 'Track stopped.' };
+        await backgroundMusicPlayer.previous();
+        return { success: true, message: 'Returned to previous track.' };
+      case 'dislike':
+        await backgroundMusicPlayer.skip();
+        return { success: true, message: 'Skipped track and recorded preference.' };
+      case 'like':
+        return { success: true, message: 'Liked track.' };
+      case 'toggle_autoplay': {
+        const enabled = backgroundMusicPlayer.toggleAutoplay();
+        return {
+          success: true,
+          message: `Autoplay is now ${enabled ? 'enabled' : 'disabled'}.`,
+        };
+      }
       default:
         return { success: false, error: `Unknown media command: ${command}` };
     }

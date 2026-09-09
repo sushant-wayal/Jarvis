@@ -441,6 +441,19 @@ export interface JarvisOpenConversationAction {
   contactName?: string;
 }
 
+export interface QueuedTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  audioUrl?: string;
+  artworkUrl?: string;
+  duration?: number;
+  source?: 'catalog' | 'youtube' | 'spotify';
+  videoId?: string;
+  explanation?: string;
+}
+
 export interface JarvisPlayMediaAction {
   type: 'PLAY_MEDIA';
   query: string;
@@ -452,6 +465,9 @@ export interface JarvisPlayMediaAction {
   artworkUrl?: string;
   duration?: number;
   source?: 'catalog' | 'youtube' | 'spotify';
+  sessionId?: string;
+  queue?: QueuedTrack[];
+  autoplayEnabled?: boolean;
 }
 
 export interface JarvisOpenUrlAction {
@@ -461,7 +477,17 @@ export interface JarvisOpenUrlAction {
 
 export interface JarvisControlMediaAction {
   type: 'CONTROL_MEDIA';
-  command: 'pause' | 'resume' | 'stop' | 'next' | 'previous';
+  command:
+    | 'pause'
+    | 'resume'
+    | 'stop'
+    | 'next'
+    | 'previous'
+    | 'dislike'
+    | 'like'
+    | 'toggle_autoplay';
+  trackId?: string;
+  sessionId?: string;
 }
 
 export type JarvisPhoneAction =
@@ -595,5 +621,103 @@ export interface EarbudStatus {
   isConnected: boolean;
   lastEvent?: EarbudEventType;
   lastEventTimestamp?: number;
+}
+
+// ── Music Session & Autoplay Types ──────────────────────────────────────────
+
+export type MusicMode = 'SINGLE' | 'AUTOPLAY' | 'RADIO' | 'PLAYLIST';
+
+export type MusicSessionStatus =
+  | 'IDLE'
+  | 'STARTING'
+  | 'PLAYING'
+  | 'BUFFERING'
+  | 'GENERATING_QUEUE'
+  | 'PAUSED'
+  | 'STOPPING'
+  | 'STOPPED'
+  | 'ERROR';
+
+export type SimilarityMode = 'SEED_TRACK' | 'CURRENT_TRACK' | 'ARTIST' | 'GENRE' | 'DISCOVERY';
+
+export type ExplorationLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface MusicIntent {
+  mood?: string;
+  energy?: 'low' | 'medium' | 'high';
+  genre?: string;
+  language?: string;
+  artist?: string;
+  era?: string;
+  activity?: string;
+  similarityMode?: SimilarityMode;
+  explorationLevel?: ExplorationLevel;
+  userExplicitPreferences?: string;
+  query?: string;
+}
+
+export interface MusicContextSnapshot {
+  currentTime?: string;
+  timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
+  location?: string;
+  activity?: string;
+  relevantMemories?: string[];
+  conversationContext?: string;
+  currentConversationIntent?: string;
+  deviceContext?: string;
+}
+
+export interface MusicProfile {
+  likedTracks: string[];
+  dislikedTracks: string[];
+  dislikedArtists: string[];
+  artistAffinity: Record<string, number>;
+  genreAffinity: Record<string, number>;
+  languageAffinity: Record<string, number>;
+  skipHistory: Array<{ trackId: string; artist: string; timestamp: number; percentage: number }>;
+  completionHistory: Array<{ trackId: string; artist: string; timestamp: number }>;
+  recentlyPlayedTracks: Array<{ id: string; title: string; artist: string; timestamp: number }>;
+  explorationPreference: ExplorationLevel;
+  preferredEnergy?: 'low' | 'medium' | 'high';
+  preferredMoods?: string[];
+}
+
+export type PlaybackEventType =
+  | 'PLAY_STARTED'
+  | 'PLAYED_25_PERCENT'
+  | 'PLAYED_50_PERCENT'
+  | 'PLAYED_75_PERCENT'
+  | 'PLAY_COMPLETED'
+  | 'SKIPPED'
+  | 'REPLAYED'
+  | 'FAILED';
+
+export interface PlaybackEvent {
+  sessionId: string;
+  trackId: string;
+  title: string;
+  artist: string;
+  genre?: string;
+  language?: string;
+  eventType: PlaybackEventType;
+  timestamp: number;
+  durationPlayed?: number;
+  percentagePlayed?: number;
+}
+
+export interface MusicSession {
+  sessionId: string;
+  userId: string;
+  mode: MusicMode;
+  status: MusicSessionStatus;
+  currentTrack: QueuedTrack | null;
+  queue: QueuedTrack[];
+  playbackHistory: QueuedTrack[];
+  seedTrack?: QueuedTrack;
+  musicIntent: MusicIntent;
+  autoplayEnabled: boolean;
+  contextSnapshot?: MusicContextSnapshot;
+  sessionStartedAt: number;
+  updatedAt: number;
 }
 

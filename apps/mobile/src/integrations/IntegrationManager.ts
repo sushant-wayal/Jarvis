@@ -154,6 +154,9 @@ export class IntegrationManager {
           (action as any).title,
           (action as any).artist,
           (action as any).artworkUrl,
+          (action as any).sessionId,
+          (action as any).queue,
+          (action as any).autoplayEnabled,
         );
 
       case 'OPEN_URL':

@@ -42,6 +42,11 @@ class MediaNotificationService {
           options: { opensAppToForeground: false },
         },
         {
+          identifier: 'MEDIA_NEXT',
+          buttonTitle: '⏭ Skip',
+          options: { opensAppToForeground: false },
+        },
+        {
           identifier: 'MEDIA_STOP',
           buttonTitle: '⏹ Stop',
           options: { opensAppToForeground: false, isDestructive: true },
@@ -52,6 +57,11 @@ class MediaNotificationService {
         {
           identifier: 'MEDIA_RESUME',
           buttonTitle: '▶ Play',
+          options: { opensAppToForeground: false },
+        },
+        {
+          identifier: 'MEDIA_NEXT',
+          buttonTitle: '⏭ Skip',
           options: { opensAppToForeground: false },
         },
         {
@@ -69,6 +79,8 @@ class MediaNotificationService {
             await backgroundMusicPlayer.pause();
           } else if (actionId === 'MEDIA_RESUME') {
             await backgroundMusicPlayer.resume();
+          } else if (actionId === 'MEDIA_NEXT') {
+            await backgroundMusicPlayer.skip();
           } else if (actionId === 'MEDIA_STOP') {
             await backgroundMusicPlayer.stop();
           }
@@ -97,12 +109,17 @@ class MediaNotificationService {
         return;
       }
 
+      const nextTrack = backgroundMusicPlayer.getNextTrack();
+      const nextInfo = nextTrack ? ` · Next: ${nextTrack.title}` : '';
+
       if (isPlaying) {
         await Notifications.scheduleNotificationAsync({
           identifier: MEDIA_NOTIFICATION_ID,
           content: {
             title: track.title,
-            body: track.artist ? `${track.artist} · Playing` : 'Playing in background',
+            body: track.artist
+              ? `${track.artist} · Playing${nextInfo}`
+              : `Playing in background${nextInfo}`,
             categoryIdentifier: 'MEDIA_PLAYING',
             sticky: true,
             priority: Notifications.AndroidNotificationPriority.LOW,
@@ -115,7 +132,9 @@ class MediaNotificationService {
           identifier: MEDIA_NOTIFICATION_ID,
           content: {
             title: track.title,
-            body: track.artist ? `${track.artist} · Paused` : 'Paused',
+            body: track.artist
+              ? `${track.artist} · Paused${nextInfo}`
+              : `Paused${nextInfo}`,
             categoryIdentifier: 'MEDIA_PAUSED',
             sticky: false,
             priority: Notifications.AndroidNotificationPriority.LOW,

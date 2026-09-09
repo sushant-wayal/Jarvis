@@ -1,4 +1,11 @@
-import { Audio } from 'expo-av';
+import {
+  getRecordingPermissionsAsync,
+  RecordingPresets,
+  RecordingStatus,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from 'expo-audio';
 import * as React from 'react';
 
 export interface UseVoiceRecorderReturn {
@@ -14,16 +21,16 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const [isRecording, setIsRecording] = React.useState<boolean>(false);
   const [recordingLevel, setRecordingLevel] = React.useState<number>(0);
   const [hasPermission, setHasPermission] = React.useState<boolean>(false);
-  const recordingRef = React.useRef<Audio.Recording | null>(null);
+
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY, (status: RecordingStatus) => {
+    // Status tracking if needed
+  });
 
   React.useEffect(() => {
     (async () => {
       try {
-        const { status } = await Audio.requestPermissionsAsync();
-        setHasPermission(status === 'granted');
-        // IMPORTANT: Do NOT call setAudioModeAsync here — earbudService.initialize()
-        // owns the global audio session config. Calling it here would wipe
-        // staysActiveInBackground and break carrier-based tap detection.
+        const res = await getRecordingPermissionsAsync();
+        setHasPermission(res.status === 'granted');
       } catch {
         setHasPermission(false);
       }
@@ -33,57 +40,34 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const startRecording = React.useCallback(async (): Promise<void> => {
     try {
       if (!hasPermission) {
-        const { status } = await Audio.requestPermissionsAsync();
-        if (status !== 'granted') return;
+        const res = await requestRecordingPermissionsAsync();
+        if (res.status !== 'granted') return;
         setHasPermission(true);
       }
 
-      if (recordingRef.current) {
-        await recordingRef.current.stopAndUnloadAsync();
-      }
-
-      // Keep staysActiveInBackground and shouldDuckAndroid intact so the
-      // earbudService carrier sound keeps its audio focus during recording.
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: false,
-        interruptionModeAndroid: 1, // DoNotMix
-        interruptionModeIOS: 1,     // DoNotMix
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        interruptionMode: 'doNotMix',
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (status.isRecording && status.metering !== undefined) {
-          // Normalize metering: -60 dBFS (ambient room noise) to 0 dBFS (peak speech) -> 0..1 scale
-          const norm = Math.max(0, Math.min(1, (status.metering + 60) / 60));
-          setRecordingLevel(norm);
-        }
-      });
-
-      recordingRef.current = recording;
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setIsRecording(true);
     } catch {
       setIsRecording(false);
     }
-  }, [hasPermission]);
+  }, [hasPermission, recorder]);
 
   const stopRecording = React.useCallback(async (): Promise<{ audioBase64: string; mimeType: string } | null> => {
-    if (!recordingRef.current) return null;
-
     try {
       setIsRecording(false);
       setRecordingLevel(0);
 
-      const recording = recordingRef.current;
-      recordingRef.current = null;
-      await recording.stopAndUnloadAsync();
+      await recorder.stop();
 
-      const uri = recording.getURI();
+      const uri = recorder.uri;
       if (!uri) return null;
 
       const response = await fetch(uri);
@@ -105,20 +89,17 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       setIsRecording(false);
       return null;
     }
-  }, []);
+  }, [recorder]);
 
   const cancelRecording = React.useCallback(async (): Promise<void> => {
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-      } catch {
-        // ignore cleanup error
-      }
-      recordingRef.current = null;
+    try {
+      await recorder.stop();
+    } catch {
+      // ignore cleanup error
     }
     setIsRecording(false);
     setRecordingLevel(0);
-  }, []);
+  }, [recorder]);
 
   return {
     isRecording,

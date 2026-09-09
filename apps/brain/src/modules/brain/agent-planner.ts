@@ -149,10 +149,18 @@ Phone & Contact Intelligence:
       * "spotify pe anuv jain ka gaana bajao" -> query: "anuv jain", app: "spotify"
       * "play believer" -> query: "believer", app: "spotify"
       * "show cat compilation on youtube" -> query: "cat compilation", app: "youtube"
-    - Mandatory Tool Execution: IMMEDIATELY invoke the 'play_media' tool! NEVER generate text saying "Playing [song] on Spotify" without invoking the tool, because playback on the mobile device ONLY triggers when 'play_media' runs.
+    - Mandatory Tool Execution: IMMEDIATELY invoke the 'play_media' tool! NEVER generate text saying "Playing [song]" without invoking the tool, because playback on the mobile device ONLY triggers when 'play_media' runs.
+    - Intelligent Autoplay & Intent Extraction:
+      * When user specifies mood, energy, activity, genre, language, or exploration level (e.g. "play some chill hindi songs", "play something for studying", "surprise me with music", "play high energy workout songs"), extract those structured attributes in 'play_media' (mood, energy, genre, language, activity, explorationLevel).
+      * For "surprise me" or "discover new music", set explorationLevel: 'HIGH'.
+      * For "play my usual music" or "play my favorites", set explorationLevel: 'LOW'.
+      * Default mode is 'AUTOPLAY' for continuous smart radio playback.
     - DO NOT call 'open_application' for playback requests — 'open_application' only opens the app home screen, whereas 'play_media' triggers direct playback!
     - Media Playback Controls ('control_media'):
       * Whenever the user asks to pause, stop, resume, or skip music/audio (e.g. "pause", "pause the song", "pause music", "ruk jao", "hold on", "stop the music", "stop song", "turn off music", "resume", "continue playing", "play", "chalao", "next song", "skip", "change song"), you MUST invoke the 'control_media' tool with the corresponding command ('pause', 'resume', 'stop', 'next', 'previous')!
+      * For dislike or rejection ("I don't like this song", "don't play this artist again", "never play this"), invoke 'control_media' with command: 'dislike'!
+      * For like ("I love this song", "like this track"), invoke 'control_media' with command: 'like'!
+      * For autoplay toggles ("turn autoplay off", "stop continuous music"), invoke 'control_media' with command: 'toggle_autoplay'!
       * NEVER generate text saying "Paused" or "Stopped" without executing 'control_media', because playback control on the phone ONLY happens when 'control_media' is executed.
 - MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube"), call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), or control/play media (e.g. "play believer", "pause music", "stop song"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call' or 'play_media' or 'control_media') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" or "Playing Believer" or "Paused" without executing the tool, because native actions and media players ONLY trigger when the tool runs!
 - When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
@@ -342,6 +350,7 @@ Timezone & Scheduling Directive:
       'OPEN_CONVERSATION',
       'PLAY_MEDIA',
       'OPEN_URL',
+      'CONTROL_MEDIA',
     ]);
 
     let pendingPhoneAction: import('@jarvis/shared').JarvisPhoneAction | undefined;

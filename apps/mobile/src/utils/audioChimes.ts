@@ -41,17 +41,29 @@ function createWavHeader(sampleRate: number, numChannels: number, numFrames: num
   return new Uint8Array(buffer);
 }
 
+const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
   if (typeof btoa === 'function') {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
     return btoa(binary);
   }
-  // Fallback if btoa is not defined
-  return Buffer.from(binary, 'binary').toString('base64');
+  let result = '';
+  const len = bytes.length;
+  for (let i = 0; i < len; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < len ? bytes[i + 1] : 0;
+    const b2 = i + 2 < len ? bytes[i + 2] : 0;
+    result += B64_CHARS[(b0 >> 2) & 0x3f];
+    result += B64_CHARS[((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0f)];
+    result += i + 1 < len ? B64_CHARS[((b1 & 0x0f) << 2) | ((b2 >> 6) & 0x03)] : '=';
+    result += i + 2 < len ? B64_CHARS[b2 & 0x3f] : '=';
+  }
+  return result;
 }
 
 /**

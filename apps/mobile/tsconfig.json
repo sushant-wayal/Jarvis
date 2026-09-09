@@ -15,7 +15,12 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "types": [
+      "jest",
+      "node"
+    ],
     "typeRoots": [
+      "./node_modules/@types",
       "../../node_modules/@types"
     ],
     "paths": {

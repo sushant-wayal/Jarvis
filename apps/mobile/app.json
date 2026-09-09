@@ -7,14 +7,6 @@
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "jarvis",
-    "splash": {
-      "resizeMode": "contain",
-      "backgroundColor": "#0A0D14"
-    },
-    "notification": {
-      "icon": "./assets/images/notification-icon.png",
-      "color": "#00DBE9"
-    },
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/images/icon.png",
@@ -52,7 +44,24 @@
       "expo-router",
       "expo-updates",
       "./plugins/withNotificationListener",
-      "./plugins/withAndroidEarbudService"
+      "./plugins/withAndroidEarbudService",
+      "expo-status-bar",
+      "expo-audio",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#00DBE9"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0A0D14"
+        }
+      ]
     ],
     "extra": {
       "router": {},

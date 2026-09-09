@@ -26,7 +26,7 @@ export default function RootLayout(): React.ReactElement {
     <SafeAreaProvider>
       <EarbudProvider>
         <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
-          <StatusBar style="light" backgroundColor="#131314" />
+          <StatusBar style="light" />
           <Tabs
           screenOptions={{
             headerShown: false,

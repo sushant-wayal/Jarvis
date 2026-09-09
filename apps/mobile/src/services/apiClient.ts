@@ -536,6 +536,43 @@ export class JarvisApiClient {
       return false;
     }
   }
+
+  // ── Music Session & Autoplay Endpoints ────────────────────────────────────
+
+  async replenishMusicQueue(
+    sessionId: string,
+    count = 5
+  ): Promise<import('@jarvis/shared').QueuedTrack[]> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/music/session/replenish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ sessionId, count }),
+      });
+      const json = (await res.json()) as ApiResponse<{ queue: import('@jarvis/shared').QueuedTrack[] }>;
+      return json.data?.queue || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async sendMusicPlaybackEvents(
+    events: import('@jarvis/shared').PlaybackEvent[]
+  ): Promise<boolean> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/music/session/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ events }),
+      });
+      const json = (await res.json()) as ApiResponse<{ processedCount: number }>;
+      return Boolean(json.success);
+    } catch {
+      return false;
+    }
+  }
 }
 
 export const apiClient = new JarvisApiClient();

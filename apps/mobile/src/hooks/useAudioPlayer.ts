@@ -1,4 +1,4 @@
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import { AudioPlayer, createAudioPlayer, AudioStatus } from 'expo-audio';
 import * as React from 'react';
 
 export interface UseAudioPlayerReturn {
@@ -13,23 +13,18 @@ export interface UseAudioPlayerReturn {
 
 export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
-  const soundRef = React.useRef<Audio.Sound | null>(null);
+  const playerRef = React.useRef<AudioPlayer | null>(null);
   const onFinishedRef = React.useRef<(() => void) | null>(null);
 
-  // NOTE: Audio session config is intentionally NOT set here.
-  // earbudService.initialize() is the single owner of Audio.setAudioModeAsync
-  // to prevent multiple modules from overwriting each other's settings.
-  // This avoids conflicts with the carrier-sound tap detection mechanism.
-
   const stopAudio = React.useCallback(async (triggerCallback = false): Promise<void> => {
-    if (soundRef.current) {
+    if (playerRef.current) {
       try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
+        playerRef.current.pause();
+        playerRef.current.remove();
       } catch {
         // Safe catch for already unloaded sound
       }
-      soundRef.current = null;
+      playerRef.current = null;
     }
     setIsPlaying(false);
     if (triggerCallback && onFinishedRef.current) {
@@ -60,23 +55,18 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
 
       try {
         const uri = `data:${mimeType};base64,${base64Data}`;
-        const { sound, status } = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: true, progressUpdateIntervalMillis: 100 }
-        );
-
-        soundRef.current = sound;
+        const player = createAudioPlayer({ uri });
+        playerRef.current = player;
         setIsPlaying(true);
+        player.play();
 
-        const durationMillis = (status.isLoaded && status.durationMillis) || 3000;
         let finishedHandled = false;
-
         const invokeFinished = () => {
           if (finishedHandled) return;
           finishedHandled = true;
           setIsPlaying(false);
-          sound.unloadAsync().catch(() => {});
-          soundRef.current = null;
+          try { player.remove(); } catch {}
+          playerRef.current = null;
           if (onFinishedRef.current) {
             const cb = onFinishedRef.current;
             onFinishedRef.current = null;
@@ -87,9 +77,9 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         // Safety fallback: if status update missed didJustFinish tick
         const safetyTimer = setTimeout(() => {
           invokeFinished();
-        }, durationMillis + 800);
+        }, 15000);
 
-        sound.setOnPlaybackStatusUpdate((playbackStatus: AVPlaybackStatus) => {
+        (player as any).addListener('playbackStatusUpdate', (playbackStatus: AudioStatus) => {
           if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
             clearTimeout(safetyTimer);
             invokeFinished();

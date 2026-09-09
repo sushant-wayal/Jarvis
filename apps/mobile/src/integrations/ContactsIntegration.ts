@@ -11,8 +11,8 @@ import { STORAGE_KEYS } from './constants';
 
 export type ContactAliasMap = Record<string, string>; // alias → real name / phone
 
-function normalizeContact(raw: Contacts.Contact): ResolvedContact {
-  const contactId = (raw as { id?: string }).id ?? String(Math.random());
+function normalizeContact(raw: Contacts.ExistingContact): ResolvedContact {
+  const contactId = raw.id ?? String(Math.random());
   return {
     id: contactId,
     name: raw.name ?? '',

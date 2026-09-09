@@ -17,11 +17,19 @@ export function MiniPlayer(): React.ReactElement | null {
   const [isPlaying, setIsPlaying] = React.useState<boolean>(
     backgroundMusicPlayer.isPlaying()
   );
+  const [autoplayEnabled, setAutoplayEnabled] = React.useState<boolean>(
+    backgroundMusicPlayer.isAutoplayEnabled()
+  );
+  const [nextTrack, setNextTrack] = React.useState<TrackMetadata | null>(
+    backgroundMusicPlayer.getNextTrack()
+  );
 
   React.useEffect(() => {
     const unsubscribe = backgroundMusicPlayer.subscribe((playing, track) => {
       setIsPlaying(playing);
       setCurrentTrack(track);
+      setAutoplayEnabled(backgroundMusicPlayer.isAutoplayEnabled());
+      setNextTrack(backgroundMusicPlayer.getNextTrack());
     });
     return unsubscribe;
   }, []);
@@ -36,6 +44,15 @@ export function MiniPlayer(): React.ReactElement | null {
     } else {
       await backgroundMusicPlayer.resume();
     }
+  };
+
+  const handleSkip = async (): Promise<void> => {
+    await backgroundMusicPlayer.skip();
+  };
+
+  const handleToggleAutoplay = (): void => {
+    const next = backgroundMusicPlayer.toggleAutoplay();
+    setAutoplayEnabled(next);
   };
 
   const handleStop = async (): Promise<void> => {
@@ -60,13 +77,21 @@ export function MiniPlayer(): React.ReactElement | null {
           )}
         </View>
 
-        {/* Track Title & Artist */}
+        {/* Track Title & Artist & Upcoming track */}
         <View style={styles.infoContainer}>
-          <Text style={styles.title} numberOfLines={1}>
-            {currentTrack.title}
-          </Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.title} numberOfLines={1}>
+              {currentTrack.title}
+            </Text>
+            {autoplayEnabled && (
+              <TouchableOpacity onPress={handleToggleAutoplay} style={styles.autoplayBadge}>
+                <Text style={styles.autoplayText}>AUTOPLAY</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <Text style={styles.artist} numberOfLines={1}>
             {currentTrack.artist || 'Background Audio'}
+            {nextTrack ? ` · Up next: ${nextTrack.title}` : ''}
           </Text>
         </View>
 
@@ -86,12 +111,21 @@ export function MiniPlayer(): React.ReactElement | null {
           </TouchableOpacity>
 
           <TouchableOpacity
+            onPress={handleSkip}
+            style={styles.skipButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Skip to next track"
+          >
+            <Icon name="skip_next" size={20} color={colors.onSurface} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
             onPress={handleStop}
             style={styles.stopButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Stop music"
           >
-            <Icon name="close" size={18} color={colors.outline} />
+            <Icon name="close" size={16} color={colors.outline} />
           </TouchableOpacity>
         </View>
       </View>
@@ -143,11 +177,32 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     marginRight: 8,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
   title: {
     ...typography.bodyMd,
     fontSize: 14,
     color: colors.onSurface,
     fontWeight: '600',
+    flex: 1,
+  },
+  autoplayBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0, 240, 255, 0.18)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(0, 240, 255, 0.4)',
+  },
+  autoplayText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.primaryFixed,
+    letterSpacing: 0.5,
   },
   artist: {
     ...typography.bodySm,
@@ -158,21 +213,29 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   playButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: 'rgba(0, 240, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  skipButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   stopButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
   },

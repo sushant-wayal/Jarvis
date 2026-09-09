@@ -1,6 +1,6 @@
 import { EarbudEventType, EarbudSettings, EarbudStatus } from '@jarvis/shared';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import { AudioPlayer, AudioStatus, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 import {
   ERROR_CHIME_BASE64,
@@ -31,8 +31,8 @@ const hasNativeModule = Boolean(JarvisEarbudModule);
 
 class EarbudService {
   private listeners: Set<EarbudListener> = new Set();
-  private carrierSound: Audio.Sound | null = null;
-  private chimeSound: Audio.Sound | null = null;
+  private carrierSound: AudioPlayer | null = null;
+  private chimeSound: AudioPlayer | null = null;
   private nativeEventSubscription: ReturnType<NativeEventEmitter['addListener']> | null = null;
   private isStandbyRunning = false;
   private lastTapTimestamp = 0;
@@ -108,13 +108,11 @@ class EarbudService {
 
     // Set up audio mode — single source of truth for the entire app
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: false,
-        interruptionModeAndroid: 1, // DoNotMix
-        interruptionModeIOS: 1,     // DoNotMix
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
+        interruptionMode: 'doNotMix',
       });
     } catch {
       // Audio mode fallback — non-fatal
@@ -210,16 +208,16 @@ class EarbudService {
     try {
       this.isInternalPause = true;
       if (this.carrierSound) {
-        await this.carrierSound.unloadAsync().catch(() => {});
+        try { this.carrierSound.remove(); } catch {}
         this.carrierSound = null;
       }
 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/wav;base64,${SILENT_CARRIER_BASE64}` },
-        { isLooping: true, volume: 0.01, shouldPlay: true }
-      );
+      const player = createAudioPlayer({ uri: `data:audio/wav;base64,${SILENT_CARRIER_BASE64}` });
+      player.loop = true;
+      player.volume = 0.01;
+      player.play();
 
-      this.carrierSound = sound;
+      this.carrierSound = player;
       this.isStandbyRunning = true;
       this.status.isStandbyActive = true;
       this.wasPlayingBefore = true;
@@ -229,27 +227,26 @@ class EarbudService {
         this.isInternalPause = false;
       }, 500);
 
-      sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
+      (player as any).addListener('playbackStatusUpdate', (status: AudioStatus) => {
         if (!status.isLoaded) return;
 
         if (this.isStandbyRunning && !this.isInternalPause) {
-          if (this.wasPlayingBefore && !status.isPlaying) {
+          if (this.wasPlayingBefore && !status.playing) {
             const now = Date.now();
             if (now - this.lastTapTimestamp > 500) {
               this.handleRawMediaButton('PLAY_PAUSE');
             }
             // Re-prime carrier with isInternalPause guard to prevent self-triggering
             this.isInternalPause = true;
-            sound.playAsync().catch(() => {}).finally(() => {
-              setTimeout(() => {
-                this.isInternalPause = false;
-                this.wasPlayingBefore = true;
-              }, 300);
-            });
+            player.play();
+            setTimeout(() => {
+              this.isInternalPause = false;
+              this.wasPlayingBefore = true;
+            }, 300);
             return;
           }
         }
-        this.wasPlayingBefore = status.isPlaying;
+        this.wasPlayingBefore = status.playing;
       });
     } catch (err) {
       console.warn('[EarbudService] Carrier standby failed:', err);
@@ -263,8 +260,8 @@ class EarbudService {
     this.isInternalPause = true;
     if (this.carrierSound) {
       try {
-        await this.carrierSound.stopAsync();
-        await this.carrierSound.unloadAsync();
+        this.carrierSound.pause();
+        this.carrierSound.remove();
       } catch {
         // ignore
       }
@@ -334,7 +331,7 @@ class EarbudService {
     // Guard: suppress carrier tap detection while chime is playing
     this.isInternalPause = true;
 
-    return new Promise<void>(async (resolve) => {
+    return new Promise<void>((resolve) => {
       let resolved = false;
       const done = () => {
         if (!resolved) {
@@ -349,20 +346,19 @@ class EarbudService {
 
       try {
         if (this.chimeSound) {
-          await this.chimeSound.unloadAsync().catch(() => {});
+          try { this.chimeSound.remove(); } catch {}
           this.chimeSound = null;
         }
 
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: `data:audio/wav;base64,${base64Wav}` },
-          { shouldPlay: true, volume }
-        );
+        const player = createAudioPlayer({ uri: `data:audio/wav;base64,${base64Wav}` });
+        player.volume = volume;
+        player.play();
+        this.chimeSound = player;
 
-        this.chimeSound = sound;
-        sound.setOnPlaybackStatusUpdate((status) => {
+        (player as any).addListener('playbackStatusUpdate', (status: AudioStatus) => {
           if (status.isLoaded && status.didJustFinish) {
             clearTimeout(timeout);
-            sound.unloadAsync().catch(() => {});
+            try { player.remove(); } catch {}
             this.chimeSound = null;
             setTimeout(done, 80);
           }

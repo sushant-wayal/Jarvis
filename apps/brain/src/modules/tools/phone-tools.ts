@@ -421,10 +421,18 @@ export const playMediaTool: JarvisTool<{
   query: string;
   app?: 'spotify' | 'youtube' | 'youtube_music';
   videoId?: string;
+  mode?: 'SINGLE' | 'AUTOPLAY' | 'RADIO' | 'PLAYLIST';
+  mood?: string;
+  energy?: 'low' | 'medium' | 'high';
+  genre?: string;
+  language?: string;
+  artist?: string;
+  activity?: string;
+  explorationLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
 }> = {
   name: 'play_media',
   description:
-    'Play a song, artist, playlist, track, or video directly. Streams high-quality studio audio directly in the background into the user\'s earbuds without interrupting their active screen. Use whenever the user asks to play, stream, or listen to music, songs, artists, or watch videos in any phrasing (e.g. "play tum mere ho by anuv jain", "play believer", "put on viva la vida", "play anuv jain").',
+    'Play a song, artist, playlist, track, mood, or continuous personal radio directly. Streams high-quality studio audio in the background with intelligent autoplay and recommendation queue. Use whenever the user asks to play, stream, or listen to music, songs, artists, moods, or continuous radio in any phrasing (e.g. "play blinding lights", "play some chill hindi music", "play something for studying", "surprise me with music", "keep playing music").',
   category: 'SYSTEM',
   riskLevel: 'SAFE',
   requiresConfirmation: false,
@@ -432,7 +440,7 @@ export const playMediaTool: JarvisTool<{
     query: z
       .string()
       .describe(
-        'The pure, clean search query: song title, artist, album, playlist, or video title to play. Extract ONLY the media title or artist name from the user\'s natural language request—DO NOT include platform names ("Spotify", "YouTube"), commanding verbs ("play", "stream", "put on", "chalao", "bajao", "lagao"), or prepositions ("on", "in", "via", "pe"). For example: for "on spotify play tum mere ho by anuv jain" or "spotify pe tum mere ho bajao", query must be "tum mere ho by anuv jain" or "tum mere ho".'
+        'The pure, clean search query: song title, artist, album, playlist, mood, or video title to play. Extract ONLY the media title, artist name, or mood/genre from the user\'s natural language request—DO NOT include platform names ("Spotify", "YouTube"), commanding verbs ("play", "stream", "put on", "chalao", "bajao", "lagao"), or prepositions ("on", "in", "via", "pe"). For example: for "on spotify play tum mere ho by anuv jain", query is "tum mere ho by anuv jain"; for "play chill lofi", query is "chill lofi".'
       ),
     app: z
       .enum(['spotify', 'youtube', 'youtube_music'])
@@ -441,8 +449,16 @@ export const playMediaTool: JarvisTool<{
         'Optional platform preference if explicitly requested by the user. If unspecified, defaults automatically.'
       ),
     videoId: z.string().optional().describe('YouTube video ID if resolved, e.g. "dQw4w9WgXcQ".'),
+    mode: z.enum(['SINGLE', 'AUTOPLAY', 'RADIO', 'PLAYLIST']).optional().default('AUTOPLAY'),
+    mood: z.string().optional().describe('Extracted mood, e.g. "chill", "happy", "focused", "romantic".'),
+    energy: z.enum(['low', 'medium', 'high']).optional().describe('Energy level: low, medium, or high.'),
+    genre: z.string().optional().describe('Music genre: pop, rock, lofi, classical, edm, hiphop, etc.'),
+    language: z.string().optional().describe('Language: Hindi, English, Punjabi, etc.'),
+    artist: z.string().optional().describe('Specific artist requested, e.g. "The Weeknd", "Arijit Singh".'),
+    activity: z.string().optional().describe('Activity context: "studying", "working", "workout", "relaxing", "sleeping".'),
+    explorationLevel: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().describe('Exploration level: "HIGH" for "surprise me", "LOW" for "play my usual music".'),
   }),
-  execute: async (input) => {
+  execute: async (input, context) => {
     const cleanQuery = input.query.trim();
     const isYtExplicit = Boolean(
       input.app === 'youtube' ||
@@ -451,16 +467,59 @@ export const playMediaTool: JarvisTool<{
     );
     const rawApp = input.app || (isYtExplicit ? 'youtube' : 'spotify');
 
-    // 1. Resolve direct background audio track (Tier 1: JioSaavn Catalog -> Tier 2: YouTube)
+    const { musicSessionManager } = await import('../music/music-session-manager');
     const { resolveMusicTrack } = await import('../media/music-resolver');
-    const track = await resolveMusicTrack(cleanQuery);
 
+    // 1. Create or update intelligent MusicSession with autoplay & recommendation queue
+    const session = await musicSessionManager.createSession({
+      userId: context.userId,
+      query: cleanQuery,
+      mode: input.mode || 'AUTOPLAY',
+      intent: {
+        query: cleanQuery,
+        mood: input.mood,
+        energy: input.energy,
+        genre: input.genre,
+        language: input.language,
+        artist: input.artist,
+        activity: input.activity,
+        explorationLevel: input.explorationLevel,
+      },
+      conversationId: context.conversationId,
+      timezone: context.timezone,
+    });
+
+    const activeTrack = session.currentTrack;
+
+    if (activeTrack && activeTrack.audioUrl) {
+      return {
+        type: 'PLAY_MEDIA' as const,
+        action: 'PLAY_MEDIA' as const,
+        query: cleanQuery,
+        app: rawApp,
+        sessionId: session.sessionId,
+        audioUrl: activeTrack.audioUrl,
+        title: activeTrack.title || cleanQuery,
+        artist: activeTrack.artist || '',
+        artworkUrl: activeTrack.artworkUrl,
+        duration: activeTrack.duration,
+        source: activeTrack.source,
+        videoId: activeTrack.videoId,
+        queue: session.queue,
+        autoplayEnabled: session.autoplayEnabled,
+        response: `Playing "${activeTrack.title || cleanQuery}" by ${activeTrack.artist || 'the artist'} in the background with autoplay enabled.`,
+      };
+    }
+
+    // 2. Direct fallback resolution if session resolution missed
+    const track = await resolveMusicTrack(cleanQuery);
     if (track.audioUrl) {
       return {
         type: 'PLAY_MEDIA' as const,
         action: 'PLAY_MEDIA' as const,
         query: cleanQuery,
         app: rawApp,
+        sessionId: session.sessionId,
         audioUrl: track.audioUrl,
         title: track.title || cleanQuery,
         artist: track.artist || '',
@@ -468,11 +527,13 @@ export const playMediaTool: JarvisTool<{
         duration: track.duration,
         source: track.source,
         videoId: track.videoId,
+        queue: session.queue,
+        autoplayEnabled: session.autoplayEnabled,
         response: `Playing "${track.title || cleanQuery}" by ${track.artist || 'the artist'} in the background.`,
       };
     }
 
-    // 2. Fallback: YouTube video ID resolution if audio stream was unavailable
+    // 3. Fallback: YouTube video ID resolution
     let resolvedVideoId = input.videoId || track.videoId;
     if (!resolvedVideoId) {
       resolvedVideoId = await resolveYouTubeVideoId(cleanQuery);
@@ -483,41 +544,113 @@ export const playMediaTool: JarvisTool<{
       action: 'PLAY_MEDIA' as const,
       query: cleanQuery,
       app: rawApp,
+      sessionId: session.sessionId,
       videoId: resolvedVideoId,
       source: 'youtube',
+      queue: session.queue,
+      autoplayEnabled: session.autoplayEnabled,
       response: `Playing "${cleanQuery}".`,
     };
   },
 };
 
 export const controlMediaTool: JarvisTool<{
-  command: 'pause' | 'resume' | 'stop' | 'next' | 'previous';
+  command:
+    | 'pause'
+    | 'resume'
+    | 'stop'
+    | 'next'
+    | 'previous'
+    | 'dislike'
+    | 'like'
+    | 'toggle_autoplay';
+  trackId?: string;
+  sessionId?: string;
 }> = {
   name: 'control_media',
   description:
-    'Pause, resume, stop, or skip background audio/music playback. Use whenever the user asks to pause ("pause the song", "pause music", "ruk jao", "hold on"), resume ("resume music", "continue playing", "play", "chalao"), stop ("stop the music", "stop song", "band karo"), or skip ("next song", "skip", "play something else", "change song").',
+    'Pause, resume, stop, skip, like, dislike, or toggle autoplay for background music playback. Use whenever the user asks to pause ("pause the song", "pause music", "ruk jao"), resume ("resume music", "continue playing", "play"), stop ("stop the music", "band karo"), skip ("next song", "skip", "play something else"), dislike ("don\'t play this song again", "I don\'t like this artist"), like ("I like this song"), or toggle autoplay ("turn autoplay off", "stop autoplay").',
   category: 'SYSTEM',
   riskLevel: 'SAFE',
   requiresConfirmation: false,
   inputSchema: z.object({
     command: z
-      .enum(['pause', 'resume', 'stop', 'next', 'previous'])
-      .describe('The playback action to perform: "pause", "resume", "stop", "next", or "previous".'),
+      .enum([
+        'pause',
+        'resume',
+        'stop',
+        'next',
+        'previous',
+        'dislike',
+        'like',
+        'toggle_autoplay',
+      ])
+      .describe('The playback action to perform.'),
+    trackId: z.string().optional().describe('Optional track ID to like or dislike.'),
+    sessionId: z.string().optional().describe('Optional music session ID.'),
   }),
-  execute: async (input) => {
+  execute: async (input, context) => {
     const cmd = input.command;
-    const spokenResponses: Record<typeof cmd, string> = {
+    const { musicSessionManager } = await import('../music/music-session-manager');
+    const { musicProfileService } = await import('../music/music-profile-service');
+
+    const activeSession = input.sessionId
+      ? musicSessionManager.getSession(input.sessionId)
+      : musicSessionManager.getActiveSessionForUser(context.userId);
+
+    const currentTrack = activeSession?.currentTrack;
+
+    if (cmd === 'dislike') {
+      if (currentTrack) {
+        await musicProfileService.dislike(context.userId, {
+          trackTitle: currentTrack.title,
+          artist: currentTrack.artist,
+        });
+      }
+      if (activeSession) {
+        await musicSessionManager.advanceTrack(activeSession.sessionId);
+      }
+      return {
+        type: 'CONTROL_MEDIA' as const,
+        action: 'CONTROL_MEDIA' as const,
+        command: 'next' as const,
+        response: "I've skipped this track and noted your preference. I won't play it again.",
+      };
+    }
+
+    if (cmd === 'like') {
+      if (currentTrack) {
+        await musicProfileService.like(context.userId, {
+          trackTitle: currentTrack.title,
+          artist: currentTrack.artist,
+        });
+      }
+      return {
+        type: 'CONTROL_MEDIA' as const,
+        action: 'CONTROL_MEDIA' as const,
+        command: 'resume' as const,
+        response: 'Added this track to your music preferences.',
+      };
+    }
+
+    if (cmd === 'stop' && activeSession) {
+      musicSessionManager.stopSession(activeSession.sessionId);
+    }
+
+    const spokenResponses: Record<string, string> = {
       pause: 'Paused the music.',
       resume: 'Resuming playback.',
       stop: 'Stopped playback.',
       next: 'Skipping to the next track.',
       previous: 'Returning to previous track.',
+      toggle_autoplay: 'Updated autoplay preference.',
     };
 
     return {
       type: 'CONTROL_MEDIA' as const,
       action: 'CONTROL_MEDIA' as const,
       command: cmd,
+      sessionId: activeSession?.sessionId,
       response: spokenResponses[cmd] || 'Understood.',
     };
   },
