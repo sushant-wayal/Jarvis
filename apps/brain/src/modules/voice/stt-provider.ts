@@ -62,10 +62,30 @@ export function sanitizeTranscript(raw: string): string {
 }
 
 export class GeminiSpeechToTextProvider implements SpeechToTextProvider {
-  private fallbackModels = [DEFAULT_MODEL, ...FAST_FALLBACK_MODELS];
+  // Fast, high-quota models prioritized for sub-500ms voice transcription
+  private fallbackModels = [
+    'gemini-3.1-flash-lite-preview',
+    'gemini-flash-lite-latest',
+    'gemini-3.6-flash',
+    DEFAULT_MODEL,
+    ...FAST_FALLBACK_MODELS,
+  ];
 
-  async transcribe(audioBuffer: Buffer, mimeType = 'audio/mp3'): Promise<TranscriptionResult> {
+  async transcribe(audioBuffer: Buffer, mimeType = 'audio/mp4'): Promise<TranscriptionResult> {
+    if (!audioBuffer || audioBuffer.length < 200) {
+      logger.info('Voice audio payload too short or empty; skipping model inference', {
+        bytes: audioBuffer?.length || 0,
+      });
+      return { transcript: '' };
+    }
+
     const base64Data = audioBuffer.toString('base64');
+    // Normalize MIME type: Gemini expects audio/mp4 for MPEG-4 AAC (.m4a) audio files
+    const normalizedMime =
+      mimeType === 'audio/m4a' || mimeType === 'audio/x-m4a'
+        ? 'audio/mp4'
+        : mimeType;
+
     const uniqueModels = Array.from(new Set(this.fallbackModels));
 
     for (const model of uniqueModels) {
@@ -78,7 +98,7 @@ export class GeminiSpeechToTextProvider implements SpeechToTextProvider {
               parts: [
                 {
                   inlineData: {
-                    mimeType,
+                    mimeType: normalizedMime,
                     data: base64Data,
                   },
                 },

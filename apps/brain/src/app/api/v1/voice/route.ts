@@ -27,6 +27,23 @@ export async function POST(req: NextRequest) {
 
     // 1. Transcribe voice audio
     const audioBuffer = Buffer.from(audioBase64, 'base64');
+    if (audioBuffer.length < 200) {
+      logger.info('Voice STT payload too short to contain audio frames; terminating turn cleanly', {
+        bytes: audioBuffer.length,
+      });
+      return successResponse(
+        {
+          transcript: '',
+          response: '',
+          audioBase64: '',
+          conversationId: conversationId || '',
+          requestId,
+          shouldSpeak: false,
+          continuousListening: false,
+        },
+        requestId
+      );
+    }
     const { transcript } = await sttProvider.transcribe(audioBuffer, mimeType);
 
     if (!transcript || transcript.trim().length === 0) {

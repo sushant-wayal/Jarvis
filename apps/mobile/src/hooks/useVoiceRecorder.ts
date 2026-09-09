@@ -7,6 +7,7 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
 } from 'expo-audio';
+import { File } from 'expo-file-system';
 import * as React from 'react';
 
 export interface UseVoiceRecorderReturn {
@@ -112,25 +113,45 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         return null;
       }
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      const file = new File(uri);
+      let base64 = '';
 
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const resStr = reader.result as string;
-          const base64 = resStr.split(',')[1] || '';
-          resolve({
-            audioBase64: base64,
-            mimeType: 'audio/m4a',
+      try {
+        if (file.exists) {
+          base64 = await file.base64();
+        }
+      } catch (fileErr) {
+        console.warn('[VoiceRecorder] File.base64 read failed, trying fetch fallback:', fileErr);
+      }
+
+      // Secondary fallback for web or environments where File.base64() isn't available
+      if (!base64) {
+        try {
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const resStr = reader.result as string;
+              resolve(resStr.split(',')[1] || '');
+            };
+            reader.onerror = () => resolve('');
+            reader.readAsDataURL(blob);
           });
-        };
-        reader.onerror = (e) => {
-          console.error('[VoiceRecorder] FileReader error:', e);
-          resolve(null);
-        };
-        reader.readAsDataURL(blob);
-      });
+        } catch (fetchErr) {
+          console.error('[VoiceRecorder] Fetch fallback failed:', fetchErr);
+        }
+      }
+
+      if (!base64 || base64.length < 50) {
+        console.warn('[VoiceRecorder] Audio recording empty or too short:', base64.length);
+        return null;
+      }
+
+      return {
+        audioBase64: base64,
+        mimeType: 'audio/mp4',
+      };
     } catch (err) {
       console.error('[VoiceRecorder] stopRecording error:', err);
       setIsRecording(false);
