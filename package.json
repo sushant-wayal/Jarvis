@@ -19,7 +19,7 @@
     "mobile:build:local": "npm run build:local:apk:win --workspace=apps/mobile",
     "mobile:update:preview": "npm run update:preview --workspace=apps/mobile",
     "mobile:update:prod": "npm run update:prod --workspace=apps/mobile",
-    "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present && npx patch-package",
+    "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present && node scripts/postinstall.js",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
