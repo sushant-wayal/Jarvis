@@ -1,4 +1,4 @@
-import { QueuedTrack, RankedCandidate } from './music-types';
+import { QueuedTrack, RankedCandidate, normalizeSongTitle } from './music-types';
 
 export interface DiversityOptions {
   maxSameArtistStreak: number;
@@ -37,7 +37,7 @@ export class DiversityController {
 
     const selected: RankedCandidate[] = [];
     const recentIds = new Set(recentTracks.slice(-minDistance).map((t) => t.id));
-    const recentTitles = new Set(recentTracks.slice(-minDistance).map((t) => t.title.toLowerCase()));
+    const recentTitles = new Set(recentTracks.slice(-minDistance).map((t) => normalizeSongTitle(t.title)));
 
     // Track active artist streak starting from the end of recentTracks
     let currentStreakArtist = '';
@@ -59,11 +59,11 @@ export class DiversityController {
       if (selected.length >= count) break;
 
       const track = candidate.track;
-      const titleKey = track.title.toLowerCase();
+      const titleKey = normalizeSongTitle(track.title);
       const artistKey = track.artist.toLowerCase();
 
-      // Avoid exact repetition within distance
-      if (recentIds.has(track.id) || recentTitles.has(titleKey)) {
+      // Avoid duplicate song or repetition within recent window
+      if (!titleKey || recentIds.has(track.id) || recentTitles.has(titleKey)) {
         continue;
       }
 
@@ -86,14 +86,17 @@ export class DiversityController {
     }
 
     // Fallback: If constraints were too strict and left us with fewer tracks than requested,
-    // fill remainder from top ranked candidates that aren't exact duplicates
+    // fill remainder from top ranked candidates that aren't exact or title duplicates
     if (selected.length < count) {
       const selectedIds = new Set(selected.map((c) => c.track.id));
+      const selectedTitles = new Set(selected.map((c) => normalizeSongTitle(c.track.title)));
       for (const candidate of ranked) {
         if (selected.length >= count) break;
-        if (!selectedIds.has(candidate.track.id)) {
+        const norm = normalizeSongTitle(candidate.track.title);
+        if (!selectedIds.has(candidate.track.id) && !selectedTitles.has(norm) && !recentTitles.has(norm)) {
           selected.push(candidate);
           selectedIds.add(candidate.track.id);
+          selectedTitles.add(norm);
         }
       }
     }

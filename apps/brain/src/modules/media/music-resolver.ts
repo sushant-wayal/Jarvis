@@ -275,38 +275,84 @@ async function resolveFromJioSaavn(query: string): Promise<ResolvedTrack | null>
       return null;
     }
 
-    const first = songs[0];
-    const songId = first.id;
-    if (!songId) return null;
+    const queryLower = query.toLowerCase();
+    const wantsMix =
+      queryLower.includes('mix') ||
+      queryLower.includes('remix') ||
+      queryLower.includes('lofi') ||
+      queryLower.includes('mashup');
 
-    const detailsUrl = `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${songId}&_format=json&_marker=0&api_version=4&ctx=web6dot0`;
-    const detailsRes = await fetchJson(detailsUrl, 3500);
+    // Score candidates: prioritize exact titles and original releases over compilations/mixes
+    const scoredSongs = songs.map((s) => {
+      let score = 0;
+      const titleLower = (s.title || '').toLowerCase();
+      const descLower = (s.description || '').toLowerCase();
 
-    const songObj = detailsRes?.songs?.[0] || detailsRes?.[songId];
-    if (!songObj) return null;
+      // Title matching
+      if (titleLower === queryLower) {
+        score += 20;
+      } else if (titleLower.startsWith(queryLower) || queryLower.startsWith(titleLower)) {
+        score += 12;
+      } else if (titleLower.includes(queryLower) || queryLower.includes(titleLower)) {
+        score += 8;
+      }
 
-    const encUrl = songObj.more_info?.encrypted_media_url;
-    if (!encUrl) return null;
+      // Penalize mixes, compilations, and unofficial playlists unless requested
+      if (!wantsMix) {
+        if (descLower.includes('mix') || descLower.includes('remix') || descLower.includes('mashup')) {
+          score -= 15;
+        }
+        if (descLower.includes('hits') || descLower.includes('collection') || descLower.includes('party')) {
+          score -= 8;
+        }
+      }
 
-    const decrypted = decryptDesEcb(encUrl, '38346591');
-    if (!decrypted || !decrypted.startsWith('http')) return null;
+      // Bonus for movie/original soundtrack indicators
+      if (descLower.includes('soundtrack') || descLower.includes('original') || !descLower.includes('·')) {
+        score += 5;
+      }
 
-    // Upgrade to 320kbps high-fidelity stream if available
-    const highQualityUrl = decrypted.replace('_96.mp4', '_320.mp4').replace('_160.mp4', '_320.mp4');
+      return { song: s, score };
+    });
 
-    const cleanTitle = (songObj.title || first.title || query).replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
-    const cleanArtist = (songObj.more_info?.music || first.description || 'Unknown Artist').replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
-    const artwork = songObj.image?.replace('150x150', '500x500') || first.image;
+    scoredSongs.sort((a, b) => b.score - a.score);
 
-    return {
-      success: true,
-      title: cleanTitle,
-      artist: cleanArtist,
-      artworkUrl: artwork,
-      audioUrl: highQualityUrl,
-      duration: Number(songObj.more_info?.duration || 0),
-      source: 'catalog',
-    };
+    // Try candidates in order until valid decrypted media stream is resolved
+    for (const { song: chosenSong } of scoredSongs.slice(0, 3)) {
+      const songId = chosenSong.id;
+      if (!songId) continue;
+
+      const detailsUrl = `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${songId}&_format=json&_marker=0&api_version=4&ctx=web6dot0`;
+      const detailsRes = await fetchJson(detailsUrl, 3500);
+
+      const songObj = detailsRes?.songs?.[0] || detailsRes?.[songId];
+      if (!songObj) continue;
+
+      const encUrl = songObj.more_info?.encrypted_media_url;
+      if (!encUrl) continue;
+
+      const decrypted = decryptDesEcb(encUrl, '38346591');
+      if (!decrypted || !decrypted.startsWith('http')) continue;
+
+      // Upgrade to 320kbps high-fidelity stream if available
+      const highQualityUrl = decrypted.replace('_96.mp4', '_320.mp4').replace('_160.mp4', '_320.mp4');
+
+      const cleanTitle = (songObj.title || chosenSong.title || query).replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+      const cleanArtist = (songObj.more_info?.music || chosenSong.description || 'Unknown Artist').replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+      const artwork = songObj.image?.replace('150x150', '500x500') || chosenSong.image;
+
+      return {
+        success: true,
+        title: cleanTitle,
+        artist: cleanArtist,
+        artworkUrl: artwork,
+        audioUrl: highQualityUrl,
+        duration: Number(songObj.more_info?.duration || 0),
+        source: 'catalog',
+      };
+    }
+
+    return null;
   } catch (err) {
     logger.warn('JioSaavn resolution attempt failed', { query, err });
     return null;

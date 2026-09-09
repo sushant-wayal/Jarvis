@@ -4,7 +4,7 @@
  * All contact data stays on-device — never logged, never sent to the brain raw.
  */
 
-import * as Contacts from 'expo-contacts';
+import * as Contacts from 'expo-contacts/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ContactResolutionResult, ResolvedContact } from '@jarvis/shared';
 import { STORAGE_KEYS } from './constants';

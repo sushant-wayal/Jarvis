@@ -1,4 +1,4 @@
-import { MusicSession, QueuedTrack } from './music-types';
+import { MusicSession, QueuedTrack, normalizeSongTitle } from './music-types';
 import { autoplayEngine } from './autoplay-engine';
 import { logger } from '@/lib/logging/logger';
 
@@ -33,10 +33,34 @@ export class QueueManager {
       const existingIds = new Set([
         ...(session.currentTrack ? [session.currentTrack.id] : []),
         ...session.queue.map((t) => t.id),
-        ...session.playbackHistory.slice(-15).map((t) => t.id),
+        ...session.playbackHistory.slice(-20).map((t) => t.id),
       ]);
 
-      const distinctNew = newTracks.filter((t) => !existingIds.has(t.id));
+      const existingTitles = new Set([
+        ...(session.currentTrack ? [normalizeSongTitle(session.currentTrack.title)] : []),
+        ...session.queue.map((t) => normalizeSongTitle(t.title)),
+        ...session.playbackHistory.slice(-20).map((t) => normalizeSongTitle(t.title)),
+      ]);
+
+      const existingUrls = new Set([
+        ...(session.currentTrack?.audioUrl ? [session.currentTrack.audioUrl] : []),
+        ...session.queue.map((t) => t.audioUrl).filter(Boolean),
+        ...session.playbackHistory.slice(-20).map((t) => t.audioUrl).filter(Boolean),
+      ]);
+
+      const distinctNew: QueuedTrack[] = [];
+      for (const t of newTracks) {
+        const norm = normalizeSongTitle(t.title);
+        if (existingIds.has(t.id)) continue;
+        if (norm && existingTitles.has(norm)) continue;
+        if (t.audioUrl && existingUrls.has(t.audioUrl)) continue;
+
+        existingIds.add(t.id);
+        if (norm) existingTitles.add(norm);
+        if (t.audioUrl) existingUrls.add(t.audioUrl);
+        distinctNew.push(t);
+      }
+
       session.queue.push(...distinctNew);
       session.updatedAt = Date.now();
 

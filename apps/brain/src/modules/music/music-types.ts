@@ -123,3 +123,26 @@ export type {
   QueuedTrack,
   SimilarityMode,
 };
+
+/**
+ * Normalizes a song title to a canonical representation for deduplication.
+ * Removes parenthetical metadata like "(From ...)", "[OST ...]", "(Remix)", "(Lofi)",
+ * feature tags, punctuation, and extraneous spacing.
+ */
+export function normalizeSongTitle(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    // Remove (From ...), [From ...], (feat. ...), [feat. ...], etc.
+    .replace(/\((feat\.|with|ft\.|from|version|bonus|original|remix|lofi|unplugged|audio|official|video)[^)]*\)/gi, '')
+    .replace(/\[(feat\.|with|ft\.|from|version|bonus|original|remix|lofi|unplugged|audio|official|video)[^\]]*\]/gi, '')
+    // Remove "from <movie>" or "ost" or "soundtrack"
+    .replace(/\b(from|ost|soundtrack|single|ep)\b/gi, '')
+    // Strip remaining parentheses/brackets if any
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    // Remove special characters, keep only alphanumerics
+    .replace(/[^a-z0-9]/gi, '')
+    .trim();
+}
+

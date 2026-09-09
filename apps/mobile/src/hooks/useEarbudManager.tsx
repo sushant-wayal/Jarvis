@@ -182,8 +182,6 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       // 3. ONLY THEN switch state to PROCESSING / THINKING
       setJarvisState('PROCESSING');
-      // Resume background music while processing so there is no awkward silence
-      await backgroundMusicPlayer.resumeForProcessing();
 
       if (!audioData || !audioData.audioBase64) {
         await backgroundMusicPlayer.resumeAfterSpeaking();

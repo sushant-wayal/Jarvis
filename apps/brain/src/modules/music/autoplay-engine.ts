@@ -4,6 +4,7 @@ import {
   MusicIntent,
   MusicProfile,
   QueuedTrack,
+  normalizeSongTitle,
 } from './music-types';
 import { candidateGenerator } from './candidate-generator';
 import { recommendationRanker } from './recommendation-ranker';
@@ -12,6 +13,7 @@ import { musicProfileService } from './music-profile-service';
 import { musicContextProvider } from './context-provider';
 import { resolveMusicTrack } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
+
 
 export class AutoplayEngine {
   /**
@@ -84,9 +86,19 @@ export class AutoplayEngine {
 
     // 5. Playable URL Resolution & QueuedTrack conversion
     const queued: QueuedTrack[] = [];
+    const seenQueuedTitles = new Set<string>();
+    const seenQueuedUrls = new Set<string>();
+
+    if (currentTrack?.title) seenQueuedTitles.add(normalizeSongTitle(currentTrack.title));
+    if (currentTrack?.audioUrl) seenQueuedUrls.add(currentTrack.audioUrl);
+    if (seedTrack?.title) seenQueuedTitles.add(normalizeSongTitle(seedTrack.title));
+    if (seedTrack?.audioUrl) seenQueuedUrls.add(seedTrack.audioUrl);
 
     for (const item of selectedRanked) {
       const cand = item.track;
+      const norm = normalizeSongTitle(cand.title);
+      if (norm && seenQueuedTitles.has(norm)) continue;
+
       let finalAudioUrl = cand.audioUrl;
       let finalSource = cand.source;
       let videoId = cand.videoId;
@@ -109,8 +121,12 @@ export class AutoplayEngine {
         }
       }
 
-      // Only queue tracks that have a playable stream or video fallback
+      // Only queue tracks that have a playable stream or video fallback and aren't duplicates
       if (finalAudioUrl || videoId) {
+        if (finalAudioUrl && seenQueuedUrls.has(finalAudioUrl)) continue;
+        if (norm) seenQueuedTitles.add(norm);
+        if (finalAudioUrl) seenQueuedUrls.add(finalAudioUrl);
+
         queued.push({
           id: cand.id,
           title: cand.title,

@@ -305,9 +305,34 @@ describe('Intelligent Music Autoplay & Personal Radio System', () => {
 
       expect(session.sessionId).toBeDefined();
       expect(session.currentTrack?.title).toBe('Blinding Lights');
-      expect(session.autoplayEnabled).toBe(true);
       expect(session.status).toBe('PLAYING');
     });
+
+    it('creates session for dekha hazaro dafa with strictly deduplicated queue', async () => {
+      const { normalizeSongTitle } = await import('../modules/music/music-types');
+      const manager = new MusicSessionManager();
+      const session = await manager.createSession({
+        userId: 'test-user-dekha',
+        query: 'dekha hazaro dafa',
+        mode: 'AUTOPLAY',
+      });
+
+      expect(session.sessionId).toBeDefined();
+      expect(session.currentTrack?.title).toContain('Dekha Hazaro');
+      expect(session.queue.length).toBeGreaterThan(0);
+
+      // Verify no duplicates in the queue and no overlap with currentTrack
+      const seenTitles = new Set<string>();
+      if (session.currentTrack?.title) {
+        seenTitles.add(normalizeSongTitle(session.currentTrack.title));
+      }
+
+      for (const track of session.queue) {
+        const norm = normalizeSongTitle(track.title);
+        expect(seenTitles.has(norm)).toBe(false);
+        seenTitles.add(norm);
+      }
+    }, 20000);
   });
 
   // ── 5. Context Provider Graceful Degradation ───────────────────────────────

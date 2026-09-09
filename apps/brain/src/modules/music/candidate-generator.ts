@@ -1,8 +1,16 @@
 import https from 'https';
 import http from 'http';
-import { CandidateTrack, MusicContextSnapshot, MusicIntent, MusicProfile, QueuedTrack } from './music-types';
+import {
+  CandidateTrack,
+  MusicContextSnapshot,
+  MusicIntent,
+  MusicProfile,
+  QueuedTrack,
+  normalizeSongTitle,
+} from './music-types';
 import { decryptDesEcb } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
+
 
 function fetchJson(url: string, timeoutMs = 4000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -53,6 +61,14 @@ export class CandidateGenerator {
     const { intent, currentTrack, seedTrack, profile, context, limit = 20 } = params;
     const candidates: CandidateTrack[] = [];
     const seenIds = new Set<string>();
+    const seenTitles = new Set<string>();
+
+    if (currentTrack?.title) {
+      seenTitles.add(normalizeSongTitle(currentTrack.title));
+    }
+    if (seedTrack?.title) {
+      seenTitles.add(normalizeSongTitle(seedTrack.title));
+    }
 
     const queries: Array<{ query: string; sourceWeight: number; reason: string }> = [];
 
@@ -122,9 +138,14 @@ export class CandidateGenerator {
         const tracks: CandidateTrack[] = [];
         for (const item of results) {
           if (!item?.id || seenIds.has(item.id)) continue;
-          seenIds.add(item.id);
 
           const title = (item.song || item.title || '').replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+          const normTitle = normalizeSongTitle(title);
+          if (!normTitle || seenTitles.has(normTitle)) continue;
+
+          seenIds.add(item.id);
+          seenTitles.add(normTitle);
+
           const artist = (item.singers || item.primary_artists || item.music || 'Unknown').replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
           const artworkUrl = item.image ? item.image.replace('150x150', '500x500') : undefined;
 

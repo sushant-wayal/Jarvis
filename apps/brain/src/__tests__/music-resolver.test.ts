@@ -12,6 +12,12 @@ describe('Music Resolver & Self-Healing Media Diagnostics', () => {
     expect(track.source).toBe('catalog');
   }, 10000);
 
+  it('resolves dekha hazaro dafa', async () => {
+    const track = await resolveMusicTrack('dekha hazaro dafa');
+    console.log('TRACK RESOLVED FOR dekha hazaro dafa:', track);
+    expect(track.success).toBe(true);
+  }, 10000);
+
   it('runs diagnoseAndMaintainMediaProviders with live CDN probe and returns operational status', async () => {
     const report = await diagnoseAndMaintainMediaProviders();
     expect(report.timestamp).toBeDefined();

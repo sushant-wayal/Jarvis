@@ -19,8 +19,22 @@ export interface TrackMetadata {
   explanation?: string;
 }
 
+export function normalizeSongTitle(title: string): string {
+  if (!title) return '';
+  return title
+    .toLowerCase()
+    .replace(/\((feat\.|with|ft\.|from|version|bonus|original|remix|lofi|unplugged|audio|official|video)[^)]*\)/gi, '')
+    .replace(/\[(feat\.|with|ft\.|from|version|bonus|original|remix|lofi|unplugged|audio|official|video)[^\]]*\]/gi, '')
+    .replace(/\b(from|ost|soundtrack|single|ep)\b/gi, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/[^a-z0-9]/gi, '')
+    .trim();
+}
+
 class BackgroundMusicPlayer {
   private sound: AudioPlayer | null = null;
+  private soundSubscription: { remove: () => void } | null = null;
   private currentTrack: TrackMetadata | null = null;
   private queue: TrackMetadata[] = [];
   private playbackHistory: TrackMetadata[] = [];
@@ -64,7 +78,20 @@ class BackgroundMusicPlayer {
   }): Promise<boolean> {
     this.sessionId = params.sessionId || null;
     this.autoplayEnabled = params.autoplay !== false;
-    this.queue = params.queue ? [...params.queue] : [];
+
+    const seedTitle = normalizeSongTitle(params.track.title);
+    const seenTitles = new Set<string>([seedTitle]);
+    const seenUrls = new Set<string>([params.track.audioUrl]);
+
+    const cleanQueue: TrackMetadata[] = [];
+    for (const t of params.queue || []) {
+      const norm = normalizeSongTitle(t.title);
+      if (seenTitles.has(norm) || seenUrls.has(t.audioUrl)) continue;
+      if (norm) seenTitles.add(norm);
+      if (t.audioUrl) seenUrls.add(t.audioUrl);
+      cleanQueue.push(t);
+    }
+    this.queue = cleanQueue;
 
     return this.playTrack(params.track);
   }
@@ -81,7 +108,16 @@ class BackgroundMusicPlayer {
       this.currentPositionMillis = 0;
       this.currentDurationMillis = (track.duration || 0) * 1000;
 
-      // Stop previous track cleanly
+      // Stop previous track cleanly and remove its subscription
+      if (this.soundSubscription) {
+        try {
+          this.soundSubscription.remove();
+        } catch {
+          // Ignore removal errors
+        }
+        this.soundSubscription = null;
+      }
+
       if (this.sound) {
         try {
           this.sound.pause();
@@ -97,7 +133,7 @@ class BackgroundMusicPlayer {
 
       const player = createAudioPlayer({ uri: track.audioUrl });
       player.play();
-      (player as any).addListener('playbackStatusUpdate', this.onPlaybackStatusUpdate);
+      this.soundSubscription = (player as any).addListener('playbackStatusUpdate', this.onPlaybackStatusUpdate);
 
       this.sound = player;
       this.isCurrentlyPlaying = true;
@@ -216,6 +252,14 @@ class BackgroundMusicPlayer {
    * Stop and unload the current stream.
    */
   async stop(): Promise<void> {
+    if (this.soundSubscription) {
+      try {
+        this.soundSubscription.remove();
+      } catch {
+        // Safe catch
+      }
+      this.soundSubscription = null;
+    }
     if (this.sound) {
       try {
         this.sound.pause();
@@ -333,8 +377,27 @@ class BackgroundMusicPlayer {
       ...(this.currentTrack?.id ? [this.currentTrack.id] : []),
       ...this.queue.map((t) => t.id).filter(Boolean),
     ]);
+    const existingTitles = new Set([
+      ...(this.currentTrack ? [normalizeSongTitle(this.currentTrack.title)] : []),
+      ...this.queue.map((t) => normalizeSongTitle(t.title)),
+    ]);
+    const existingUrls = new Set([
+      ...(this.currentTrack?.audioUrl ? [this.currentTrack.audioUrl] : []),
+      ...this.queue.map((t) => t.audioUrl).filter(Boolean),
+    ]);
 
-    const fresh = tracks.filter((t) => !t.id || !existingIds.has(t.id));
+    const fresh: TrackMetadata[] = [];
+    for (const t of tracks) {
+      const norm = normalizeSongTitle(t.title);
+      if (t.id && existingIds.has(t.id)) continue;
+      if (norm && existingTitles.has(norm)) continue;
+      if (t.audioUrl && existingUrls.has(t.audioUrl)) continue;
+
+      if (t.id) existingIds.add(t.id);
+      if (norm) existingTitles.add(norm);
+      if (t.audioUrl) existingUrls.add(t.audioUrl);
+      fresh.push(t);
+    }
     this.queue.push(...fresh);
   }
 
@@ -356,8 +419,14 @@ class BackgroundMusicPlayer {
   }
 
   private onPlaybackStatusUpdate = (status: AudioStatus): void => {
+    // Reject updates from previous, dead, or mismatching audio player instances
+    if (this.sound && status.id && (this.sound as any).id && status.id !== (this.sound as any).id) {
+      return;
+    }
+
     if (!status.isLoaded) {
       if (status.error) {
+        console.warn('Playback status error reported:', status.error);
         void this.next();
       }
       return;
