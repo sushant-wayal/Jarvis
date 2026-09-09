@@ -8,3 +8,4 @@ export * from './diversity-controller';
 export * from './autoplay-engine';
 export * from './queue-manager';
 export * from './music-session-manager';
+export * from './music-intent-expander';

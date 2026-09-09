@@ -8,8 +8,25 @@ import {
   QueuedTrack,
   normalizeSongTitle,
 } from './music-types';
+import { expandMusicIntent } from './music-intent-expander';
 import { decryptDesEcb } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
+
+function getTimeOfDayMusicalQuery(timeOfDay: string, language?: string): string {
+  const langPrefix = language ? `${language} ` : '';
+  switch (timeOfDay.toLowerCase()) {
+    case 'morning':
+      return `${langPrefix}morning acoustic chill`;
+    case 'afternoon':
+      return `${langPrefix}afternoon chill vibes`;
+    case 'evening':
+      return `${langPrefix}evening acoustic sunset`;
+    case 'night':
+      return `${langPrefix}late night chill lofi`;
+    default:
+      return `${langPrefix}trending acoustic hits`;
+  }
+}
 
 
 function fetchJson(url: string, timeoutMs = 4000): Promise<any> {
@@ -72,56 +89,68 @@ export class CandidateGenerator {
 
     const queries: Array<{ query: string; sourceWeight: number; reason: string }> = [];
 
-    // 1. Current / Seed Artist source
-    const effectiveArtist = intent.artist || currentTrack?.artist || seedTrack?.artist;
-    if (effectiveArtist) {
-      queries.push({
-        query: effectiveArtist,
-        sourceWeight: 0.9,
-        reason: `Artist match: ${effectiveArtist}`,
-      });
+    // Expand intent to get musical soundscape queries
+    const soundscape = expandMusicIntent(intent);
+
+    if (soundscape.isAmbientOrActivity && soundscape.candidateQueries.length > 0) {
+      // Prioritize curated soundscape queries for activity/ambient requests
+      for (const sq of soundscape.candidateQueries.slice(0, 3)) {
+        queries.push({
+          query: sq,
+          sourceWeight: 0.95,
+          reason: `Soundscape: ${sq}`,
+        });
+      }
     }
 
-    // 2. Mood & Genre & Activity combination
-    const contextualTokens: string[] = [];
-    if (intent.genre) contextualTokens.push(intent.genre);
-    if (intent.mood) contextualTokens.push(intent.mood);
-    if (intent.activity) contextualTokens.push(intent.activity);
-    if (intent.language) contextualTokens.push(intent.language);
-
-    if (contextualTokens.length > 0) {
+    // Explicit artist requested by user
+    if (intent.artist) {
       queries.push({
-        query: contextualTokens.join(' '),
-        sourceWeight: 0.85,
-        reason: `Context match: ${contextualTokens.join(' ')}`,
+        query: intent.artist,
+        sourceWeight: 0.95,
+        reason: `Explicit artist match: ${intent.artist}`,
       });
+    } else if (!soundscape.isAmbientOrActivity) {
+      // Seed / current track artist only if user did not make an ambient soundscape request
+      const effectiveArtist = currentTrack?.artist || seedTrack?.artist;
+      if (effectiveArtist) {
+        queries.push({
+          query: effectiveArtist,
+          sourceWeight: 0.9,
+          reason: `Artist match: ${effectiveArtist}`,
+        });
+      }
     }
 
-    // 3. User high-affinity artists (top 2)
-    const topAffinityArtists = Object.entries(profile.artistAffinity)
-      .filter(([artist, score]) => score > 0.3 && artist.toLowerCase() !== effectiveArtist?.toLowerCase())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2)
-      .map(([artist]) => artist);
+    // User high-affinity artists (top 2, only if not ambient or compatible)
+    if (!soundscape.isAmbientOrActivity) {
+      const targetArtist = intent.artist || currentTrack?.artist || seedTrack?.artist;
+      const topAffinityArtists = Object.entries(profile.artistAffinity)
+        .filter(([artist, score]) => score > 0.3 && artist.toLowerCase() !== targetArtist?.toLowerCase())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 2)
+        .map(([artist]) => artist);
 
-    for (const affArtist of topAffinityArtists) {
-      queries.push({
-        query: affArtist,
-        sourceWeight: 0.75,
-        reason: `User favorite artist: ${affArtist}`,
-      });
+      for (const affArtist of topAffinityArtists) {
+        queries.push({
+          query: affArtist,
+          sourceWeight: 0.75,
+          reason: `User favorite artist: ${affArtist}`,
+        });
+      }
     }
 
-    // 4. Time of Day or Exploration Fallback
+    // Time of Day or Exploration Fallback
     if (intent.explorationLevel === 'HIGH') {
       queries.push({
         query: intent.language ? `${intent.language} hits fresh` : 'global trending hits',
         sourceWeight: 0.7,
         reason: 'Exploration discovery',
       });
-    } else if (queries.length < 2 && context?.timeOfDay) {
+    } else if (queries.length < 3 && context?.timeOfDay) {
+      const todQuery = getTimeOfDayMusicalQuery(context.timeOfDay, intent.language);
       queries.push({
-        query: `${context.timeOfDay} music`,
+        query: todQuery,
         sourceWeight: 0.65,
         reason: `Time of day: ${context.timeOfDay}`,
       });

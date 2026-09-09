@@ -354,4 +354,105 @@ describe('Intelligent Music Autoplay & Personal Radio System', () => {
       expect(snapshot.conversationContext).toBeUndefined();
     });
   });
+
+  // ── 6. Ambient & Activity Music Intent Expansion ───────────────────────────
+  describe('Ambient & Activity Music Intent Expansion', () => {
+    it('expands chess and focus requests to low-energy instrumental soundscapes', async () => {
+      const { expandMusicIntent } = await import('../modules/music/music-intent-expander');
+
+      const chessIntent = expandMusicIntent({
+        query: 'focus',
+        activity: 'playing chess',
+        mood: 'focused',
+      });
+
+      expect(chessIntent.isAmbientOrActivity).toBe(true);
+      expect(chessIntent.primaryQuery).toBe('deep focus instrumental');
+      expect(chessIntent.targetEnergy).toBe('low');
+      expect(chessIntent.preferredGenres).toContain('instrumental');
+      expect(chessIntent.penalizedGenres).toContain('rap');
+      expect(chessIntent.candidateQueries).toContain('lofi chill study');
+    });
+
+    it('expands workout requests to high-energy motivation hits', async () => {
+      const { expandMusicIntent } = await import('../modules/music/music-intent-expander');
+
+      const workoutIntent = expandMusicIntent({
+        query: 'workout',
+        activity: 'gym',
+      });
+
+      expect(workoutIntent.isAmbientOrActivity).toBe(true);
+      expect(workoutIntent.primaryQuery).toBe('workout motivation hits');
+      expect(workoutIntent.targetEnergy).toBe('high');
+      expect(workoutIntent.preferredGenres).toContain('edm');
+      expect(workoutIntent.penalizedGenres).toContain('sleep');
+    });
+
+    it('preserves explicit song titles without ambient expansion', async () => {
+      const { expandMusicIntent } = await import('../modules/music/music-intent-expander');
+
+      const explicitSong = expandMusicIntent({
+        query: 'Blinding Lights',
+        artist: 'The Weeknd',
+      });
+
+      expect(explicitSong.isAmbientOrActivity).toBe(false);
+      expect(explicitSong.primaryQuery).toBe('Blinding Lights');
+    });
+
+    it('penalizes loud rap tracks when intent is low-energy focus', async () => {
+      const ranker = new RecommendationRanker();
+      const profile: MusicProfile = {
+        likedTracks: [],
+        dislikedTracks: [],
+        dislikedArtists: [],
+        artistAffinity: {},
+        genreAffinity: {},
+        languageAffinity: {},
+        skipHistory: [],
+        completionHistory: [],
+        recentlyPlayedTracks: [],
+        explorationPreference: 'MEDIUM',
+        preferredEnergy: 'low',
+        preferredMoods: ['focused'],
+      };
+
+      const candidates: CandidateTrack[] = [
+        { id: '1', title: 'Focus (Rap Song)', artist: 'Sukh-E, Badshah', genre: 'rap', source: 'catalog' },
+        { id: '2', title: 'Deep Focus Study Waves', artist: 'Instrumental Artists', genre: 'instrumental', source: 'catalog' },
+      ];
+
+      const ranked = ranker.rank({
+        candidates,
+        intent: { query: 'focus', activity: 'playing chess', energy: 'low' },
+        profile,
+      });
+
+      expect(ranked[0].track.title).toBe('Deep Focus Study Waves');
+      expect(ranked[1].track.title).toBe('Focus (Rap Song)');
+      expect(ranked[0].finalScore).toBeGreaterThan(ranked[1].finalScore);
+    });
+
+    it('creates chess session with instrumental focus seed track and curated queue', async () => {
+      const sessionMgr = new MusicSessionManager();
+      const session = await sessionMgr.createSession({
+        userId: 'test-user-chess',
+        query: 'focus',
+        intent: {
+          query: 'focus',
+          activity: 'playing chess',
+          mood: 'focused',
+        },
+        mode: 'AUTOPLAY',
+      });
+
+      expect(session.sessionId).toBeDefined();
+      expect(session.currentTrack).toBeDefined();
+      // Verify seed track is not Sukh-E / Punjabi rap
+      expect(session.currentTrack?.artist?.toLowerCase()).not.toContain('sukh-e');
+      expect(session.currentTrack?.title?.toLowerCase()).toContain('focus');
+      expect(session.queue.length).toBeGreaterThan(0);
+    }, 20000);
+  });
 });

@@ -440,7 +440,7 @@ export const playMediaTool: JarvisTool<{
     query: z
       .string()
       .describe(
-        'The pure, clean search query: song title, artist, album, playlist, mood, or video title to play. Extract ONLY the media title, artist name, or mood/genre from the user\'s natural language request—DO NOT include platform names ("Spotify", "YouTube"), commanding verbs ("play", "stream", "put on", "chalao", "bajao", "lagao"), or prepositions ("on", "in", "via", "pe"). For example: for "on spotify play tum mere ho by anuv jain", query is "tum mere ho by anuv jain"; for "play chill lofi", query is "chill lofi".'
+        'The pure, clean search query: song title, artist, album, playlist, mood, or video title to play. Extract ONLY the media title, artist name, or mood/genre from the user\'s natural language request—DO NOT include platform names ("Spotify", "YouTube"), commanding verbs ("play", "stream", "put on", "chalao", "bajao", "lagao"), or prepositions ("on", "in", "via", "pe"). For example: for "on spotify play tum mere ho by anuv jain", query is "tum mere ho by anuv jain"; for "play chill lofi", query is "chill lofi". For activity requests (e.g. playing chess, studying, workout, sleeping), use descriptive soundscape queries like "deep focus instrumental", "lofi study beats", "workout motivation hits", "peaceful ambient sleep" instead of single nouns like "focus" or "chess".'
       ),
     app: z
       .enum(['spotify', 'youtube', 'youtube_music'])

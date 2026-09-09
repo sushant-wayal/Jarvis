@@ -9,6 +9,7 @@ import {
 import { queueManager } from './queue-manager';
 import { preferenceLearner } from './preference-learner';
 import { musicContextProvider } from './context-provider';
+import { expandMusicIntent } from './music-intent-expander';
 import { resolveMusicTrack } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
 
@@ -44,23 +45,35 @@ export class MusicSessionManager {
       query: query || intent.query,
     };
 
+    // Expand intent for ambient, activity, or mood contexts
+    const soundscape = expandMusicIntent(effectiveIntent);
+    if (soundscape.isAmbientOrActivity && !effectiveIntent.energy) {
+      effectiveIntent.energy = soundscape.targetEnergy;
+    }
+
     let seedTrack: QueuedTrack | null = preResolvedSeed || null;
 
     // 1. Resolve seed track if not pre-resolved
-    if (!seedTrack && effectiveIntent.query) {
-      const resolved = await resolveMusicTrack(effectiveIntent.query);
-      if (resolved.success && resolved.audioUrl) {
-        seedTrack = {
-          id: randomUUID(),
-          title: resolved.title,
-          artist: resolved.artist,
-          audioUrl: resolved.audioUrl,
-          artworkUrl: resolved.artworkUrl,
-          duration: resolved.duration,
-          source: resolved.source,
-          videoId: resolved.videoId,
-          explanation: 'User requested track',
-        };
+    if (!seedTrack) {
+      const resolveQuery = soundscape.isAmbientOrActivity
+        ? soundscape.primaryQuery
+        : (effectiveIntent.query || soundscape.primaryQuery);
+
+      if (resolveQuery) {
+        const resolved = await resolveMusicTrack(resolveQuery);
+        if (resolved.success && resolved.audioUrl) {
+          seedTrack = {
+            id: randomUUID(),
+            title: resolved.title,
+            artist: resolved.artist,
+            audioUrl: resolved.audioUrl,
+            artworkUrl: resolved.artworkUrl,
+            duration: resolved.duration,
+            source: resolved.source,
+            videoId: resolved.videoId,
+            explanation: soundscape.isAmbientOrActivity ? soundscape.explanation : 'User requested track',
+          };
+        }
       }
     }
 

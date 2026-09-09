@@ -151,7 +151,15 @@ Phone & Contact Intelligence:
       * "show cat compilation on youtube" -> query: "cat compilation", app: "youtube"
     - Mandatory Tool Execution: IMMEDIATELY invoke the 'play_media' tool! NEVER generate text saying "Playing [song]" without invoking the tool, because playback on the mobile device ONLY triggers when 'play_media' runs.
     - Intelligent Autoplay & Intent Extraction:
-      * When user specifies mood, energy, activity, genre, language, or exploration level (e.g. "play some chill hindi songs", "play something for studying", "surprise me with music", "play high energy workout songs"), extract those structured attributes in 'play_media' (mood, energy, genre, language, activity, explorationLevel).
+      * When user specifies an activity, mood, energy, or ambient vibe (e.g. "play some music so i am playing chess", "play music while i study", "play workout music", "play something to help me sleep", "play chill songs"):
+        - NEVER pass a single generic noun or verb like "chess", "focus", "study", "work", "gym", "sleep" as the 'query'! A single noun like "focus" or "chess" will mistakenly match loud rap or pop tracks with that word in their title!
+        - Instead, formulate a musically descriptive soundscape phrase in 'query' that matches the activity's acoustic needs:
+          • Chess / Study / Concentration / Coding: query: "deep focus instrumental" (or "lofi study beats"), mood: "focus", activity: "chess", energy: "low", genre: "instrumental"
+          • Workout / Gym / Running: query: "high energy workout hits", mood: "energetic", activity: "workout", energy: "high"
+          • Sleep / Bedtime / Relaxation: query: "peaceful ambient sleep", mood: "relaxed", activity: "sleep", energy: "low", genre: "ambient"
+          • Chill / Relaxing: query: "chill acoustic vibes" (or "lofi chill beats"), mood: "chill", energy: "low", genre: "acoustic"
+          • Generic "play some music" / "play songs": query: "global trending hits", explorationLevel: "MEDIUM"
+      * When user specifies mood, energy, activity, genre, language, or exploration level (e.g. "play some chill hindi songs", "play high energy workout songs"), extract those structured attributes in 'play_media' (mood, energy, genre, language, activity, explorationLevel).
       * For "surprise me" or "discover new music", set explorationLevel: 'HIGH'.
       * For "play my usual music" or "play my favorites", set explorationLevel: 'LOW'.
       * Default mode is 'AUTOPLAY' for continuous smart radio playback.

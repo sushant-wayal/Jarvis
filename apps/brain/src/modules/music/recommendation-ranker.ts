@@ -1,4 +1,5 @@
 import { CandidateTrack, MusicContextSnapshot, MusicIntent, MusicProfile, QueuedTrack, RankedCandidate } from './music-types';
+import { expandMusicIntent } from './music-intent-expander';
 
 export interface RankerWeights {
   seedSimilarity: number;
@@ -43,6 +44,8 @@ export class RecommendationRanker {
     const { candidates, intent, currentTrack, seedTrack, profile, context } = params;
     const ranked: RankedCandidate[] = [];
 
+    const soundscape = expandMusicIntent(intent);
+
     const recentlyPlayedIds = new Set(
       profile.recentlyPlayedTracks.slice(0, 20).map((t) => t.id)
     );
@@ -68,8 +71,10 @@ export class RecommendationRanker {
       let seedSimilarity = track.similarityScore ?? 0.5;
       const targetArtist = (intent.artist || currentTrack?.artist || seedTrack?.artist || '').toLowerCase();
       if (targetArtist && trackArtistKey.includes(targetArtist)) {
-        seedSimilarity = 1.0;
-        reasons.push(`Direct artist match: ${track.artist}`);
+        if (intent.artist || !soundscape.isAmbientOrActivity) {
+          seedSimilarity = 1.0;
+          reasons.push(`Direct artist match: ${track.artist}`);
+        }
       }
 
       // 2. User Preference (Likes & Replays)
@@ -95,7 +100,7 @@ export class RecommendationRanker {
       const rawLangAffinity = trackLang ? profile.languageAffinity[trackLang] ?? 0 : 0;
       const languageAffinity = (rawLangAffinity + 1) / 2;
 
-      // 5. Context Relevance (Time of day, activity)
+      // 5. Context & Soundscape Relevance (Time of day, activity, soundscape)
       let contextRelevance = 0.5;
       if (context?.timeOfDay) {
         if (context.timeOfDay === 'night' && (track.genre?.includes('lofi') || track.genre?.includes('acoustic'))) {
@@ -109,6 +114,44 @@ export class RecommendationRanker {
         contextRelevance += 0.3;
         reasons.push(`Matches activity: ${intent.activity}`);
       }
+
+      // Soundscape matching and energy verification
+      let penalty = 0;
+
+      if (soundscape.isAmbientOrActivity) {
+        // Boost tracks matching preferred genres or soundscapes
+        const isPreferred = soundscape.preferredGenres.some((pref) => {
+          const reg = new RegExp(`\\b${pref}\\b`, 'i');
+          return reg.test(trackGenre) || reg.test(trackTitleKey);
+        });
+        if (isPreferred) {
+          contextRelevance += 0.35;
+          reasons.push(`Matches soundscape: ${track.title}`);
+        }
+
+        // Penalize mismatched genres (e.g. rap/hiphop/metal during chess/focus/sleep)
+        const isPenalized = soundscape.penalizedGenres.some((pg) => {
+          const reg = new RegExp(`\\b${pg}\\b`, 'i');
+          return reg.test(trackGenre) || reg.test(trackTitleKey) || reg.test(trackArtistKey);
+        });
+        if (isPenalized) {
+          penalty += 0.6;
+        }
+
+        // Energy verification
+        if (soundscape.targetEnergy === 'low') {
+          const loudKeywords = ['remix', 'club mix', 'dj', 'party', 'bass boosted', 'rap', 'hip hop', 'bhangra'];
+          if (loudKeywords.some((kw) => trackTitleKey.includes(kw) || trackGenre.includes(kw))) {
+            penalty += 0.5;
+          }
+        } else if (soundscape.targetEnergy === 'high') {
+          const sleepyKeywords = ['sleep', 'lullaby', 'relaxing piano', 'meditation'];
+          if (sleepyKeywords.some((kw) => trackTitleKey.includes(kw))) {
+            penalty += 0.5;
+          }
+        }
+      }
+
       contextRelevance = Math.min(1.0, contextRelevance);
 
       // 6. Freshness (Penalize recently played)
@@ -126,7 +169,6 @@ export class RecommendationRanker {
       }
 
       // 8. Repetition & Skip Penalties
-      let penalty = 0;
       if (currentTrack && currentTrack.artist.toLowerCase() === trackArtistKey) {
         // Same artist repetition penalty (unless user explicitly asked for this artist)
         if (!intent.artist) {
