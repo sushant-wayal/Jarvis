@@ -1,5 +1,6 @@
 import {
   getRecordingPermissionsAsync,
+  RecordingOptions,
   RecordingPresets,
   RecordingStatus,
   requestRecordingPermissionsAsync,
@@ -17,13 +18,18 @@ export interface UseVoiceRecorderReturn {
   cancelRecording: () => Promise<void>;
 }
 
+const RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: true,
+};
+
 export function useVoiceRecorder(): UseVoiceRecorderReturn {
   const [isRecording, setIsRecording] = React.useState<boolean>(false);
   const [recordingLevel, setRecordingLevel] = React.useState<number>(0);
   const [hasPermission, setHasPermission] = React.useState<boolean>(false);
 
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY, (status: RecordingStatus) => {
-    // Status tracking if needed
+  const recorder = useAudioRecorder(RECORDING_OPTIONS, (_status: RecordingStatus) => {
+    // High-level recording events
   });
 
   React.useEffect(() => {
@@ -36,6 +42,31 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       }
     })();
   }, []);
+
+  // Poll real-time recording status & audio metering levels during active recording
+  React.useEffect(() => {
+    if (!isRecording) {
+      setRecordingLevel(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      try {
+        const status = recorder.getStatus();
+        if (status.isRecording && typeof status.metering === 'number') {
+          // Native metering returns dBFS (-160..0 dBFS).
+          // Map -60 dBFS (ambient silence) to 0 dBFS (peak speech) -> 0..1 scale
+          const clampedDb = Math.max(-60, Math.min(0, status.metering));
+          const norm = (clampedDb + 60) / 60;
+          setRecordingLevel(norm);
+        }
+      } catch {
+        // Safe catch for status read
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isRecording, recorder]);
 
   const startRecording = React.useCallback(async (): Promise<void> => {
     try {
@@ -52,10 +83,15 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
         interruptionMode: 'doNotMix',
       });
 
-      await recorder.prepareToRecordAsync();
+      const currentStatus = recorder.getStatus();
+      if (!currentStatus.canRecord && !currentStatus.isRecording) {
+        await recorder.prepareToRecordAsync(RECORDING_OPTIONS);
+      }
+
       recorder.record();
       setIsRecording(true);
-    } catch {
+    } catch (err) {
+      console.error('[VoiceRecorder] startRecording error:', err);
       setIsRecording(false);
     }
   }, [hasPermission, recorder]);
@@ -65,10 +101,16 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       setIsRecording(false);
       setRecordingLevel(0);
 
-      await recorder.stop();
+      const status = recorder.getStatus();
+      if (status.isRecording) {
+        await recorder.stop();
+      }
 
       const uri = recorder.uri;
-      if (!uri) return null;
+      if (!uri) {
+        console.warn('[VoiceRecorder] No audio recording URI available');
+        return null;
+      }
 
       const response = await fetch(uri);
       const blob = await response.blob();
@@ -83,9 +125,14 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
             mimeType: 'audio/m4a',
           });
         };
+        reader.onerror = (e) => {
+          console.error('[VoiceRecorder] FileReader error:', e);
+          resolve(null);
+        };
         reader.readAsDataURL(blob);
       });
-    } catch {
+    } catch (err) {
+      console.error('[VoiceRecorder] stopRecording error:', err);
       setIsRecording(false);
       return null;
     }
@@ -93,7 +140,10 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
 
   const cancelRecording = React.useCallback(async (): Promise<void> => {
     try {
-      await recorder.stop();
+      const status = recorder.getStatus();
+      if (status.isRecording) {
+        await recorder.stop();
+      }
     } catch {
       // ignore cleanup error
     }
@@ -110,3 +160,4 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
     cancelRecording,
   };
 }
+

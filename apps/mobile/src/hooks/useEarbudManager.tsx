@@ -23,7 +23,7 @@ export interface EarbudManagerContextValue {
   updateSettings: (partial: Partial<EarbudSettings>) => void;
   triggerSimulatedTap: (event?: EarbudEventType) => void;
   startVoiceListening: () => Promise<void>;
-  stopAndProcessVoice: () => Promise<void>;
+  stopAndProcessVoice: (force?: boolean) => Promise<void>;
   interruptOrStop: () => Promise<void>;
   toggleVoiceInteraction: () => Promise<void>;
 }
@@ -159,11 +159,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     []
   );
 
-  const stopAndProcessVoice = React.useCallback(async (): Promise<void> => {
+  const stopAndProcessVoice = React.useCallback(async (force = false): Promise<void> => {
     try {
-      // Guard: if user said nothing during the listening window,
+      // Guard: if user said nothing during the listening window and action is not forced,
       // peacefully return to IDLE without sending silence to the brain
-      if (!speechDetectedRef.current) {
+      if (!force && !speechDetectedRef.current) {
         await cancelRecording();
         await backgroundMusicPlayer.resumeAfterSpeaking();
         setJarvisState('IDLE');
@@ -173,6 +173,9 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       // 1. Stop audio recording first so the microphone is released
       const audioData = await stopRecording();
+
+      // Reset speech detected state after capturing audio
+      speechDetectedRef.current = false;
 
       // 2. Play the process chime in full through earbuds FIRST
       await earbudService.playProcessChime();
@@ -308,7 +311,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     if (currentState === 'SPEAKING') {
       await interruptOrStop();
     } else if (currentState === 'LISTENING') {
-      await stopAndProcessVoice();
+      await stopAndProcessVoice(true);
     } else if (currentState === 'IDLE' || currentState === 'ERROR' || currentState === 'OFFLINE') {
       await startVoiceListening();
     }
@@ -330,8 +333,8 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
     if (!settings.autoSilenceStop) return;
 
-    // Real human speech metering level is > 0.45 (ambient room noise is < 0.25 on normalized scale)
-    if (recordingLevel > 0.45) {
+    // Real human speech metering level is > 0.20 (ambient room noise is < 0.15 on normalized scale)
+    if (recordingLevel > 0.20) {
       speechDetectedRef.current = true;
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
@@ -343,23 +346,22 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         const thresholdMs = (settings.silenceThresholdSeconds || 4.5) * 1000;
         silenceTimeoutRef.current = setTimeout(() => {
           silenceTimeoutRef.current = null;
-          speechDetectedRef.current = false;
           if (stateRef.current.jarvisState === 'LISTENING') {
-            void stopAndProcessVoice();
+            void stopAndProcessVoice(true);
           }
         }, thresholdMs);
       }
     }
   }, [jarvisState, recordingLevel, settings.autoSilenceStop, settings.silenceThresholdSeconds, stopAndProcessVoice]);
 
-  // Idle timeout: if in continuous listening mode and user says nothing for 3.8s, peacefully return to IDLE without sending audio
+  // Idle timeout: if in continuous listening mode and user says nothing for 10s, peacefully return to IDLE without sending audio
   React.useEffect(() => {
     if (jarvisState !== 'LISTENING') return;
     const idleTimer = setTimeout(() => {
       if (stateRef.current.jarvisState === 'LISTENING' && !speechDetectedRef.current) {
         void interruptOrStop();
       }
-    }, 3800);
+    }, 10000);
     return () => clearTimeout(idleTimer);
   }, [jarvisState, interruptOrStop]);
 
@@ -387,7 +389,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           event === 'MEDIA_PLAY' ||
           event === 'MEDIA_PAUSE'
         ) {
-          await stopAndProcessVoice();
+          await stopAndProcessVoice(true);
         } else if (event === 'LONG_PRESS') {
           await interruptOrStop();
         }
