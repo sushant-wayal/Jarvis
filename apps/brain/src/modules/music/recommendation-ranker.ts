@@ -1,5 +1,5 @@
 import { CandidateTrack, MusicContextSnapshot, MusicIntent, MusicProfile, QueuedTrack, RankedCandidate } from './music-types';
-import { expandMusicIntent } from './music-intent-expander';
+import { ExpandedMusicSoundscape } from './music-intent-expander';
 
 export interface RankerWeights {
   seedSimilarity: number;
@@ -36,6 +36,7 @@ export class RecommendationRanker {
   rank(params: {
     candidates: CandidateTrack[];
     intent: MusicIntent;
+    soundscape?: ExpandedMusicSoundscape;
     currentTrack?: QueuedTrack | null;
     seedTrack?: QueuedTrack | null;
     profile: MusicProfile;
@@ -44,7 +45,15 @@ export class RecommendationRanker {
     const { candidates, intent, currentTrack, seedTrack, profile, context } = params;
     const ranked: RankedCandidate[] = [];
 
-    const soundscape = expandMusicIntent(intent);
+    const soundscape = params.soundscape || {
+      isAmbientOrActivity: Boolean(intent.activity || intent.mood),
+      primaryQuery: intent.query || '',
+      candidateQueries: [],
+      targetEnergy: intent.energy || 'medium',
+      preferredGenres: intent.genre ? [intent.genre.toLowerCase()] : [],
+      penalizedGenres: [],
+      explanation: 'Intent ranker evaluation',
+    };
 
     const recentlyPlayedIds = new Set(
       profile.recentlyPlayedTracks.slice(0, 20).map((t) => t.id)

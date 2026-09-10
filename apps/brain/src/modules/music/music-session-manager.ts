@@ -45,16 +45,22 @@ export class MusicSessionManager {
       query: query || intent.query,
     };
 
-    // Expand intent for ambient, activity, or mood contexts
-    const soundscape = expandMusicIntent(effectiveIntent);
-    if (soundscape.isAmbientOrActivity && !effectiveIntent.energy) {
-      effectiveIntent.energy = soundscape.targetEnergy;
-    }
+    // 1. Capture context snapshot
+    const contextSnapshot = await musicContextProvider.getContextSnapshot(
+      userId,
+      conversationId,
+      timezone
+    );
 
     let seedTrack: QueuedTrack | null = preResolvedSeed || null;
 
-    // 1. Resolve seed track if not pre-resolved
+    // 2. Resolve seed track if not pre-resolved (using LLM intent expansion for ambient/activity)
     if (!seedTrack) {
+      const soundscape = await expandMusicIntent(effectiveIntent, contextSnapshot);
+      if (soundscape.isAmbientOrActivity && !effectiveIntent.energy) {
+        effectiveIntent.energy = soundscape.targetEnergy;
+      }
+
       const resolveQuery = soundscape.isAmbientOrActivity
         ? soundscape.primaryQuery
         : (effectiveIntent.query || soundscape.primaryQuery);
@@ -76,13 +82,6 @@ export class MusicSessionManager {
         }
       }
     }
-
-    // 2. Capture context snapshot
-    const contextSnapshot = await musicContextProvider.getContextSnapshot(
-      userId,
-      conversationId,
-      timezone
-    );
 
     const session: MusicSession = {
       sessionId,

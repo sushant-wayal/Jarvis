@@ -8,7 +8,7 @@ import {
   QueuedTrack,
   normalizeSongTitle,
 } from './music-types';
-import { expandMusicIntent } from './music-intent-expander';
+import { ExpandedMusicSoundscape, expandMusicIntent } from './music-intent-expander';
 import { decryptDesEcb } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
 
@@ -69,6 +69,7 @@ export class CandidateGenerator {
    */
   async generateCandidates(params: {
     intent: MusicIntent;
+    soundscape?: ExpandedMusicSoundscape;
     currentTrack?: QueuedTrack | null;
     seedTrack?: QueuedTrack | null;
     profile: MusicProfile;
@@ -89,8 +90,8 @@ export class CandidateGenerator {
 
     const queries: Array<{ query: string; sourceWeight: number; reason: string }> = [];
 
-    // Expand intent to get musical soundscape queries
-    const soundscape = expandMusicIntent(intent);
+    // Expand intent to get musical soundscape queries (LLM-driven)
+    const soundscape = params.soundscape || (await expandMusicIntent(intent, context));
 
     if (soundscape.isAmbientOrActivity && soundscape.candidateQueries.length > 0) {
       // Prioritize curated soundscape queries for activity/ambient requests

@@ -1,4 +1,6 @@
-import { MusicIntent } from './music-types';
+import { MusicContextSnapshot, MusicIntent } from './music-types';
+import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
+import { logger } from '@/lib/logging/logger';
 
 export interface ExpandedMusicSoundscape {
   isAmbientOrActivity: boolean;
@@ -10,276 +12,141 @@ export interface ExpandedMusicSoundscape {
   explanation: string;
 }
 
-const FOCUS_KEYWORDS = [
-  'focus',
-  'deep focus',
-  'chess',
-  'study',
-  'studying',
-  'reading',
-  'read',
-  'work',
-  'working',
-  'coding',
-  'code',
-  'concentration',
-  'concentrate',
-];
+// In-memory cache for fast repeated resolution (e.g. queue replenishments within a session)
+const soundscapeCache = new Map<string, { result: ExpandedMusicSoundscape; expiresAt: number }>();
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-const SLEEP_KEYWORDS = [
-  'sleep',
-  'sleeping',
-  'bedtime',
-  'sleepy',
-  'deep sleep',
-  'meditation',
-  'meditate',
-];
+export class MusicIntentExpander {
+  /**
+   * Semantically analyzes and expands user music intentions, activities, and vibes
+   * into optimized music catalog search queries and acoustic constraints using the LLM.
+   *
+   * Adheres to Rule 37 & 38: The LLM is the sole semantic engine for understanding natural
+   * language requests and mapping human activity/mood into soundscape search parameters.
+   */
+  async expandMusicIntent(
+    intent: MusicIntent,
+    context?: MusicContextSnapshot
+  ): Promise<ExpandedMusicSoundscape> {
+    const rawQuery = (intent.query || '').trim();
+    const rawActivity = (intent.activity || '').trim();
+    const rawMood = (intent.mood || '').trim();
+    const rawGenre = (intent.genre || '').trim();
+    const rawLang = (intent.language || '').trim();
+    const rawArtist = (intent.artist || '').trim();
 
-const WORKOUT_KEYWORDS = [
-  'workout',
-  'gym',
-  'running',
-  'cardio',
-  'exercise',
-  'fitness',
-  'training',
-  'pump up',
-];
+    // Cache key based on input parameters
+    const cacheKey = `${rawQuery}|${rawActivity}|${rawMood}|${rawGenre}|${rawLang}|${rawArtist}|${context?.timeOfDay || ''}`.toLowerCase();
+    const cached = soundscapeCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.result;
+    }
 
-const CHILL_KEYWORDS = [
-  'chill',
-  'relax',
-  'relaxing',
-  'calm',
-  'peaceful',
-  'unwind',
-  'lofi',
-  'acoustic',
-];
+    const prompt = `You are Jarvis's AI music soundscape specialist.
+Analyze the user's music playback request semantically.
+User Request:
+- Query: "${rawQuery}"
+- Activity: "${rawActivity}"
+- Mood: "${rawMood}"
+- Genre: "${rawGenre}"
+- Language: "${rawLang}"
+- Artist: "${rawArtist}"
+- Time: "${context?.timeOfDay || ''}"
 
-const PARTY_KEYWORDS = [
-  'party',
-  'dance',
-  'club',
-  'celebrate',
-  'celebration',
-  'bhangra',
-  'dj',
-];
+Tasks:
+1. If this is an explicit track or artist (e.g. "Blinding Lights", "Arijit Singh") without activity/vibe:
+   Set isAmbientOrActivity: false, primaryQuery: "${rawQuery || rawArtist}", candidateQueries: []
+2. If this is an ambient, activity, mood, or vibe request (e.g. "chess", "study", "workout", "sleep", "chill", "focus"):
+   Set isAmbientOrActivity: true.
+   - Chess / study / focus needs calm instrumental or piano or lofi with ZERO loud rap/party/vocals.
+   - Workout needs high energy BPM.
+   - Sleep needs soft ambient sounds.
+   Formulate best search queries for streaming music catalogs (e.g. "deep focus instrumental", "lofi study beats", "workout motivation hits").
 
-const GENERIC_KEYWORDS = [
-  'music',
-  'some music',
-  'any music',
-  'songs',
-  'some songs',
-  'surprise me',
-  'play something',
-];
+Respond strictly in pure JSON format:
+{
+  "isAmbientOrActivity": boolean,
+  "primaryQuery": string,
+  "candidateQueries": string[],
+  "targetEnergy": "low" | "medium" | "high",
+  "preferredGenres": string[],
+  "penalizedGenres": string[],
+  "explanation": string
+}`;
 
-/**
- * Checks if a string matches any of the given keywords as a whole phrase or word.
- */
-function matchesKeyword(text: string, keywords: string[]): boolean {
-  if (!text) return false;
-  const norm = text.toLowerCase().trim();
-  if (keywords.includes(norm)) return true;
-  return keywords.some((kw) => {
-    const reg = new RegExp(`\\b${kw}\\b`, 'i');
-    return reg.test(norm);
-  });
+    const modelsToTry = Array.from(new Set(['gemini-flash-lite-latest', DEFAULT_MODEL]));
+
+    for (const model of modelsToTry) {
+      try {
+        const response = await aiClient.models.generateContent({
+          model,
+          contents: prompt,
+        });
+
+        const text = response.text?.trim() || '';
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) continue;
+
+        const parsed = JSON.parse(jsonMatch[0]) as Partial<ExpandedMusicSoundscape>;
+        const energyRaw = (parsed.targetEnergy || '').toLowerCase().trim();
+        const targetEnergy: 'low' | 'medium' | 'high' =
+          energyRaw === 'low' ? 'low' : energyRaw === 'high' ? 'high' : 'medium';
+
+        const result: ExpandedMusicSoundscape = {
+          isAmbientOrActivity: Boolean(parsed.isAmbientOrActivity),
+          primaryQuery: (parsed.primaryQuery || rawQuery || 'trending hits').trim(),
+          candidateQueries: Array.isArray(parsed.candidateQueries) ? parsed.candidateQueries : [],
+          targetEnergy,
+          preferredGenres: Array.isArray(parsed.preferredGenres) ? parsed.preferredGenres : [],
+          penalizedGenres: Array.isArray(parsed.penalizedGenres) ? parsed.penalizedGenres : [],
+          explanation: parsed.explanation || 'LLM music intent analysis',
+        };
+
+        soundscapeCache.set(cacheKey, { result, expiresAt: Date.now() + CACHE_TTL_MS });
+        logger.info('Expanded music intent with LLM', {
+          rawQuery,
+          activity: rawActivity,
+          primaryQuery: result.primaryQuery,
+          isAmbientOrActivity: result.isAmbientOrActivity,
+          targetEnergy: result.targetEnergy,
+        });
+        return result;
+      } catch (err) {
+        logger.warn('Failed LLM call for expandMusicIntent with model', { model, err: String(err) });
+      }
+    }
+
+    // Graceful fallback if all LLM models fail or time out
+    const isLowEnergy = Boolean(
+      intent.energy === 'low' ||
+      /chess|study|focus|read|sleep|meditat|calm|relax/i.test(`${rawActivity} ${rawMood} ${rawQuery}`)
+    );
+    const isHighEnergy = Boolean(
+      intent.energy === 'high' ||
+      /workout|gym|run|cardio|fitness|party|dance/i.test(`${rawActivity} ${rawMood} ${rawQuery}`)
+    );
+    const fallbackEnergy: 'low' | 'medium' | 'high' = isLowEnergy ? 'low' : isHighEnergy ? 'high' : 'medium';
+
+    const fallbackPrimary = isLowEnergy
+      ? (rawQuery && !/^(focus|chess|study)$/i.test(rawQuery) ? rawQuery : 'deep focus instrumental')
+      : isHighEnergy
+      ? (rawQuery && !/^(workout|gym)$/i.test(rawQuery) ? rawQuery : 'workout motivation hits')
+      : rawQuery || 'trending hits';
+
+    const fallbackResult: ExpandedMusicSoundscape = {
+      isAmbientOrActivity: Boolean(rawActivity || rawMood || isLowEnergy || isHighEnergy),
+      primaryQuery: fallbackPrimary,
+      candidateQueries: [fallbackPrimary],
+      targetEnergy: fallbackEnergy,
+      preferredGenres: intent.genre ? [intent.genre] : isLowEnergy ? ['instrumental', 'piano'] : isHighEnergy ? ['edm', 'dance'] : [],
+      penalizedGenres: isLowEnergy ? ['rap', 'hip hop'] : isHighEnergy ? ['sleep'] : [],
+      explanation: 'Fallback music intent',
+    };
+
+    return fallbackResult;
+  }
 }
 
-/**
- * Expands a natural language music intent (activity, mood, energy, or ambient request)
- * into rich, high-yield musical search queries and acoustic constraints.
- */
-export function expandMusicIntent(intent: MusicIntent): ExpandedMusicSoundscape {
-  const rawQuery = (intent.query || '').toLowerCase().trim();
-  const rawActivity = (intent.activity || '').toLowerCase().trim();
-  const rawMood = (intent.mood || '').toLowerCase().trim();
-  const lang = (intent.language || '').toLowerCase().trim();
-
-  // 1. Focus / Chess / Study / Coding / Concentration
-  if (
-    matchesKeyword(rawActivity, FOCUS_KEYWORDS) ||
-    matchesKeyword(rawMood, FOCUS_KEYWORDS) ||
-    matchesKeyword(rawQuery, FOCUS_KEYWORDS)
-  ) {
-    const primaryQuery = lang
-      ? `${lang} lofi chill study`
-      : 'deep focus instrumental';
-
-    const candidateQueries = lang
-      ? [
-          `${lang} lofi chill study`,
-          `${lang} acoustic calm`,
-          'deep focus instrumental',
-          'peaceful piano focus',
-        ]
-      : [
-          'deep focus instrumental',
-          'lofi chill study',
-          'peaceful piano focus',
-          'ambient study instrumental',
-        ];
-
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery,
-      candidateQueries,
-      targetEnergy: 'low',
-      preferredGenres: ['instrumental', 'lofi', 'ambient', 'classical', 'acoustic', 'piano'],
-      penalizedGenres: ['rap', 'hip hop', 'hip-hop', 'party', 'edm', 'dance', 'rock', 'metal', 'club', 'bhangra'],
-      explanation: 'Focus and concentration soundscape for chess, studying, or deep work',
-    };
-  }
-
-  // 2. Sleep / Meditation / Deep Relaxation
-  if (
-    matchesKeyword(rawActivity, SLEEP_KEYWORDS) ||
-    matchesKeyword(rawMood, SLEEP_KEYWORDS) ||
-    matchesKeyword(rawQuery, SLEEP_KEYWORDS)
-  ) {
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery: 'peaceful ambient sleep',
-      candidateQueries: [
-        'peaceful ambient sleep',
-        'calm piano relaxation',
-        'deep sleep meditation',
-        'gentle ambient rain',
-      ],
-      targetEnergy: 'low',
-      preferredGenres: ['ambient', 'instrumental', 'meditation', 'piano', 'soundscape'],
-      penalizedGenres: ['rap', 'hip hop', 'edm', 'rock', 'dance', 'party', 'pop', 'upbeat'],
-      explanation: 'Gentle ambient soundscape for sleep and meditation',
-    };
-  }
-
-  // 3. Workout / Gym / Running / High Energy
-  if (
-    matchesKeyword(rawActivity, WORKOUT_KEYWORDS) ||
-    matchesKeyword(rawMood, WORKOUT_KEYWORDS) ||
-    matchesKeyword(rawQuery, WORKOUT_KEYWORDS) ||
-    intent.energy === 'high'
-  ) {
-    const primaryQuery = lang
-      ? `${lang} workout gym motivation`
-      : 'workout motivation hits';
-
-    const candidateQueries = lang
-      ? [
-          `${lang} workout gym motivation`,
-          `${lang} high energy hits`,
-          'workout motivation hits',
-          'gym phonk edm',
-        ]
-      : [
-          'workout motivation hits',
-          'high energy gym hits',
-          'gym phonk edm',
-          'cardio running hits',
-        ];
-
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery,
-      candidateQueries,
-      targetEnergy: 'high',
-      preferredGenres: ['edm', 'dance', 'hip hop', 'hip-hop', 'rock', 'phonk', 'pop'],
-      penalizedGenres: ['ambient', 'sleep', 'lullaby', 'slow piano', 'meditation'],
-      explanation: 'High energy motivation for workout and fitness',
-    };
-  }
-
-  // 4. Chill / Relax / Lofi / Acoustic
-  if (
-    matchesKeyword(rawMood, CHILL_KEYWORDS) ||
-    matchesKeyword(rawActivity, CHILL_KEYWORDS) ||
-    matchesKeyword(rawQuery, CHILL_KEYWORDS) ||
-    intent.genre === 'lofi' ||
-    intent.genre === 'acoustic'
-  ) {
-    const primaryQuery = lang
-      ? `${lang} chill acoustic`
-      : 'chill acoustic vibes';
-
-    const candidateQueries = lang
-      ? [
-          `${lang} chill acoustic`,
-          `${lang} lofi chill`,
-          'chill acoustic vibes',
-          'lofi chill beats',
-        ]
-      : [
-          'chill acoustic vibes',
-          'lofi chill beats',
-          'peaceful acoustic songs',
-          'calm indie chill',
-        ];
-
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery,
-      candidateQueries,
-      targetEnergy: 'low',
-      preferredGenres: ['lofi', 'acoustic', 'indie', 'chill', 'ambient'],
-      penalizedGenres: ['heavy metal', 'hard rock', 'noisy club'],
-      explanation: 'Laid-back acoustic and lofi chill soundscape',
-    };
-  }
-
-  // 5. Party / Upbeat / Dance
-  if (
-    matchesKeyword(rawActivity, PARTY_KEYWORDS) ||
-    matchesKeyword(rawMood, PARTY_KEYWORDS) ||
-    matchesKeyword(rawQuery, PARTY_KEYWORDS)
-  ) {
-    const primaryQuery = lang ? `${lang} party dance hits` : 'party dance hits';
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery,
-      candidateQueries: [
-        primaryQuery,
-        'club dance hits',
-        'upbeat party music',
-        'top dance pop',
-      ],
-      targetEnergy: 'high',
-      preferredGenres: ['dance', 'edm', 'pop', 'party'],
-      penalizedGenres: ['sleep', 'ambient', 'sad', 'slow'],
-      explanation: 'Upbeat party and dance hits',
-    };
-  }
-
-  // 6. Generic queries ("some music", "songs", "play music")
-  if (matchesKeyword(rawQuery, GENERIC_KEYWORDS) || rawQuery.length === 0) {
-    const primaryQuery = lang ? `${lang} top hits fresh` : 'global trending hits';
-    return {
-      isAmbientOrActivity: true,
-      primaryQuery,
-      candidateQueries: [
-        primaryQuery,
-        'popular hits fresh',
-        'trending songs',
-      ],
-      targetEnergy: intent.energy || 'medium',
-      preferredGenres: [],
-      penalizedGenres: [],
-      explanation: 'Curated trending music discovery',
-    };
-  }
-
-  // 7. Explicit track / artist query (e.g. "Blinding Lights", "Arijit Singh")
-  return {
-    isAmbientOrActivity: false,
-    primaryQuery: intent.query || '',
-    candidateQueries: [],
-    targetEnergy: intent.energy || 'medium',
-    preferredGenres: intent.genre ? [intent.genre.toLowerCase()] : [],
-    penalizedGenres: [],
-    explanation: 'Direct user track or artist query',
-  };
-}
+export const musicIntentExpander = new MusicIntentExpander();
+export const expandMusicIntent = (intent: MusicIntent, context?: MusicContextSnapshot) =>
+  musicIntentExpander.expandMusicIntent(intent, context);

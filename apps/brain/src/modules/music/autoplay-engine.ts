@@ -6,6 +6,7 @@ import {
   QueuedTrack,
   normalizeSongTitle,
 } from './music-types';
+import { expandMusicIntent } from './music-intent-expander';
 import { candidateGenerator } from './candidate-generator';
 import { recommendationRanker } from './recommendation-ranker';
 import { diversityController } from './diversity-controller';
@@ -40,15 +41,18 @@ export class AutoplayEngine {
       count = 5,
     } = params;
 
-    // 1. Context & Profile Snapshots
+    // 1. Context & Profile Snapshots & LLM Music Soundscape
     const [profile, context] = await Promise.all([
       musicProfileService.getProfile(userId),
       musicContextProvider.getContextSnapshot(userId, conversationId, timezone),
     ]);
 
+    const soundscape = await expandMusicIntent(intent, context);
+
     // 2. Candidate Generation
     const rawCandidates = await candidateGenerator.generateCandidates({
       intent,
+      soundscape,
       currentTrack,
       seedTrack,
       profile,
@@ -65,6 +69,7 @@ export class AutoplayEngine {
     const ranked = recommendationRanker.rank({
       candidates: rawCandidates,
       intent,
+      soundscape,
       currentTrack,
       seedTrack,
       profile,
