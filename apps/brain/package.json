@@ -12,7 +12,8 @@
     "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "cleanup": "npx tsx scripts/run-cleanup.ts"
   },
   "dependencies": {
     "@google/genai": "^0.14.0",

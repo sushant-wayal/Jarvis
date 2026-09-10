@@ -6,6 +6,7 @@ import { contextEngine } from './context-engine';
 import { intentEngine } from './intent-engine';
 import { memoryExtractor } from './memory-extractor';
 import { ttlEngine } from './ttl-engine';
+import { dataRetentionService } from './data-retention-service';
 
 export interface ProcessMessageInput {
   message: string;
@@ -106,10 +107,12 @@ export class BrainOrchestrator {
       this.renewConversationTtl(conversationId, input.message, brainResponse.text),
     ]).catch((e: unknown) => logger.warn('Background message save/TTL renewal warning', { error: String(e) }));
 
-    // 7. Extract long-term memories in background without blocking response
+    // 7. Extract long-term memories & trigger opportunistic daily cleanup in background
     memoryExtractor
       .extractAndStoreMemories(userId, input.message, brainResponse.text)
       .catch((e: unknown) => logger.warn('Memory extraction step completed', { error: String(e) }));
+
+    dataRetentionService.triggerDailyCleanupOpportunistically();
 
     return brainResponse;
   }
