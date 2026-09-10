@@ -71,6 +71,55 @@ export class AgentPlanner {
 
     contents.push({ role: 'user', parts: [{ text: message }] });
 
+    // Check if there is an active pending confirmation for this conversation
+    const lastAssistantMessage = context.recentHistory
+      .slice()
+      .reverse()
+      .find((m) => m.role === 'ASSISTANT');
+    let activePendingConfirmation = (lastAssistantMessage?.metadata as Record<string, unknown> | undefined)
+      ?.pendingConfirmation as
+      | { actionId: string; toolName: string; riskLevel: string; summary: string; payload: Record<string, unknown> }
+      | undefined;
+
+    if (!activePendingConfirmation && toolContext.conversationId) {
+      const pendingStep = await prisma.agentStep.findFirst({
+        where: {
+          type: 'CONFIRMATION',
+          status: 'PENDING',
+          agentRun: { conversationId: toolContext.conversationId },
+        },
+        orderBy: { startedAt: 'desc' },
+      });
+      if (pendingStep?.input) {
+        try {
+          activePendingConfirmation = JSON.parse(pendingStep.input);
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const confirmationDirective = activePendingConfirmation
+      ? `
+[ACTIVE CONFIRMATION REQUEST AWAITING USER DECISION]:
+- Prepared Action / Tool: "${activePendingConfirmation.toolName}"
+- Prepared Parameters: ${JSON.stringify(activePendingConfirmation.payload)}
+- Summary: "${activePendingConfirmation.summary}"
+
+CRITICAL INSTRUCTIONS FOR THIS TURN:
+1. USER APPROVAL / CONFIRMATION:
+   If the user's latest input expresses consent, agreement, confirmation, or instruction to proceed (such as "yes", "yeah", "yep", "confirm", "proceed", "go ahead", "do it", "sure", "merge it", "okay", "haan krdo"):
+   - You MUST IMMEDIATELY invoke the tool '${activePendingConfirmation.toolName}' passing the exact prepared parameters!
+   - DO NOT ask for confirmation again. Explicit user authorization has been received in this turn!
+2. USER CANCELLATION / REJECTION:
+   If the user's latest input expresses refusal, cancellation, or rejection (such as "no", "cancel", "stop", "don't do that", "never mind", "rehn de"):
+   - DO NOT invoke the tool!
+   - Respond naturally acknowledging the cancellation (e.g., "Action cancelled. I won't execute that.").
+3. USER TOPIC CHANGE:
+   If the user asks an unrelated question or changes the topic, answer their new question and leave the pending action unexecuted.
+`
+      : '';
+
     const toolsConfig = toolRegistry.getGeminiFunctionDeclarations();
 
     try {
@@ -83,6 +132,7 @@ export class AgentPlanner {
         const response = await this.generateWithFallback({
           systemInstruction: `You are Jarvis, a proactive, capable, and natural personal AI operating layer.
 ${context.systemContextString}
+${confirmationDirective}
 
 Core Principles:
 1. Deliver direct, high-value, and engaging answers to the user's questions immediately.
@@ -174,14 +224,38 @@ Phone & Contact Intelligence:
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
 
 Developer Tools & Integration Ecosystem:
-- External integrations (such as GitHub) are dynamically exposed as tools in your toolsConfig (e.g., 'github_get_repositories', 'github_get_repository', 'github_get_issues', 'github_create_issue', 'github_get_pull_requests', 'github_create_pull_request', 'github_get_commits').
+- External integrations (such as GitHub) are dynamically exposed as tools in your toolsConfig (e.g., 'github_get_repositories', 'github_get_repository', 'github_get_file_content', 'github_get_repository_tree', 'github_search_code', 'github_get_issues', 'github_create_issue', 'github_get_pull_requests', 'github_create_pull_request', 'github_get_commits', 'github_create_branch', 'github_commit_file_change', 'github_delete_file', 'github_merge_branch', 'github_update_pull_request', 'github_merge_pull_request').
+- Deep Codebase Analysis & Repository Intelligence:
+  • When the user asks to analyze, explain, debug, or answer technical questions about any codebase or repository (e.g. "What does this repo do?", "Explain how auth works in repo X", "Where is the payment logic?", "Inspect lines 20-80 of src/index.ts", "Find where database connections are pooled"):
+    - Step 1 (Locate Code): Use 'github_search_code' to find matching functions, classes, symbols, or keywords, or 'github_get_repository_tree' to discover relevant source files and module hierarchy.
+    - Step 2 (Inspect Real Code): Invoke 'github_get_file_content' to read the actual source code (pass startLine and endLine when reading specific functions or ranges).
+    - Step 3 (Technical Synthesis): Ground your explanation directly in the retrieved code—reference exact function names, file paths, line numbers, and data structures. Never guess or hallucinate code implementations!
+- Autonomous Code Modification & Pull Request Lifecycle:
+  • When the user asks you to implement, fix, update, refactor, add a feature, or make any small or medium changes to a codebase or project:
+    - MANDATORY BRANCH-AND-PR WORKFLOW (Never push directly to main/master!):
+      1. Inspect & Understand: Use 'github_search_code', 'github_get_repository_tree', and 'github_get_file_content' to read existing files and context before writing changes.
+      2. Create Feature Branch: ALWAYS create a dedicated branch first using 'github_create_branch' (e.g. branch: 'feat/feature-name' or 'fix/issue-description'). NEVER commit directly to 'main' or 'master'!
+      3. Commit Code Changes: Use 'github_commit_file_change' to commit each created or modified file onto the newly created branch. If removing obsolete files, use 'github_delete_file'.
+      4. Open Pull Request for Review: After committing all requested changes, ALWAYS invoke 'github_create_pull_request' to open a PR pulling your feature branch into the repository default branch (base: 'main' or 'master'). Include a clear, informative PR title and detailed summary of changes in the body so the user can review and approve it.
+    - STRICT CODE QUALITY & ANTI-PLACEHOLDER RULES:
+      • Absolutely ZERO placeholders, stubs, or shortcuts! NEVER write "// TODO: implement later", "/* remaining code unchanged */", "...rest of code...", or omit functions.
+      • The code in 'github_commit_file_change' MUST BE complete, valid, production-ready, and functionally correct.
+      • Ensure all imports, exports, type definitions, and dependencies required by your code changes are fully intact.
+      • When modifying existing files, inspect the existing file contents first via 'github_get_file_content' so that the new committed file preserves the entire file with your modifications accurately integrated.
+  • Pull Request Updates, Merging & Branch Merging:
+    - Accepting / Merging Pull Requests: When the user asks to "merge PR #X", "accept pull request X", or "squash merge PR X":
+      • Invoke 'github_merge_pull_request' with the pullNumber and mergeMethod ('merge' | 'squash' | 'rebase').
+    - Updating Existing Pull Requests: When the user asks to "update PR #X title/body", "close PR X", "reopen PR X", or "change base branch of PR X":
+      • Invoke 'github_update_pull_request' with pullNumber and desired fields to change.
+    - Direct Branch Merging: When the user asks to "merge branch X into Y" directly (without a PR):
+      • Invoke 'github_merge_branch' with base and head branch names.
 - Context Awareness & Reference Resolution:
   1. Contextual Reference Resolution: When the user says "Create an issue for this", "File a bug about this", or "Open a PR for this":
      - Use recent conversation history to understand what "this" refers to (e.g., the specific error, bug, feature request, or code problem discussed).
      - Extract clean, normalized parameters: 'owner', 'repo', 'title', 'body', 'labels'.
      - If the repository isn't explicitly named, inspect recent conversation history or check user repositories via 'github_get_repositories' to resolve the active project.
   2. Native Capability Boundary: When the user combines an external service with scheduling (e.g., "Remind me to check this issue tomorrow at 10 AM"), ALWAYS use Jarvis's native reminder tools ('task_create' or 'event_reminder_create') instead of looking for time/reminder features inside integrations.
-  3. Side Effect Awareness: Actions that create external items ('github_create_issue', 'github_create_pull_request') are WRITE actions with high risk that require user authorization.
+  3. Side Effect Awareness: Actions that create or mutate external code or items ('github_create_issue', 'github_create_pull_request', 'github_commit_file_change', 'github_delete_file', 'github_merge_branch', 'github_update_pull_request', 'github_merge_pull_request') are WRITE or DESTRUCTIVE actions with high risk that require user authorization.
 
 Identity & Personal Boundary Rules:
 - The verified user is "${toolContext.userName || 'Sushant'}".
@@ -205,6 +279,26 @@ Timezone & Scheduling Directive:
         if (!functionCalls || functionCalls.length === 0) {
           finalText = response.text?.trim() || 'Done.';
           responseMode = executedToolCalls.length > 0 ? 'ACTION' : 'ANSWER';
+
+          // If a pending confirmation existed but no action was called (e.g. user cancelled or changed topic), cancel previous pending state
+          if (activePendingConfirmation && executedToolCalls.length === 0 && toolContext.conversationId) {
+            await prisma.agentStep.updateMany({
+              where: {
+                agentRun: { conversationId: toolContext.conversationId },
+                type: 'CONFIRMATION',
+                status: 'PENDING',
+              },
+              data: { status: 'SKIPPED' },
+            }).catch(() => {});
+
+            await prisma.agentRun.updateMany({
+              where: {
+                conversationId: toolContext.conversationId,
+                status: 'WAITING_FOR_USER',
+              },
+              data: { status: 'CANCELLED' },
+            }).catch(() => {});
+          }
 
           await prisma.agentStep.create({
             data: {
@@ -259,8 +353,40 @@ Timezone & Scheduling Directive:
           const tool = toolRegistry.getTool(fcName);
           if (!tool) continue;
 
+          const isCanonicalMatch = (nameA: string, nameB: string) => {
+            const normA = nameA.replace(/\./g, '_').toLowerCase();
+            const normB = nameB.replace(/\./g, '_').toLowerCase();
+            return normA === normB;
+          };
+
+          const isAuthorizedConfirmation =
+            Boolean(activePendingConfirmation) &&
+            isCanonicalMatch(fcName, activePendingConfirmation!.toolName);
+
           // Check if action requires confirmation
-          if (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK') {
+          if (
+            !isAuthorizedConfirmation &&
+            (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK')
+          ) {
+            const pendingData = {
+              actionId: toolCall.id,
+              toolName: tool.name,
+              riskLevel: tool.riskLevel,
+              summary: `Execute ${tool.name} with ${JSON.stringify(toolCall.input)}`,
+              payload: toolCall.input,
+            };
+
+            await prisma.agentStep.create({
+              data: {
+                agentRunId: agentRun.id,
+                stepNumber: stepCount,
+                type: 'CONFIRMATION',
+                status: 'PENDING',
+                input: JSON.stringify(pendingData),
+                summary: `Awaiting user authorization for ${tool.name}`,
+              },
+            });
+
             await prisma.agentRun.update({
               where: { id: agentRun.id },
               data: { status: 'WAITING_FOR_USER' },
@@ -275,14 +401,36 @@ Timezone & Scheduling Directive:
               requestId: toolContext.requestId,
               mode: 'CONFIRMATION',
               agentRunId: agentRun.id,
-              pendingConfirmation: {
-                actionId: toolCall.id,
-                toolName: tool.name,
-                riskLevel: tool.riskLevel,
-                summary: `Execute ${tool.name} with ${JSON.stringify(toolCall.input)}`,
-                payload: toolCall.input,
-              },
+              pendingConfirmation: pendingData,
             };
+          }
+
+          if (isAuthorizedConfirmation) {
+            logger.info('Authorized execution of confirmed pending tool via voice/NL', {
+              toolName: tool.name,
+              conversationId: toolContext.conversationId,
+            });
+
+            if (toolContext.conversationId) {
+              await prisma.agentStep.updateMany({
+                where: {
+                  agentRun: { conversationId: toolContext.conversationId },
+                  type: 'CONFIRMATION',
+                  status: 'PENDING',
+                },
+                data: { status: 'COMPLETED' },
+              }).catch(() => {});
+
+              await prisma.agentRun.updateMany({
+                where: {
+                  conversationId: toolContext.conversationId,
+                  status: 'WAITING_FOR_USER',
+                },
+                data: { status: 'EXECUTING' },
+              }).catch(() => {});
+            }
+
+            activePendingConfirmation = undefined;
           }
 
           // Record step

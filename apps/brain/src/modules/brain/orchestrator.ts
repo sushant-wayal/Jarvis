@@ -100,6 +100,7 @@ export class BrainOrchestrator {
             executedToolResults: brainResponse.toolResults,
             agentRunId: brainResponse.agentRunId,
             mode: brainResponse.mode,
+            pendingConfirmation: brainResponse.pendingConfirmation,
           }),
         },
       }),

@@ -1,6 +1,7 @@
 import { VoiceUploadSchema } from '@jarvis/shared';
 import { NextRequest } from 'next/server';
 import { errorResponse, generateRequestId, successResponse } from '@/lib/api/response';
+import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
 import { brainOrchestrator } from '@/modules/brain/orchestrator';
 import { sttProvider } from '@/modules/voice/stt-provider';
@@ -86,7 +87,13 @@ export async function POST(req: NextRequest) {
       'im good',
     ];
 
-    if (closurePhrases.includes(cleanLower)) {
+    const hasPendingConfirmation = conversationId
+      ? await prisma.agentRun.findFirst({
+          where: { conversationId, status: 'WAITING_FOR_USER' },
+        })
+      : null;
+
+    if (!hasPendingConfirmation && closurePhrases.includes(cleanLower)) {
       logger.info('User requested conversation closure', { transcript });
       return successResponse(
         {

@@ -107,7 +107,15 @@ class ToolRegistry {
     // 3. Fallback normalized dot/underscore match
     const normalizedWithUnderscore = name.replace(/\./g, '_');
     const normalizedWithDot = name.replace(/_/g, '.');
-    return this.tools.get(normalizedWithUnderscore) || this.tools.get(normalizedWithDot);
+    const fallback = this.tools.get(normalizedWithUnderscore) || this.tools.get(normalizedWithDot);
+    if (fallback) return fallback;
+
+    for (const [key, t] of this.tools.entries()) {
+      if (key.replace(/\./g, '_') === normalizedWithUnderscore) {
+        return t;
+      }
+    }
+    return undefined;
   }
 
   public getAllTools(): RegisteredTool[] {
