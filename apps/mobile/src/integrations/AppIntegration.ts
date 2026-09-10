@@ -22,33 +22,33 @@ export class AppIntegration {
       return { success: false, error: 'App name cannot be empty.' };
     }
 
-    // Normalized alias matching for common voice typos and colloquial names
-    let cleanApp = raw;
-    if (raw.includes('whatsapp') || raw.includes('watsapp') || raw.includes('wjatsapp') || raw.includes('wa')) {
-      cleanApp = 'whatsapp';
-    } else if (raw.includes('instagram') || raw.includes('insta')) {
-      cleanApp = 'instagram';
-    } else if (raw.includes('telegram')) {
-      cleanApp = 'telegram';
-    } else if (raw.includes('youtube') || raw.includes('yt')) {
-      cleanApp = 'youtube';
-    } else if (raw.includes('spotify')) {
-      cleanApp = 'spotify';
-    } else if (raw.includes('chrome') || raw.includes('browser')) {
-      cleanApp = 'chrome';
-    } else if (raw.includes('calc')) {
-      cleanApp = 'calculator';
-    } else if (raw.includes('camera')) {
-      cleanApp = 'camera';
-    } else if (raw.includes('clock') || raw.includes('alarm')) {
-      cleanApp = 'clock';
-    } else if (raw.includes('map')) {
-      cleanApp = 'maps';
-    } else if (raw.includes('setting')) {
-      cleanApp = 'settings';
-    } else if (raw.includes('message') || raw.includes('sms')) {
-      cleanApp = 'sms';
-    }
+    const APP_ALIAS_MAP: Record<string, string> = {
+      wa: 'whatsapp',
+      whatsapp: 'whatsapp',
+      watsapp: 'whatsapp',
+      wjatsapp: 'whatsapp',
+      insta: 'instagram',
+      instagram: 'instagram',
+      telegram: 'telegram',
+      yt: 'youtube',
+      youtube: 'youtube',
+      spotify: 'spotify',
+      chrome: 'chrome',
+      browser: 'chrome',
+      calc: 'calculator',
+      calculator: 'calculator',
+      camera: 'camera',
+      clock: 'clock',
+      alarm: 'clock',
+      map: 'maps',
+      maps: 'maps',
+      setting: 'settings',
+      settings: 'settings',
+      sms: 'sms',
+      message: 'sms',
+      messages: 'sms',
+    };
+    const cleanApp = APP_ALIAS_MAP[raw] || raw;
 
     // Collect all candidate package names for this app in priority order
     const packagesToTry: string[] = [];
@@ -320,9 +320,8 @@ export class AppIntegration {
     // or if the app name or query explicitly specifies YouTube.
     const isYouTube = Boolean(
       videoId ||
-      rawApp.includes('youtube') ||
-      rawApp.includes('yt') ||
-      cleanQuery.toLowerCase().includes('youtube')
+      rawApp === 'youtube' ||
+      rawApp === 'yt'
     );
 
     // ── 1. YouTube & YouTube Music Playback ──────────────────────────────────

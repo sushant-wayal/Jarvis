@@ -479,19 +479,6 @@ Timezone & Scheduling Directive:
       }
     }
 
-    const mathMatch = message.match(/(\d+(?:\.\d+)?)\s*(?:into|times|multiplied by|\*|x|\+|\-|\/|divided by)\s*(\d+(?:\.\d+)?)/i);
-    if (mathMatch) {
-      const num1 = parseFloat(mathMatch[1]);
-      const num2 = parseFloat(mathMatch[2]);
-      const msg = message.toLowerCase();
-      if (msg.includes('into') || msg.includes('times') || msg.includes('multiplied') || msg.includes('*') || msg.includes('x')) {
-        return `${num1 * num2}.`;
-      }
-      if (msg.includes('+') || msg.includes('plus')) return `${num1 + num2}.`;
-      if (msg.includes('-') || msg.includes('minus')) return `${num1 - num2}.`;
-      if (msg.includes('/') || msg.includes('divided')) return `${num2 !== 0 ? num1 / num2 : 'Error'}.`;
-    }
-
     const errDetail = err instanceof Error ? err.message : '';
     if (errDetail) {
       return `I encountered an issue processing that: ${errDetail}. Please try again.`;

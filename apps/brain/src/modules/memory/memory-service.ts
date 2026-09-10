@@ -1,5 +1,6 @@
 import { MemoryItem, MemoryType } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
+import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
 import { logger } from '@/lib/logging/logger';
 import { ttlEngine } from '@/modules/brain/ttl-engine';
 import { memoryLifecycleService } from './memory-lifecycle';
@@ -20,25 +21,52 @@ export class MemoryService {
         take: limit * 2,
       });
 
-      if (!query || memories.length === 0) {
+      if (!query || memories.length === 0 || memories.length <= limit) {
         return memories.slice(0, limit).map(this.mapToMemoryItem);
       }
 
-      // Keyword & relevance ranking
-      const queryWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
-      const ranked = memories.map((m: { content: string; importance: number; id: string; userId: string; type: string; createdAt: Date; updatedAt: Date; expiresAt: Date | null }) => {
-        const contentLower = m.content.toLowerCase();
-        let score = m.importance * 2;
-        for (const word of queryWords) {
-          if (contentLower.includes(word)) {
-            score += 5;
+      // Semantic LLM ranking: Select memories conceptually relevant to the user request
+      try {
+        const prompt = `You are a memory relevance ranker for personal AI assistant Jarvis.
+User context / message: "${query}"
+
+Available user memories:
+${JSON.stringify(memories.map((m, idx) => ({ index: idx, type: m.type, content: m.content })), null, 2)}
+
+Instructions:
+Select up to ${limit} most relevant memories for the user's situation. Understand conceptual synonyms (e.g. food restrictions relate to allergies; work relates to job/tech stack).
+Respond strictly in JSON array of index numbers in order of relevance: [0, 1, ...]`;
+
+        const modelsToTry = [FAST_FALLBACK_MODELS[0] || 'gemini-flash-lite-latest', DEFAULT_MODEL];
+        for (const model of modelsToTry) {
+          try {
+            const res = await aiClient.models.generateContent({
+              model,
+              contents: prompt,
+            });
+            const text = res.text?.trim() || '';
+            const cleanJson = text.substring(text.indexOf('['), text.lastIndexOf(']') + 1);
+            if (cleanJson) {
+              const indices = JSON.parse(cleanJson) as number[];
+              if (Array.isArray(indices) && indices.length > 0) {
+                const selected = indices
+                  .filter((i) => typeof i === 'number' && i >= 0 && i < memories.length)
+                  .slice(0, limit)
+                  .map((i) => memories[i]);
+                if (selected.length > 0) {
+                  return selected.map(this.mapToMemoryItem);
+                }
+              }
+            }
+          } catch {
+            // Try next model
           }
         }
-        return { memory: m, score };
-      });
+      } catch (err) {
+        logger.warn('Semantic memory ranking fallback to importance order', { err: String(err) });
+      }
 
-      ranked.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
-      return ranked.slice(0, limit).map((r: { memory: { id: string; userId: string; type: string; content: string; importance: number; createdAt: Date; updatedAt: Date; expiresAt: Date | null }; score: number }) => this.mapToMemoryItem(r.memory));
+      return memories.slice(0, limit).map(this.mapToMemoryItem);
     } catch (err) {
       logger.error('Failed to fetch relevant memories', err, { userId });
       return [];

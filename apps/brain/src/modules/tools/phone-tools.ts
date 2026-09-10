@@ -43,12 +43,7 @@ function filterNotifications(
     const q = sender.toLowerCase().trim();
     results = results.filter((n) => {
       const s = n.sender.toLowerCase();
-      if (s === q) return true;
-      // Do not match third-party possessives (e.g. "Darshan's mom") when querying direct relation (e.g. "mom")
-      if (/^[a-zA-Z]+'s\s+/i.test(s) && !/^[a-zA-Z]+'s\s+/i.test(q)) {
-        return false;
-      }
-      return s.includes(q);
+      return s === q || s.includes(q);
     });
   }
   if (app) {
@@ -203,28 +198,18 @@ export const sendMessageToContactTool: JarvisTool<{
     const phone = getPhoneContext(context as unknown as { phoneContext?: PhoneContext });
     const userName = context.userName || 'Sushant';
 
-    // Strip "on whatsapp", "via whatsapp", etc. from contactName
-    const isExplicitWhatsApp = Boolean(
-      input.preferredApp?.toLowerCase().includes('whatsapp') ||
-      /\b(?:on|via|in)\s+whatsapp\b/i.test(input.contactName) ||
-      /\bwhatsapp\b/i.test(input.contactName)
-    );
-    const cleanContactName = input.contactName
-      .replace(/\b(?:on|via|in)\s+whatsapp\b/gi, '')
-      .replace(/\bwhatsapp\b/gi, '')
-      .trim() || input.contactName;
-
-    let targetContactName = cleanContactName;
+    const isExplicitWhatsApp = input.preferredApp?.toLowerCase().includes('whatsapp');
+    let targetContactName = input.contactName.trim();
     let resolvedPhoneNumber = input.phoneNumber;
 
     // Resolve target contact name semantically if not pre-resolved
     if (!resolvedPhoneNumber) {
-      const digits = cleanContactName.replace(/[^0-9+]/g, '');
+      const digits = targetContactName.replace(/[^0-9+]/g, '');
       if (digits.length >= 7) {
         resolvedPhoneNumber = digits;
       } else if (phone?.contacts && phone.contacts.length > 0) {
         const resolved = await semanticEntityResolver.resolveContact(
-          cleanContactName,
+          targetContactName,
           userName,
           phone.contacts,
           phone.aliases
@@ -236,13 +221,13 @@ export const sendMessageToContactTool: JarvisTool<{
           return {
             type: 'CLARIFY',
             success: false,
-            response: resolved.disambiguationMessage || `I found multiple contacts matching "${cleanContactName}". Which one would you like to message?`,
+            response: resolved.disambiguationMessage || `I found multiple contacts matching "${targetContactName}". Which one would you like to message?`,
           };
         } else if (resolved.status === 'NO_MATCH') {
           return {
             type: 'NOT_FOUND',
             success: false,
-            response: resolved.disambiguationMessage || `I couldn't find "${cleanContactName}" in your contacts.`,
+            response: resolved.disambiguationMessage || `I couldn't find "${targetContactName}" in your contacts.`,
           };
         }
       }
@@ -252,11 +237,7 @@ export const sendMessageToContactTool: JarvisTool<{
     const targetLower = targetContactName.toLowerCase();
     const recentEvent = phone?.recentNotifications.find((n) => {
       const s = n.sender.toLowerCase();
-      if (s === targetLower) return true;
-      if (/^[a-zA-Z]+'s\s+/i.test(s) && !/^[a-zA-Z]+'s\s+/i.test(targetLower)) {
-        return false;
-      }
-      return s.includes(targetLower);
+      return s === targetLower || s.includes(targetLower);
     });
 
     const resolvedApp = isExplicitWhatsApp

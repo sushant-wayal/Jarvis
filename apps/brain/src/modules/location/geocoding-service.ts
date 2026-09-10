@@ -1,3 +1,6 @@
+import { aiClient, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
+import { logger } from '@/lib/logging/logger';
+
 export interface GeocodedAddress {
   city?: string;
   state?: string;
@@ -30,11 +33,10 @@ export class GeocodingService {
   }
 
   /**
-   * Reverse geocodes coordinates to city/state/country with graceful fallbacks
+   * Reverse geocodes coordinates to city/state/country
    */
   async reverseGeocode(latitude: number, longitude: number): Promise<GeocodedAddress> {
     try {
-      // Free Open-Meteo reverse geocoding approximation or standard lookup
       const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`;
       const res = await fetch(url, {
         headers: { 'User-Agent': 'Jarvis-Personal-Assistant/2.0' },
@@ -64,36 +66,45 @@ export class GeocodingService {
         }
       }
     } catch {
-      // Fallback
+      // Fall through to LLM reverse geocode
     }
 
-    // Fallback heuristic coordinates for common testing cities
-    if (Math.abs(latitude - 15.49) < 0.5 && Math.abs(longitude - 73.82) < 0.5) {
-      return { city: 'Panaji', state: 'Goa', country: 'India' };
-    }
-    if (Math.abs(latitude - 19.07) < 0.5 && Math.abs(longitude - 72.87) < 0.5) {
-      return { city: 'Mumbai', state: 'Maharashtra', country: 'India' };
-    }
-    if (Math.abs(latitude - 12.97) < 0.5 && Math.abs(longitude - 77.59) < 0.5) {
-      return { city: 'Bangalore', state: 'Karnataka', country: 'India' };
+    // Semantic LLM reverse geocode fallback
+    try {
+      const prompt = `Identify the city, state/region, and country for coordinates latitude: ${latitude}, longitude: ${longitude}.
+Respond strictly in JSON: {"city": "string or null", "state": "string or null", "country": "string or null", "area": "string or null"}`;
+      const res = await aiClient.models.generateContent({
+        model: FAST_FALLBACK_MODELS[0] || 'gemini-flash-lite-latest',
+        contents: prompt,
+      });
+      const text = res.text?.trim() || '';
+      const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      if (cleanJson) {
+        const parsed = JSON.parse(cleanJson);
+        return {
+          city: parsed.city || undefined,
+          state: parsed.state || undefined,
+          country: parsed.country || undefined,
+          area: parsed.area || undefined,
+        };
+      }
+    } catch (err) {
+      logger.warn('LLM reverse geocoding fallback failed', { err: String(err) });
     }
 
-    return { country: 'India' };
+    return {};
   }
 
   /**
-   * Forward geocodes a location name to approximate coordinates
+   * Forward geocodes a location name to approximate coordinates using API + LLM semantic resolution
    */
   async forwardGeocode(locationName: string): Promise<{ latitude: number; longitude: number; name: string } | null> {
-    const lower = locationName.toLowerCase().trim();
-    if (lower.includes('goa')) return { latitude: 15.4909, longitude: 73.8278, name: 'Goa' };
-    if (lower.includes('mumbai')) return { latitude: 19.076, longitude: 72.8777, name: 'Mumbai' };
-    if (lower.includes('bangalore') || lower.includes('bengaluru')) return { latitude: 12.9716, longitude: 77.5946, name: 'Bangalore' };
-    if (lower.includes('delhi')) return { latitude: 28.7041, longitude: 77.1025, name: 'Delhi' };
-    if (lower.includes('airport')) return { latitude: 19.0896, longitude: 72.8656, name: 'Airport' };
+    const trimmed = locationName.trim();
+    if (!trimmed) return null;
 
+    // 1. Query real Open-Meteo Geocoding API
     try {
-      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=1&language=en&format=json`;
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(trimmed)}&count=1&language=en&format=json`;
       const res = await fetch(geoUrl);
       const data = (await res.json()) as { results?: Array<{ latitude: number; longitude: number; name: string }> };
       if (data.results && data.results.length > 0) {
@@ -104,7 +115,31 @@ export class GeocodingService {
         };
       }
     } catch {
-      // ignore
+      // Fall through to LLM geocoding
+    }
+
+    // 2. Semantic LLM Geocoding for landmarks, local areas, or when network API misses
+    try {
+      const prompt = `Estimate approximate geographic coordinates (latitude, longitude) for location or landmark: "${trimmed}".
+Respond strictly in JSON: {"latitude": number, "longitude": number, "name": "string"}`;
+      const res = await aiClient.models.generateContent({
+        model: FAST_FALLBACK_MODELS[0] || 'gemini-flash-lite-latest',
+        contents: prompt,
+      });
+      const text = res.text?.trim() || '';
+      const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      if (cleanJson) {
+        const parsed = JSON.parse(cleanJson) as { latitude?: number; longitude?: number; name?: string };
+        if (typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') {
+          return {
+            latitude: parsed.latitude,
+            longitude: parsed.longitude,
+            name: parsed.name || trimmed,
+          };
+        }
+      }
+    } catch (err) {
+      logger.warn('LLM forward geocoding fallback failed', { err: String(err) });
     }
 
     return null;

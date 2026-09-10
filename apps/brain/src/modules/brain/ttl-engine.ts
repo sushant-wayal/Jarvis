@@ -1,4 +1,4 @@
-import { aiClient, DEFAULT_MODEL } from '@/lib/ai/gemini';
+import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
 import { logger } from '@/lib/logging/logger';
 
 export class TtlEngine {
@@ -9,8 +9,8 @@ export class TtlEngine {
    * Suggests dynamic TTL in days for a conversation based on its topic, urgency, and lifespan
    */
   async suggestConversationTtl(userMessage: string, assistantResponse?: string): Promise<number> {
-    try {
-      const prompt = `You are Jarvis's data lifecycle analyzer. Determine how many days this conversation should be retained before expiring (Time-To-Live).
+    const modelsToTry = Array.from(new Set([DEFAULT_MODEL, ...FAST_FALLBACK_MODELS]));
+    const prompt = `You are Jarvis's data lifecycle analyzer. Determine how many days this conversation should be retained before expiring (Time-To-Live).
 
 User Message: "${userMessage}"
 ${assistantResponse ? `Assistant Response: "${assistantResponse.slice(0, 300)}"` : ''}
@@ -24,21 +24,24 @@ Lifespan Guidelines:
 Respond strictly with a single integer between 1 and 365 representing the number of days to keep this conversation active.
 Example output: 7`;
 
-      const response = await aiClient.models.generateContent({
-        model: DEFAULT_MODEL,
-        contents: prompt,
-      });
+    for (const model of modelsToTry) {
+      try {
+        const response = await aiClient.models.generateContent({
+          model,
+          contents: prompt,
+        });
 
-      const text = response.text?.trim() || '';
-      const match = text.match(/\d+/);
-      if (match) {
-        const days = parseInt(match[0], 10);
-        if (!isNaN(days)) {
-          return this.clamp(days);
+        const text = response.text?.trim() || '';
+        const match = text.match(/\d+/);
+        if (match) {
+          const days = parseInt(match[0], 10);
+          if (!isNaN(days)) {
+            return this.clamp(days);
+          }
         }
+      } catch (err) {
+        logger.warn(`LLM conversation TTL estimation failed on model ${model}`, { error: String(err) });
       }
-    } catch (err) {
-      logger.warn('LLM conversation TTL estimation failed, falling back to heuristic', { error: String(err) });
     }
 
     return this.heuristicConversationTtl(userMessage);
@@ -48,8 +51,8 @@ Example output: 7`;
    * Suggests dynamic TTL in days for a memory item based on its type and content
    */
   async suggestMemoryTtl(content: string, type: string): Promise<number> {
-    try {
-      const prompt = `You are Jarvis's memory lifecycle analyzer. Determine how many days this memory should be kept in active storage before expiring.
+    const modelsToTry = Array.from(new Set([DEFAULT_MODEL, ...FAST_FALLBACK_MODELS]));
+    const prompt = `You are Jarvis's memory lifecycle analyzer. Determine how many days this memory should be kept in active storage before expiring.
 
 Memory Type: ${type}
 Memory Content: "${content}"
@@ -63,21 +66,24 @@ Lifespan Guidelines:
 Respond strictly with a single integer between 1 and 365 representing the number of days.
 Example output: 60`;
 
-      const response = await aiClient.models.generateContent({
-        model: DEFAULT_MODEL,
-        contents: prompt,
-      });
+    for (const model of modelsToTry) {
+      try {
+        const response = await aiClient.models.generateContent({
+          model,
+          contents: prompt,
+        });
 
-      const text = response.text?.trim() || '';
-      const match = text.match(/\d+/);
-      if (match) {
-        const days = parseInt(match[0], 10);
-        if (!isNaN(days)) {
-          return this.clamp(days);
+        const text = response.text?.trim() || '';
+        const match = text.match(/\d+/);
+        if (match) {
+          const days = parseInt(match[0], 10);
+          if (!isNaN(days)) {
+            return this.clamp(days);
+          }
         }
+      } catch (err) {
+        logger.warn(`LLM memory TTL estimation failed on model ${model}`, { error: String(err) });
       }
-    } catch (err) {
-      logger.warn('LLM memory TTL estimation failed, falling back to heuristic', { error: String(err) });
     }
 
     return this.heuristicMemoryTtl(content, type);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/db/prisma';
 import { JarvisTool } from './types';
-import { parseScheduleDate } from '@/modules/tasks/date-parser';
+import { parseScheduleDate, resolveScheduleDateLLM } from '@/modules/tasks/date-parser';
 import { semanticMatcher } from '../brain/semantic-matcher';
 
 const CreateTaskInputSchema = z.object({
@@ -28,7 +28,7 @@ export const createTaskTool: JarvisTool<z.infer<typeof CreateTaskInputSchema>, {
     let nextRun: Date | undefined;
 
     if (input.schedule) {
-      nextRun = parseScheduleDate(input.schedule, context.timezone || 'UTC');
+      nextRun = await resolveScheduleDateLLM(input.schedule, context.timezone || 'UTC');
     }
 
     const task = await prisma.task.create({
@@ -166,10 +166,7 @@ export const updateTaskTool: JarvisTool<
 
     let nextRun: Date | undefined;
     if (input.schedule) {
-      const parsed = new Date(input.schedule);
-      if (!isNaN(parsed.getTime())) {
-        nextRun = parsed;
-      }
+      nextRun = await resolveScheduleDateLLM(input.schedule, context.timezone || 'UTC');
     }
 
     const updated = await prisma.task.update({

@@ -71,19 +71,13 @@ export default function SettingsScreen(): React.ReactElement {
 
   const loadMemories = async (): Promise<void> => {
     try {
-      const list = await apiClient.getMemories();
+      const [list, profile] = await Promise.all([
+        apiClient.getMemories(),
+        apiClient.getUserProfile(),
+      ]);
       setMemories(list);
-      const nameMem = list.find(
-        (m) =>
-          m.content.toLowerCase().includes('name is') ||
-          m.content.toLowerCase().includes('call me') ||
-          m.type === 'PERSON'
-      );
-      if (nameMem) {
-        const match = nameMem.content.match(/(?:name is|call me)\s+([A-Za-z]+)/i);
-        if (match && match[1]) {
-          setUserName(match[1]);
-        }
+      if (profile?.name) {
+        setUserName(profile.name);
       }
     } catch {
       // fallback

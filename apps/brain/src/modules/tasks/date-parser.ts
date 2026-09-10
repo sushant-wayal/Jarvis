@@ -183,3 +183,46 @@ export function parseScheduleDate(scheduleStr?: string, timeZone: string = 'UTC'
 
   return new Date(Date.now() + 60 * 60 * 1000);
 }
+
+/**
+ * Semantically resolves any natural language date/time expression into an accurate Date object using LLM reasoning.
+ */
+export async function resolveScheduleDateLLM(scheduleStr: string, timeZone = 'UTC'): Promise<Date> {
+  const trimmed = scheduleStr.trim();
+  if (!trimmed) return new Date(Date.now() + 3600000);
+
+  // If already full ISO format, parse directly
+  const direct = new Date(trimmed);
+  if (!isNaN(direct.getTime()) && trimmed.includes('T')) {
+    return direct;
+  }
+
+  try {
+    const { aiClient, FAST_FALLBACK_MODELS } = await import('@/lib/ai/gemini');
+    const now = new Date();
+    const currentLocalIso = getLocalIsoString(now, timeZone);
+    const prompt = `Current local ISO time is: ${currentLocalIso} (Timezone: ${timeZone}).
+The user requested a schedule time: "${trimmed}".
+Convert this schedule request into an exact ISO 8601 string taking into account the user's current local time and timezone.
+Respond strictly with JSON: {"isoString": "YYYY-MM-DDTHH:mm:ss+offset"}`;
+
+    const res = await aiClient.models.generateContent({
+      model: FAST_FALLBACK_MODELS[0] || 'gemini-flash-lite-latest',
+      contents: prompt,
+    });
+
+    const text = res.text?.trim() || '';
+    const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    if (cleanJson) {
+      const parsed = JSON.parse(cleanJson) as { isoString?: string };
+      if (parsed.isoString) {
+        const d = new Date(parsed.isoString);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+  } catch {
+    // Fall back to parseScheduleDate
+  }
+
+  return parseScheduleDate(scheduleStr, timeZone);
+}

@@ -116,31 +116,18 @@ Respond strictly in pure JSON format:
       }
     }
 
-    // Graceful fallback if all LLM models fail or time out
-    const isLowEnergy = Boolean(
-      intent.energy === 'low' ||
-      /chess|study|focus|read|sleep|meditat|calm|relax/i.test(`${rawActivity} ${rawMood} ${rawQuery}`)
-    );
-    const isHighEnergy = Boolean(
-      intent.energy === 'high' ||
-      /workout|gym|run|cardio|fitness|party|dance/i.test(`${rawActivity} ${rawMood} ${rawQuery}`)
-    );
-    const fallbackEnergy: 'low' | 'medium' | 'high' = isLowEnergy ? 'low' : isHighEnergy ? 'high' : 'medium';
-
-    const fallbackPrimary = isLowEnergy
-      ? (rawQuery && !/^(focus|chess|study)$/i.test(rawQuery) ? rawQuery : 'deep focus instrumental')
-      : isHighEnergy
-      ? (rawQuery && !/^(workout|gym)$/i.test(rawQuery) ? rawQuery : 'workout motivation hits')
-      : rawQuery || 'trending hits';
+    // Clean fallback if all LLM models fail or time out
+    const fallbackEnergy: 'low' | 'medium' | 'high' = intent.energy || 'medium';
+    const fallbackPrimary = rawQuery || (rawArtist ? `${rawArtist} hits` : 'trending hits');
 
     const fallbackResult: ExpandedMusicSoundscape = {
-      isAmbientOrActivity: Boolean(rawActivity || rawMood || isLowEnergy || isHighEnergy),
+      isAmbientOrActivity: Boolean(rawActivity || rawMood || intent.energy),
       primaryQuery: fallbackPrimary,
       candidateQueries: [fallbackPrimary],
       targetEnergy: fallbackEnergy,
-      preferredGenres: intent.genre ? [intent.genre] : isLowEnergy ? ['instrumental', 'piano'] : isHighEnergy ? ['edm', 'dance'] : [],
-      penalizedGenres: isLowEnergy ? ['rap', 'hip hop'] : isHighEnergy ? ['sleep'] : [],
-      explanation: 'Fallback music intent',
+      preferredGenres: intent.genre ? [intent.genre] : [],
+      penalizedGenres: [],
+      explanation: 'Fallback music intent expansion',
     };
 
     return fallbackResult;

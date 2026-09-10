@@ -138,26 +138,13 @@ export class RecommendationRanker {
           reasons.push(`Matches soundscape: ${track.title}`);
         }
 
-        // Penalize mismatched genres (e.g. rap/hiphop/metal during chess/focus/sleep)
+        // Penalize mismatched genres (defined semantically by LLM soundscape)
         const isPenalized = soundscape.penalizedGenres.some((pg) => {
           const reg = new RegExp(`\\b${pg}\\b`, 'i');
           return reg.test(trackGenre) || reg.test(trackTitleKey) || reg.test(trackArtistKey);
         });
         if (isPenalized) {
           penalty += 0.6;
-        }
-
-        // Energy verification
-        if (soundscape.targetEnergy === 'low') {
-          const loudKeywords = ['remix', 'club mix', 'dj', 'party', 'bass boosted', 'rap', 'hip hop', 'bhangra'];
-          if (loudKeywords.some((kw) => trackTitleKey.includes(kw) || trackGenre.includes(kw))) {
-            penalty += 0.5;
-          }
-        } else if (soundscape.targetEnergy === 'high') {
-          const sleepyKeywords = ['sleep', 'lullaby', 'relaxing piano', 'meditation'];
-          if (sleepyKeywords.some((kw) => trackTitleKey.includes(kw))) {
-            penalty += 0.5;
-          }
         }
       }
 

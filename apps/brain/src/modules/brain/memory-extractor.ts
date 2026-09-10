@@ -11,30 +11,7 @@ export class MemoryExtractor {
     userMessage: string,
     assistantResponse: string
   ): Promise<void> {
-    const messageLower = userMessage.toLowerCase().trim();
-
-    // ── Pre-filter 1: Pure Questions & Tool Invocations ─────────────────────
-    // If the message is a question or lookup and contains no self-referential tokens, skip
-    const selfTokens = ['i ', "i'm", 'my ', 'me ', 'prefer', 'call me', 'remember', 'allergic', 'favorite', 'never', 'always'];
-    const hasSelfToken = selfTokens.some((t) => messageLower.includes(t));
-
-    const isQuestionOrCommand =
-      messageLower.startsWith('what') ||
-      messageLower.startsWith('where') ||
-      messageLower.startsWith('who') ||
-      messageLower.startsWith('when') ||
-      messageLower.startsWith('how') ||
-      messageLower.startsWith('is ') ||
-      messageLower.startsWith('can you') ||
-      messageLower.startsWith('tell me') ||
-      messageLower.startsWith('call ') ||
-      messageLower.endsWith('?');
-
-    if (isQuestionOrCommand && !hasSelfToken) {
-      return; // Pure question or command without personal statement
-    }
-
-    if (!hasSelfToken && userMessage.length < 25) {
+    if (!userMessage.trim()) {
       return;
     }
 

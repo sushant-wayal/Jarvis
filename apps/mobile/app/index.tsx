@@ -76,27 +76,15 @@ export default function HomeScreen(): React.ReactElement {
 
   const loadDynamicContext = async (): Promise<void> => {
     try {
-      const [events, tasks, location, memories] = await Promise.all([
+      const [events, tasks, location, profile] = await Promise.all([
         apiClient.getEvents('ACTIVE').catch(() => [] as UserEventItem[]),
         apiClient.getTasks('ACTIVE').catch(() => [] as TaskItem[]),
         apiClient.getCurrentLocation().catch(() => null),
-        apiClient.getMemories().catch(() => []),
+        apiClient.getUserProfile().catch(() => null),
       ]);
 
-      // Extract user name from memory if available
-      if (memories && memories.length > 0) {
-        const nameMem = memories.find(
-          (m) =>
-            m.content.toLowerCase().includes('name is') ||
-            m.content.toLowerCase().includes('call me') ||
-            m.type === 'PERSON'
-        );
-        if (nameMem) {
-          const match = nameMem.content.match(/(?:name is|call me)\s+([A-Za-z]+)/i);
-          if (match && match[1]) {
-            setUserName(match[1]);
-          }
-        }
+      if (profile?.name) {
+        setUserName(profile.name);
       }
 
       if (events && events.length > 0) {

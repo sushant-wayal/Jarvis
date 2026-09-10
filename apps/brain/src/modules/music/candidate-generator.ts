@@ -12,21 +12,7 @@ import { ExpandedMusicSoundscape, expandMusicIntent } from './music-intent-expan
 import { decryptDesEcb } from '@/modules/media/music-resolver';
 import { logger } from '@/lib/logging/logger';
 
-function getTimeOfDayMusicalQuery(timeOfDay: string, language?: string): string {
-  const langPrefix = language ? `${language} ` : '';
-  switch (timeOfDay.toLowerCase()) {
-    case 'morning':
-      return `${langPrefix}morning acoustic chill`;
-    case 'afternoon':
-      return `${langPrefix}afternoon chill vibes`;
-    case 'evening':
-      return `${langPrefix}evening acoustic sunset`;
-    case 'night':
-      return `${langPrefix}late night chill lofi`;
-    default:
-      return `${langPrefix}trending acoustic hits`;
-  }
-}
+
 
 
 function fetchJson(url: string, timeoutMs = 4000): Promise<any> {
@@ -148,13 +134,17 @@ export class CandidateGenerator {
         sourceWeight: 0.7,
         reason: 'Exploration discovery',
       });
-    } else if (queries.length < 3 && context?.timeOfDay) {
-      const todQuery = getTimeOfDayMusicalQuery(context.timeOfDay, intent.language);
-      queries.push({
-        query: todQuery,
-        sourceWeight: 0.65,
-        reason: `Time of day: ${context.timeOfDay}`,
-      });
+    } else if (queries.length < 3 && soundscape.candidateQueries?.length) {
+      for (const sq of soundscape.candidateQueries) {
+        if (!queries.some((q) => q.query.toLowerCase() === sq.toLowerCase())) {
+          queries.push({
+            query: sq,
+            sourceWeight: 0.75,
+            reason: `LLM soundscape query: ${sq}`,
+          });
+          if (queries.length >= 3) break;
+        }
+      }
     }
 
     // Execute queries in parallel (capped at 4 queries max)

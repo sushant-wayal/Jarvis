@@ -23,9 +23,9 @@ export const DEFAULT_MODEL =
 
 // Verified high-speed production fallback models
 export const FAST_FALLBACK_MODELS = [
-  'gemini-3-flash-preview',
   'gemini-3.1-flash-lite-preview',
   'gemini-flash-lite-latest',
+  'gemini-3-flash-preview',
 ];
 
 export function getGeminiPoolStats() {

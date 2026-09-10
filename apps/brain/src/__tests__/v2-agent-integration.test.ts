@@ -29,16 +29,16 @@ describe('Jarvis V2 Agentic System Verification', () => {
     await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
   });
 
-  it('Scenario 1: Fast deterministic intent classification for calculations', () => {
-    const result = intentEngine.classifyFast('what is 49 into 193');
+  it('Scenario 1: Semantic intent classification for calculations', async () => {
+    const result = await intentEngine.classify('what is 49 into 193');
     expect(result).not.toBeNull();
-    expect(result?.intent).toBe('CALCULATION');
+    expect(result.intent).toBe('CALCULATION');
   });
 
-  it('Scenario 2: Intent classification for reminder creation', () => {
-    const result = intentEngine.classifyFast('remind me tomorrow at 8 AM to call Mom');
+  it('Scenario 2: Semantic intent classification for reminder creation', async () => {
+    const result = await intentEngine.classify('remind me tomorrow at 8 AM to call Mom');
     expect(result).not.toBeNull();
-    expect(result?.intent).toBe('TASK_CREATION');
+    expect(result.intent).toBe('TASK_CREATION');
   });
 
   it('Scenario 3: Context Engine aggregates profile, active tasks, and memories', async () => {

@@ -320,6 +320,31 @@ export class JarvisApiClient {
     return json.data || [];
   }
 
+  async getUserProfile(userId?: string): Promise<{ id: string; name: string; preferences: Record<string, unknown> } | null> {
+    try {
+      const url = userId ? `${this.baseUrl}/user?userId=${encodeURIComponent(userId)}` : `${this.baseUrl}/user`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const json = (await res.json()) as ApiResponse<{ id: string; name: string; preferences: Record<string, unknown> }>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async updateUserProfile(data: { userId?: string; name?: string; preferences?: Record<string, unknown> }): Promise<{ id: string; name: string; preferences: Record<string, unknown> } | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/user`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = (await res.json()) as ApiResponse<{ id: string; name: string; preferences: Record<string, unknown> }>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
   async createTask(data: CreateTaskRequest): Promise<TaskItem> {
     const res = await fetch(`${this.baseUrl}/tasks`, {
       method: 'POST',

@@ -151,7 +151,6 @@ function isRateLimitError(err: unknown): boolean {
 
   return (
     status === 429 ||
-    status === 503 ||
     msg.includes('429') ||
     msg.includes('resource_exhausted') ||
     msg.includes('quota') ||
@@ -167,7 +166,7 @@ installThoughtSignatureInterceptor();
 export class GeminiKeyPoolManager {
   private slots: PoolSlot[] = [];
   private currentIndex = 0;
-  private readonly defaultCooldownMs = 60_000; // 60 seconds cooldown on 429
+  private readonly defaultCooldownMs = 300_000; // 5 minutes cooldown on 429 or timeout
 
   constructor() {
     this.refreshKeys();
@@ -306,10 +305,10 @@ export class GeminiKeyPoolManager {
       attempts++;
 
       try {
-        // Enforce 6.5s per-key timeout to prevent individual key latency spikes from hitting Vercel 15s limit
+        // Enforce 8s per-key timeout for balanced latency and resilience
         let timer: NodeJS.Timeout | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`Key ${slot.maskedKey} call timed out (6.5s limit)`)), 6500);
+          timer = setTimeout(() => reject(new Error(`Key ${slot.maskedKey} call timed out (8s limit)`)), 8000);
         });
 
         const result = await Promise.race([

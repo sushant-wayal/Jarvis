@@ -33,7 +33,7 @@ describe('Semantic Memory Lifecycle & Identity Guard', () => {
     const memories = await prisma.memory.findMany({ where: { userId: testUserId } });
     const hasDarshan = memories.some((m) => m.content.includes('Darshan'));
     expect(hasDarshan).toBe(false);
-  });
+  }, 120000);
 
   it('allows candidate confirming verified User.name', async () => {
     const result = await memoryLifecycleService.processCandidate({
@@ -46,7 +46,7 @@ describe('Semantic Memory Lifecycle & Identity Guard', () => {
     });
 
     expect(result.action).toBe('INSERTED');
-  });
+  }, 120000);
 
   it('protects USER_EXPLICIT memory from being overwritten by EXTRACTED_CONVERSATION', async () => {
     // Explicit preference
@@ -75,5 +75,5 @@ describe('Semantic Memory Lifecycle & Identity Guard', () => {
       where: { userId: testUserId, content: { contains: 'black coffee' } },
     });
     expect(blackCoffee).toBeDefined();
-  });
+  }, 120000);
 });

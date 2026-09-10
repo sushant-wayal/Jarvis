@@ -1,6 +1,6 @@
 import { MemoryType } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
-import { aiClient, DEFAULT_MODEL } from '@/lib/ai/gemini';
+import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
 import { logger } from '@/lib/logging/logger';
 import { privacyMasker } from '@/modules/brain/privacy-masker';
 import { ttlEngine } from '@/modules/brain/ttl-engine';
@@ -35,7 +35,7 @@ export class MemoryLifecycleService {
       const user = await prisma.user.findUnique({ where: { id: candidate.userId } });
       const verifiedUserName = user?.name || 'Sushant';
 
-      const isIdentityViolation = this.checkIdentityViolation(
+      const isIdentityViolation = await this.checkIdentityViolation(
         trimmedContent,
         verifiedUserName,
         candidate.source
@@ -191,27 +191,39 @@ export class MemoryLifecycleService {
   /**
    * Guards against memories claiming a false name or identity that contradicts verified User.name.
    */
-  private checkIdentityViolation(
+  private async checkIdentityViolation(
     content: string,
     verifiedName: string,
     source?: string
-  ): boolean {
-    if (source === 'USER_EXPLICIT_NAME_CHANGE') {
-      return false; // Explicit user command allowed to update
+  ): Promise<boolean> {
+    if (source === 'USER_EXPLICIT_NAME_CHANGE' || !content.trim()) {
+      return false;
     }
 
-    const cLower = content.toLowerCase();
-    const vLower = verifiedName.toLowerCase();
+    const modelsToTry = Array.from(new Set([DEFAULT_MODEL, ...FAST_FALLBACK_MODELS]));
+    const prompt = `You are Jarvis's identity protection guard.
+Verified user name: "${verifiedName}".
 
-    // Regex to detect name assertions like "User's name is X", "User is called X", "My name is X"
-    const nameAssertionMatch = cLower.match(
-      /(?:user's name is|user name is|user is called|my name is|named)\s+([a-zA-Z]+)/i
-    );
+Candidate memory: "${content}"
 
-    if (nameAssertionMatch) {
-      const assertedName = nameAssertionMatch[1].toLowerCase();
-      if (assertedName !== vLower && assertedName !== 'chief' && assertedName !== 'sir') {
-        return true; // Contradicts verified user name
+Does this memory claim that the user themselves is named someone else or has a contradicting personal identity (excluding friends, family, contacts, or third parties)?
+Respond strictly with JSON: {"isViolation": boolean, "reason": "brief explanation"}`;
+
+    for (const model of modelsToTry) {
+      try {
+        const res = await aiClient.models.generateContent({
+          model,
+          contents: prompt,
+        });
+
+        const text = res.text?.trim() || '';
+        const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+        if (cleanJson) {
+          const parsed = JSON.parse(cleanJson);
+          return Boolean(parsed.isViolation);
+        }
+      } catch (err) {
+        logger.warn(`LLM identity verification error on model ${model}`, { err: String(err) });
       }
     }
 
@@ -238,8 +250,7 @@ export class MemoryLifecycleService {
       };
     });
 
-    try {
-      const prompt = `You are an intelligent memory arbitration engine for personal assistant Jarvis.
+    const prompt = `You are an intelligent memory arbitration engine for personal assistant Jarvis.
 User identity: "${verifiedUserName}"
 New candidate memory:
 Content: "${maskedCandidate}"
@@ -266,52 +277,57 @@ Respond strictly with JSON:
   "reason": "Brief rationale"
 }`;
 
-      const response = await aiClient.models.generateContent({
-        model: DEFAULT_MODEL,
-        contents: prompt,
-      });
+    const modelsToTry = Array.from(new Set([DEFAULT_MODEL, ...FAST_FALLBACK_MODELS]));
+    for (const model of modelsToTry) {
+      try {
+        const response = await aiClient.models.generateContent({
+          model,
+          contents: prompt,
+        });
 
-      const text = response.text?.trim() || '{}';
-      const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-      if (!cleanJson) {
-        return { action: 'INSERTED', reason: 'Arbiter fallback: clean insert' };
-      }
+        const text = response.text?.trim() || '{}';
+        const cleanJson = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+        if (!cleanJson) {
+          continue;
+        }
 
-      const parsed = JSON.parse(cleanJson) as {
-        relationship: string;
-        action: 'INSERT' | 'UPDATE' | 'RENEW' | 'DISCARD';
-        targetMemoryId?: string | null;
-        reason?: string;
-      };
-
-      if (parsed.action === 'DISCARD') {
-        return {
-          action: 'DISCARDED',
-          reason: parsed.reason || 'Candidate discarded due to authority or conflict rule',
+        const parsed = JSON.parse(cleanJson) as {
+          relationship: string;
+          action: 'INSERT' | 'UPDATE' | 'RENEW' | 'DISCARD';
+          targetMemoryId?: string | null;
+          reason?: string;
         };
-      }
 
-      if (parsed.action === 'RENEW' && parsed.targetMemoryId) {
-        return {
-          action: 'RENEWED',
-          targetMemoryId: parsed.targetMemoryId,
-          reason: parsed.reason || 'Duplicate memory renewed',
-        };
-      }
+        if (parsed.action === 'DISCARD') {
+          return {
+            action: 'DISCARDED',
+            reason: parsed.reason || 'Candidate discarded due to authority or conflict rule',
+          };
+        }
 
-      if (parsed.action === 'UPDATE' && parsed.targetMemoryId) {
-        return {
-          action: 'UPDATED',
-          targetMemoryId: parsed.targetMemoryId,
-          reason: parsed.reason || 'Superseded conflicting memory',
-        };
-      }
+        if (parsed.action === 'RENEW' && parsed.targetMemoryId) {
+          return {
+            action: 'RENEWED',
+            targetMemoryId: parsed.targetMemoryId,
+            reason: parsed.reason || 'Duplicate memory renewed',
+          };
+        }
 
-      return { action: 'INSERTED', reason: parsed.reason || 'New fact' };
-    } catch (err) {
-      logger.warn('LLM Memory Arbiter call failed, allowing safe insert', { error: String(err) });
-      return { action: 'INSERTED', reason: 'LLM Arbiter unavailable, inserted safely' };
+        if (parsed.action === 'UPDATE' && parsed.targetMemoryId) {
+          return {
+            action: 'UPDATED',
+            targetMemoryId: parsed.targetMemoryId,
+            reason: parsed.reason || 'Superseded conflicting memory',
+          };
+        }
+
+        return { action: 'INSERTED', reason: parsed.reason || 'New fact' };
+      } catch (err) {
+        logger.warn(`LLM Memory Arbiter call failed on model ${model}`, { error: String(err) });
+      }
     }
+
+    return { action: 'INSERTED', reason: 'LLM Arbiter unavailable, inserted safely' };
   }
 
   /**
