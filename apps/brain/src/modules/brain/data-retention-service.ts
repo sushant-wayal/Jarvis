@@ -14,35 +14,6 @@ export interface CleanupResult {
 }
 
 export class DataRetentionService {
-  private lastCleanupRun = 0;
-  private isCleanupRunning = false;
-  private readonly CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-  /**
-   * Opportunistically triggers daily cleanup in the background if 24 hours have elapsed
-   */
-  public triggerDailyCleanupOpportunistically(): void {
-    const now = Date.now();
-    if (this.isCleanupRunning || (now - this.lastCleanupRun < this.CLEANUP_INTERVAL_MS)) {
-      return;
-    }
-
-    this.isCleanupRunning = true;
-    this.cleanupAllExpired()
-      .then((res) => {
-        this.lastCleanupRun = Date.now();
-        if (res.recordsDeleted.conversations > 0 || res.recordsDeleted.memories > 0) {
-          logger.info('Opportunistic daily cleanup purged expired records', res.recordsDeleted);
-        }
-      })
-      .catch((err) => {
-        logger.warn('Opportunistic daily cleanup error', { err: String(err) });
-      })
-      .finally(() => {
-        this.isCleanupRunning = false;
-      });
-  }
-
   /**
    * Identifies all expired records (conversations, memories, event reminders)
    * and permanently removes them to maintain optimal database storage.

@@ -1,7 +1,6 @@
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
 import { notificationService } from '@/modules/notifications/notification-service';
-import { dataRetentionService } from '@/modules/brain/data-retention-service';
 
 export class TaskRunner {
   /**
@@ -84,9 +83,6 @@ export class TaskRunner {
         });
       }
     }
-
-    // Trigger opportunistic daily data retention cleanup in background
-    dataRetentionService.triggerDailyCleanupOpportunistically();
 
     return { processed: dueTasks.length, executed };
   }
