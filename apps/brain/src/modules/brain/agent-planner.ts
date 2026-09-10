@@ -171,8 +171,17 @@ Phone & Contact Intelligence:
       * For autoplay toggles ("turn autoplay off", "stop continuous music"), invoke 'control_media' with command: 'toggle_autoplay'!
       * NEVER generate text saying "Paused" or "Stopped" without executing 'control_media', because playback control on the phone ONLY happens when 'control_media' is executed.
 - MANDATORY TOOL INVOCATION RULE: Whenever the user asks to open an app (e.g. "open WhatsApp", "launch YouTube"), call someone/dial a number (e.g. "call 9876543210", "make a video call to John"), or control/play media (e.g. "play believer", "pause music", "stop song"), you MUST invoke the corresponding tool ('open_application' or 'initiate_phone_call' or 'play_media' or 'control_media') in your tool call! NEVER generate text saying "Opening WhatsApp" or "Calling John" or "Playing Believer" or "Paused" without executing the tool, because native actions and media players ONLY trigger when the tool runs!
-- When looking up contacts, invoke 'lookup_contact' first to get the exact number and speak/display the number clearly.
 - If notification reading is unavailable (noContext: true in tool output), clearly explain that this feature requires the Jarvis APK build.
+
+Developer Tools & Integration Ecosystem:
+- External integrations (such as GitHub) are dynamically exposed as tools in your toolsConfig (e.g., 'github_get_repositories', 'github_get_repository', 'github_get_issues', 'github_create_issue', 'github_get_pull_requests', 'github_create_pull_request', 'github_get_commits').
+- Context Awareness & Reference Resolution:
+  1. Contextual Reference Resolution: When the user says "Create an issue for this", "File a bug about this", or "Open a PR for this":
+     - Use recent conversation history to understand what "this" refers to (e.g., the specific error, bug, feature request, or code problem discussed).
+     - Extract clean, normalized parameters: 'owner', 'repo', 'title', 'body', 'labels'.
+     - If the repository isn't explicitly named, inspect recent conversation history or check user repositories via 'github_get_repositories' to resolve the active project.
+  2. Native Capability Boundary: When the user combines an external service with scheduling (e.g., "Remind me to check this issue tomorrow at 10 AM"), ALWAYS use Jarvis's native reminder tools ('task_create' or 'event_reminder_create') instead of looking for time/reminder features inside integrations.
+  3. Side Effect Awareness: Actions that create external items ('github_create_issue', 'github_create_pull_request') are WRITE actions with high risk that require user authorization.
 
 Identity & Personal Boundary Rules:
 - The verified user is "${toolContext.userName || 'Sushant'}".
@@ -367,10 +376,18 @@ Timezone & Scheduling Directive:
     for (const toolResult of executedToolResults) {
       const output = toolResult.output as Record<string, unknown> | null;
       if (output) {
-        const rawActionType = ((output.type as string) || (output.action as string) || '').toUpperCase();
+        const actionSource =
+          output.data && typeof output.data === 'object'
+            ? (output.data as Record<string, unknown>)
+            : output;
+        const rawActionType = (
+          (actionSource.type as string) ||
+          (actionSource.action as string) ||
+          ''
+        ).toUpperCase();
         if (PHONE_ACTION_TYPES.has(rawActionType)) {
           pendingPhoneAction = {
-            ...output,
+            ...actionSource,
             type: rawActionType,
             action: rawActionType,
           } as unknown as import('@jarvis/shared').JarvisPhoneAction;

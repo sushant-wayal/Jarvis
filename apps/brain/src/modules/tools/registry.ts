@@ -1,6 +1,7 @@
 import { ToolContext, ToolResult } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
+import { integrationManager } from '../integrations';
 import { calculatorTool } from './calculator';
 import { currentTimeTool } from './current-time';
 import { dateTimeTool } from './date-time';
@@ -88,8 +89,46 @@ class ToolRegistry {
   }
 
   public register<TInput>(tool: JarvisTool<TInput>): void {
+    const registered = this.wrapJarvisTool(tool as unknown as JarvisTool);
+    this.tools.set(tool.name, registered);
+  }
+
+  public getTool(name: string): RegisteredTool | undefined {
+    // 1. Direct match in core tools
+    const core = this.tools.get(name);
+    if (core) return core;
+
+    // 2. Integration Manager dynamic discovery
+    const intTool = integrationManager.getTool(name);
+    if (intTool) {
+      return this.wrapJarvisTool(intTool as unknown as JarvisTool);
+    }
+
+    // 3. Fallback normalized dot/underscore match
+    const normalizedWithUnderscore = name.replace(/\./g, '_');
+    const normalizedWithDot = name.replace(/_/g, '.');
+    return this.tools.get(normalizedWithUnderscore) || this.tools.get(normalizedWithDot);
+  }
+
+  public getAllTools(): RegisteredTool[] {
+    const coreTools = Array.from(this.tools.values());
+    const integrationTools = integrationManager
+      .getAllActiveTools()
+      .map((it) => this.wrapJarvisTool(it as unknown as JarvisTool));
+    return [...coreTools, ...integrationTools];
+  }
+
+  public getGeminiFunctionDeclarations(): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
+    return this.getAllTools().map((t) => ({
+      name: t.name.replace(/\./g, '_'),
+      description: t.description,
+      parameters: t.parameters,
+    }));
+  }
+
+  private wrapJarvisTool(tool: JarvisTool): RegisteredTool {
     const jsonSchema = this.zodToJsonSchema(tool.inputSchema);
-    this.tools.set(tool.name, {
+    return {
       name: tool.name,
       description: tool.description,
       category: tool.category,
@@ -128,23 +167,7 @@ class ToolRegistry {
           };
         }
       },
-    });
-  }
-
-  public getTool(name: string): RegisteredTool | undefined {
-    return this.tools.get(name);
-  }
-
-  public getAllTools(): RegisteredTool[] {
-    return Array.from(this.tools.values());
-  }
-
-  public getGeminiFunctionDeclarations(): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
-    return this.getAllTools().map((t) => ({
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters,
-    }));
+    };
   }
 
   private zodToJsonSchema(schema: unknown): Record<string, unknown> {

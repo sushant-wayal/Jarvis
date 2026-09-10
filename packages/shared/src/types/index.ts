@@ -721,3 +721,5 @@ export interface MusicSession {
   updatedAt: number;
 }
 
+export * from './integration';
+
