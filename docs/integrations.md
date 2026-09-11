@@ -215,7 +215,42 @@ export class CreateIssueTool extends BaseIntegrationTool<
 
 ---
 
-## 9. Creating a New Integration
+## 9. Existing Integration: Serenity (Autonomous YouTube Channel)
+
+The **Serenity** integration connects Jarvis with the user's autonomous YouTube channel pipeline (`auto-youtube-channel`). Serenity automatically generates, voices, visualizes, assembles, and publishes daily YouTube videos and 2–3 Shorts without manual intervention.
+
+```text
+apps/brain/src/modules/integrations/serenity/
+├── SerenityAuth.ts              # API Key management, URL resolution, /api/settings validation
+├── SerenityClient.ts            # REST client with AbortSignal timeout & error mapping
+├── SerenityIntegration.ts       # BaseIntegration lifecycle & tool registration
+├── index.ts                     # Barrel exports
+└── tools/
+    ├── GetPipelineStatusTool.ts      # serenity.get_pipeline_status (READ, SAFE)
+    ├── TriggerVideoGenerationTool.ts # serenity.trigger_video_generation (WRITE, HIGH_RISK, Confirmed)
+    ├── RetryFailedJobsTool.ts        # serenity.retry_failed_jobs (WRITE, HIGH_RISK, Confirmed)
+    ├── GetHistoryTool.ts             # serenity.get_history (READ, SAFE)
+    ├── GetAnalyticsTool.ts           # serenity.get_analytics (READ, SAFE)
+    ├── GetIdeasQueueTool.ts          # serenity.get_ideas_queue (READ, SAFE)
+    ├── AddVideoIdeaTool.ts           # serenity.add_video_idea (WRITE, HIGH_RISK, Confirmed)
+    ├── ReorderVideoIdeaTool.ts       # serenity.reorder_video_idea (WRITE, HIGH_RISK, Confirmed)
+    ├── RemoveVideoIdeaTool.ts        # serenity.remove_video_idea (DESTRUCTIVE, HIGH_RISK, Confirmed)
+    ├── GetSeriesTool.ts              # serenity.get_series (READ, SAFE)
+    ├── CreateSeriesTool.ts           # serenity.create_series (WRITE, HIGH_RISK, Confirmed)
+    ├── UpdateScheduleTool.ts         # serenity.update_schedule (WRITE, HIGH_RISK, Confirmed)
+    ├── GetSettingsTool.ts            # serenity.get_settings (READ, SAFE)
+    ├── UpdateSettingsTool.ts         # serenity.update_settings (WRITE, HIGH_RISK, Confirmed)
+    ├── GenerateScriptPreviewTool.ts  # serenity.generate_script_preview (READ, SAFE)
+    └── GenerateThumbnailTool.ts      # serenity.generate_thumbnail (WRITE, HIGH_RISK, Confirmed)
+```
+
+### Configuration:
+- `SERENITY_API_KEY`: Authentication key for Serenity endpoints.
+- `SERENITY_BASE_URL`: Base URL for the Serenity API (e.g. `https://vid-stack.vercel.app` or `http://localhost:3000`).
+
+---
+
+## 10. Creating a New Integration
 
 To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
@@ -234,9 +269,10 @@ To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
 ---
 
-## 10. Using the Integration Development Skill
+## 11. Using the Integration Development Skill
 
 The standardized engineering workflow is codified in the developer skill:
 `file:///.agents/skills/jarvis-integration-developer/SKILL.md`
 
 Whenever you or an AI agent needs to add a new integration, activate the skill and follow its 14-stage checklist. It contains the complete self-contained answers to all 13 core fundamentals, directory conventions, and verification steps.
+
