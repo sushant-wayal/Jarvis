@@ -38,6 +38,7 @@ import { JarvisTool, RegisteredTool } from './types';
 import { weatherTool } from './weather';
 import { webSearchTool } from './web-search';
 import { phoneTools } from './phone-tools';
+import { delegateSubTaskTool } from './sub-agent-tool';
 
 class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
@@ -86,6 +87,9 @@ class ToolRegistry {
     for (const tool of phoneTools) {
       this.register(tool as unknown as JarvisTool);
     }
+
+    // Sub-Agent Delegation Tool
+    this.register(delegateSubTaskTool as unknown as JarvisTool);
   }
 
   public register<TInput>(tool: JarvisTool<TInput>): void {
@@ -126,12 +130,20 @@ class ToolRegistry {
     return [...coreTools, ...integrationTools];
   }
 
-  public getGeminiFunctionDeclarations(): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
-    return this.getAllTools().map((t) => ({
-      name: t.name.replace(/\./g, '_'),
-      description: t.description,
-      parameters: t.parameters,
-    }));
+  public getGeminiFunctionDeclarations(options?: {
+    excludeTools?: string[];
+  }): Array<{ name: string; description: string; parameters: Record<string, unknown> }> {
+    const excludeSet = new Set(
+      (options?.excludeTools || []).map((t) => t.replace(/\./g, '_').toLowerCase())
+    );
+
+    return this.getAllTools()
+      .filter((t) => !excludeSet.has(t.name.replace(/\./g, '_').toLowerCase()))
+      .map((t) => ({
+        name: t.name.replace(/\./g, '_'),
+        description: t.description,
+        parameters: t.parameters,
+      }));
   }
 
   private wrapJarvisTool(tool: JarvisTool): RegisteredTool {

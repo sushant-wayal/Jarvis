@@ -20,7 +20,7 @@ export class GetIssuesTool extends BaseIntegrationTool<
         owner: z.string().describe('Repository owner username or organization'),
         repo: z.string().describe('Repository name'),
         state: z.enum(['open', 'closed', 'all']).default('open').describe('Issue state filter'),
-        limit: z.number().min(1).max(30).default(10).describe('Maximum number of issues to return'),
+        limit: z.coerce.number().min(1).max(30).default(10).describe('Maximum number of issues to return'),
       }),
       executor: async (input) => {
         const issues = await client.getIssues(

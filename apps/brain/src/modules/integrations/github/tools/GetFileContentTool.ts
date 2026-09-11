@@ -23,8 +23,8 @@ export class GetFileContentTool extends BaseIntegrationTool<
         repo: z.string().describe('Repository name'),
         path: z.string().describe('File or directory path in the repository (e.g. "src/index.ts", "package.json")'),
         ref: z.string().optional().describe('Branch, commit SHA, or tag to fetch from (defaults to default branch)'),
-        startLine: z.number().min(1).optional().describe('Optional 1-indexed starting line number to read from'),
-        endLine: z.number().min(1).optional().describe('Optional 1-indexed ending line number to read until'),
+        startLine: z.coerce.number().min(1).optional().describe('Optional 1-indexed starting line number to read from'),
+        endLine: z.coerce.number().min(1).optional().describe('Optional 1-indexed ending line number to read until'),
       }),
       executor: async (input) => {
         const fileData = await client.getFileContent(

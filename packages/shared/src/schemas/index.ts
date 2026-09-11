@@ -44,6 +44,8 @@ export const ChatRequestSchema = z.object({
   locale: z.string().optional().default('en-US'),
   speakResponse: z.boolean().optional().default(false),
   deviceId: z.string().optional(),
+  /** Enable asynchronous background execution (Deep Work mode) */
+  asyncMode: z.boolean().optional().default(false),
   /** Phone context snapshot from the mobile device */
   phoneContext: PhoneContextSchema,
 });

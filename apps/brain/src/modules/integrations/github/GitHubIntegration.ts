@@ -18,6 +18,8 @@ import { GetRepositoriesTool } from './tools/GetRepositoriesTool';
 import { GetRepositoryTool } from './tools/GetRepositoryTool';
 import { GetRepositoryTreeTool } from './tools/GetRepositoryTreeTool';
 import { SearchCodeTool } from './tools/SearchCodeTool';
+import { GetRepositoryOverviewTool } from './tools/GetRepositoryOverviewTool';
+import { GetBatchFilesTool } from './tools/GetBatchFilesTool';
 
 export class GitHubIntegration extends BaseIntegration {
   public readonly metadata: IntegrationMetadata;
@@ -80,6 +82,8 @@ export class GitHubIntegration extends BaseIntegration {
     this.registerTool(new GetCommitsTool(this.client));
     this.registerTool(new GetFileContentTool(this.client));
     this.registerTool(new GetRepositoryTreeTool(this.client));
+    this.registerTool(new GetRepositoryOverviewTool(this.client));
+    this.registerTool(new GetBatchFilesTool(this.client));
     this.registerTool(new SearchCodeTool(this.client));
     this.registerTool(new CreateBranchTool(this.client));
     this.registerTool(new CommitFileChangeTool(this.client));

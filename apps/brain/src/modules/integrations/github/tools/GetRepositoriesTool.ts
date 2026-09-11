@@ -17,7 +17,7 @@ export class GetRepositoriesTool extends BaseIntegrationTool<
       riskLevel: 'SAFE',
       requiresConfirmation: false,
       inputSchema: z.object({
-        limit: z.number().min(1).max(30).default(10).describe('Maximum number of repositories to return'),
+        limit: z.coerce.number().min(1).max(30).default(10).describe('Maximum number of repositories to return'),
       }),
       executor: async (input) => {
         const repos = await client.getRepositories(input.limit || 10);

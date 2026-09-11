@@ -53,12 +53,7 @@ class DuckDuckGoSearchProvider implements SearchProvider {
   private fallbackSearch(query: string): SearchResult {
     return {
       query,
-      results: [
-        {
-          title: `Information search for: ${query}`,
-          snippet: `Current web lookup query regarding "${query}". Ensure accurate response synthesis.`,
-        },
-      ],
+      results: [],
     };
   }
 }

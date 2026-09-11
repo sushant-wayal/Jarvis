@@ -28,7 +28,7 @@ export class MergePullRequestTool extends BaseIntegrationTool<
         owner: z.string().describe('Repository owner username or organization'),
         repo: z.string().describe('Repository name'),
         pullNumber: z
-          .number()
+          .coerce.number()
           .int()
           .positive()
           .describe('The pull request number to merge and accept (e.g., 42)'),

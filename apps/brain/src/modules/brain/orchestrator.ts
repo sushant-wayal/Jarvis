@@ -1,6 +1,7 @@
 import { BrainResponse, ToolContext } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
+import { notificationService } from '@/modules/notifications/notification-service';
 import { agentPlanner } from './agent-planner';
 import { contextEngine } from './context-engine';
 import { intentEngine } from './intent-engine';
@@ -17,6 +18,8 @@ export interface ProcessMessageInput {
   speakResponse?: boolean;
   requestId: string;
   deviceId?: string;
+  /** Enable asynchronous background execution (Deep Work mode) */
+  asyncMode?: boolean;
   /** Phone context snapshot from the mobile device */
   phoneContext?: import('@jarvis/shared').PhoneContext;
 }
@@ -54,6 +57,26 @@ export class BrainOrchestrator {
       confidence: classifiedIntent.confidence,
     });
 
+    // Check if this request qualifies for Asynchronous Deep Work mode
+    const isDeepWork =
+      Boolean(input.asyncMode) ||
+      /(in the background|deep research|deep work|run in background|background research|background audit)/i.test(
+        input.message
+      );
+
+    if (isDeepWork) {
+      logger.info('Routing request to Asynchronous Deep Work pipeline', { requestId, conversationId });
+      return this.dispatchDeepWork({
+        input,
+        userId,
+        conversationId,
+        timezone,
+        locale,
+        requestId,
+        assembledContext,
+      });
+    }
+
     // 4. Tool Execution Context
     const toolContext: ToolContext = {
       userId,
@@ -70,6 +93,7 @@ export class BrainOrchestrator {
       message: input.message,
       context: assembledContext,
       toolContext,
+      intent: classifiedIntent.intent,
     });
 
     brainResponse.shouldSpeak = Boolean(input.speakResponse);
@@ -164,6 +188,191 @@ export class BrainOrchestrator {
       logger.info('Renewed conversation sliding TTL with LLM suggestion', { conversationId, ttlDays, expiresAt });
     } catch (err) {
       logger.warn('Failed to renew conversation TTL', { conversationId, error: String(err) });
+    }
+  }
+
+  /**
+   * Initiates an Asynchronous Deep Work execution loop in the background.
+   * Immediately records the AgentRun, stores user message and acknowledgment,
+   * fires the background worker, and returns a PROGRESS response to the caller.
+   */
+  private async dispatchDeepWork(params: {
+    input: ProcessMessageInput;
+    userId: string;
+    conversationId: string;
+    timezone: string;
+    locale: string;
+    requestId: string;
+    assembledContext: import('./context-engine').AssembledContext;
+  }): Promise<BrainResponse> {
+    const { input, userId, conversationId, timezone, locale, requestId, assembledContext } = params;
+
+    // 1. Create AgentRun record in EXECUTING status for full observability
+    const agentRun = await prisma.agentRun.create({
+      data: {
+        userId,
+        conversationId,
+        status: 'EXECUTING',
+        goal: input.message,
+      },
+    });
+
+    // 2. Persist User Message
+    const userCreatedAt = new Date();
+    await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'USER',
+        content: input.message,
+        inputType: input.inputType || 'TEXT',
+        createdAt: userCreatedAt,
+      },
+    });
+
+    // 3. Formulate immediate acknowledgment
+    const ackText = `I've started deep background investigation for: "${input.message}". I will analyze the repositories, dependencies, and architectural patterns, and notify you as soon as the report is ready.\n\nTracking Run ID: ${agentRun.id}`;
+
+    // 4. Persist Assistant Acknowledgment Message
+    await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'ASSISTANT',
+        content: ackText,
+        inputType: input.inputType || 'TEXT',
+        createdAt: new Date(userCreatedAt.getTime() + 100),
+        metadata: JSON.stringify({
+          agentRunId: agentRun.id,
+          mode: 'PROGRESS',
+        }),
+      },
+    });
+
+    // 5. Fire detached background work
+    this.runDeepWorkInBackground({
+      message: input.message,
+      conversationId,
+      userId,
+      timezone,
+      locale,
+      requestId,
+      agentRunId: agentRun.id,
+      assembledContext,
+      phoneContext: input.phoneContext,
+    }).catch((err) => {
+      logger.error('Unhandled error in background deep work execution', err, { agentRunId: agentRun.id });
+    });
+
+    // 6. Return immediate PROGRESS response to client
+    return {
+      text: ackText,
+      shouldSpeak: Boolean(input.speakResponse),
+      toolCalls: [],
+      toolResults: [],
+      conversationId,
+      requestId,
+      mode: 'PROGRESS',
+      agentRunId: agentRun.id,
+    };
+  }
+
+  /**
+   * Executes the long-running ReAct agent loop in the background with an extended tool budget,
+   * then updates the conversation history and dispatches push/in-app notifications.
+   */
+  private async runDeepWorkInBackground(params: {
+    message: string;
+    conversationId: string;
+    userId: string;
+    timezone: string;
+    locale: string;
+    requestId: string;
+    agentRunId: string;
+    assembledContext: import('./context-engine').AssembledContext;
+    phoneContext?: import('@jarvis/shared').PhoneContext;
+  }): Promise<void> {
+    const { message, conversationId, userId, timezone, locale, requestId, agentRunId, assembledContext, phoneContext } = params;
+
+    const toolContext: ToolContext = {
+      userId,
+      userName: assembledContext.userProfile.name || 'Sushant',
+      conversationId,
+      requestId,
+      timezone,
+      locale,
+      agentRunId,
+      phoneContext,
+    };
+
+    try {
+      logger.info('Starting background deep work execution', { agentRunId, conversationId });
+
+      // Run AgentPlanner with Deep Work budget (25 tool calls, 15 steps)
+      const brainResponse = await agentPlanner.planAndExecute({
+        message,
+        context: assembledContext,
+        toolContext,
+        intent: 'PLANNING',
+        maxToolCalls: 25,
+        maxSteps: 15,
+      });
+
+      // Persist final assistant response
+      await prisma.message.create({
+        data: {
+          conversationId,
+          role: 'ASSISTANT',
+          content: brainResponse.text,
+          inputType: 'TEXT',
+          metadata: JSON.stringify({
+            executedToolCalls: brainResponse.toolCalls,
+            executedToolResults: brainResponse.toolResults,
+            agentRunId,
+            mode: 'ANSWER',
+          }),
+        },
+      });
+
+      // Renew conversation sliding TTL
+      await this.renewConversationTtl(conversationId, message, brainResponse.text);
+
+      // Deliver completion notification
+      await notificationService.createNotification({
+        userId,
+        title: 'Deep Work Analysis Complete',
+        body: `Completed research: "${message.slice(0, 60)}${message.length > 60 ? '...' : ''}"`,
+        deepLink: `/chat?conversationId=${conversationId}`,
+      });
+
+      logger.info('Background deep work execution completed successfully', { agentRunId, conversationId });
+
+      // Extract long-term memories
+      memoryExtractor
+        .extractAndStoreMemories(userId, message, brainResponse.text)
+        .catch((e: unknown) => logger.warn('Memory extraction step warning', { error: String(e) }));
+    } catch (err) {
+      logger.error('Background deep work execution failed', err, { agentRunId, conversationId });
+
+      const errorMessage = `I encountered an issue during background analysis: ${err instanceof Error ? err.message : String(err)}`;
+
+      await prisma.message.create({
+        data: {
+          conversationId,
+          role: 'ASSISTANT',
+          content: errorMessage,
+          inputType: 'TEXT',
+          metadata: JSON.stringify({
+            agentRunId,
+            mode: 'ERROR',
+          }),
+        },
+      });
+
+      await notificationService.createNotification({
+        userId,
+        title: 'Deep Work Task Failed',
+        body: `Could not complete research: "${message.slice(0, 60)}${message.length > 60 ? '...' : ''}"`,
+        deepLink: `/chat?conversationId=${conversationId}`,
+      });
     }
   }
 }

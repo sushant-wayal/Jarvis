@@ -1,6 +1,7 @@
 import {
   AgentRunStatus,
   BrainResponse,
+  IntentType,
   ResponseMode,
   ToolCall,
   ToolContext,
@@ -12,10 +13,65 @@ import { logger } from '@/lib/logging/logger';
 import { toolRegistry } from '@/modules/tools/registry';
 import { AssembledContext } from './context-engine';
 
+export interface ToolBudgetConfig {
+  maxToolCalls: number;
+  maxSteps: number;
+}
+
+/**
+ * Dynamically resolves tool execution budget and step limits based on
+ * classified intent and task complexity.
+ */
+export function resolveToolBudget(intent?: IntentType, message?: string): ToolBudgetConfig {
+  const lower = (message || '').toLowerCase();
+  const isDeepAnalytical =
+    lower.includes('architect') ||
+    lower.includes('deep dive') ||
+    lower.includes('investigat') ||
+    lower.includes('compar') ||
+    lower.includes('codebase') ||
+    lower.includes('repositor') ||
+    lower.includes('analyze') ||
+    lower.includes('analysis') ||
+    lower.includes('workflow') ||
+    lower.includes('integrate') ||
+    lower.includes('integration') ||
+    lower.includes('audit');
+
+  if (isDeepAnalytical || intent === 'PLANNING') {
+    return { maxToolCalls: 18, maxSteps: 12 };
+  }
+
+  switch (intent) {
+    case 'CALCULATION':
+    case 'ACTION':
+    case 'LOCATION_QUERY':
+    case 'CONVERSATION':
+      return { maxToolCalls: 4, maxSteps: 5 };
+
+    case 'TASK_CREATION':
+    case 'TASK_QUERY':
+    case 'REMINDER':
+    case 'EVENT_CREATION':
+    case 'INFORMATION_LOOKUP':
+      return { maxToolCalls: 6, maxSteps: 6 };
+
+    case 'SEARCH':
+    case 'QUESTION':
+    case 'MEMORY_QUERY':
+    case 'MEMORY_UPDATE':
+      return { maxToolCalls: 10, maxSteps: 8 };
+
+    default:
+      return { maxToolCalls: 8, maxSteps: 8 };
+  }
+}
+
 export interface PlanAndExecuteOptions {
   message: string;
   context: AssembledContext;
   toolContext: ToolContext;
+  intent?: IntentType;
   maxSteps?: number;
   maxToolCalls?: number;
 }
@@ -27,8 +83,9 @@ export class AgentPlanner {
 
   async planAndExecute(options: PlanAndExecuteOptions): Promise<BrainResponse> {
     const { message, context, toolContext } = options;
-    const maxSteps = options.maxSteps || this.defaultMaxSteps;
-    const maxToolCalls = options.maxToolCalls || this.defaultMaxToolCalls;
+    const dynamicBudget = resolveToolBudget(options.intent, options.message);
+    const maxSteps = options.maxSteps || dynamicBudget.maxSteps;
+    const maxToolCalls = options.maxToolCalls || dynamicBudget.maxToolCalls;
 
     const startTime = Date.now();
     let stepCount = 0;
@@ -38,17 +95,22 @@ export class AgentPlanner {
     let finalText = '';
     let responseMode: ResponseMode = 'ANSWER';
 
-    // 1. Create AgentRun record in database for observability
-    const agentRun = await prisma.agentRun.create({
-      data: {
-        userId: toolContext.userId,
-        conversationId: toolContext.conversationId,
-        status: 'EXECUTING',
-        goal: message,
-      },
-    });
+    // 1. Create or reuse AgentRun record in database for observability
+    let agentRun = toolContext.agentRunId
+      ? await prisma.agentRun.findUnique({ where: { id: toolContext.agentRunId } })
+      : null;
 
-    toolContext.agentRunId = agentRun.id;
+    if (!agentRun) {
+      agentRun = await prisma.agentRun.create({
+        data: {
+          userId: toolContext.userId,
+          conversationId: toolContext.conversationId,
+          status: 'EXECUTING',
+          goal: message,
+        },
+      });
+      toolContext.agentRunId = agentRun.id;
+    }
 
     // 2. Build conversation history contents
     const contents: Array<{ role: string; parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }> }> = [];
@@ -120,17 +182,7 @@ CRITICAL INSTRUCTIONS FOR THIS TURN:
 `
       : '';
 
-    const toolsConfig = toolRegistry.getGeminiFunctionDeclarations();
-
-    try {
-      // 3. Autonomous Multi-Step ReAct Loop
-      while (stepCount < maxSteps) {
-        stepCount++;
-        toolContext.stepNumber = stepCount;
-
-        // Call Gemini with tools and system instruction
-        const response = await this.generateWithFallback({
-          systemInstruction: `You are Jarvis, a proactive, capable, and natural personal AI operating layer.
+    const systemInstruction = `You are Jarvis, a proactive, capable, and natural personal AI operating layer.
 ${context.systemContextString}
 ${confirmationDirective}
 
@@ -171,6 +223,10 @@ Core Principles:
      • Viewing profile: 'user_profile_get'
    - Strict Direct Action Rule: Never say "I have updated/completed/deleted/saved it" without having executed the tool in the turn! The change only persists when the tool executes.
 6. Seamless Synthesis: When tools provide output, synthesize that information into a polished, natural conversational response. Never display raw JSON or internal parameter keys.
+7. Quality & Articulation Standards (CRITICAL):
+   - NEVER reply with a bare confirmation like "Done.", "Done", "Finished.", "OK.", or "Action completed." when the user has asked for a system architecture, design overview, technical explanation, code review, plan, or recommendations!
+   - When tools provide data or after analyzing code/repositories, synthesize a thorough, professional, and well-structured response with clear component breakdowns, architectural considerations, and implementation guidance.
+   - For complex software engineering or integration tasks, explain the components, data flow, security/auth considerations, API contracts, and recommended implementation steps.
 
 Phone & Contact Intelligence:
 - You have the user's synchronized phone contacts in [Phone & Messaging Context] -> [Contacts Loaded].
@@ -256,6 +312,17 @@ Developer Tools & Integration Ecosystem:
      - If the repository isn't explicitly named, inspect recent conversation history or check user repositories via 'github_get_repositories' to resolve the active project.
   2. Native Capability Boundary: When the user combines an external service with scheduling (e.g., "Remind me to check this issue tomorrow at 10 AM"), ALWAYS use Jarvis's native reminder tools ('task_create' or 'event_reminder_create') instead of looking for time/reminder features inside integrations.
   3. Side Effect Awareness: Actions that create or mutate external code or items ('github_create_issue', 'github_create_pull_request', 'github_commit_file_change', 'github_delete_file', 'github_merge_branch', 'github_update_pull_request', 'github_merge_pull_request') are WRITE or DESTRUCTIVE actions with high risk that require user authorization.
+  4. High-Density Repository Exploration:
+     - To explore or understand a repository layout, architecture, or tech stack, ALWAYS prefer 'github_get_repository_overview' (fetches repository metadata, root file tree, README preview, and manifest in 1 single call) rather than sequentially calling separate tools.
+     - When inspecting multiple files in a repository, use 'github_get_batch_files' to fetch up to 8 files concurrently in 1 single call.
+  5. Budget Runway & Model Self-Steering:
+     - If a tool response includes a '_budgetNotice', you are nearing your tool call budget. Immediately prioritize inspecting critical remaining files and steer toward synthesizing your complete final answer.
+  6. Sub-Agent Delegation & Preliminary Shared Work:
+     - When a complex task requires investigating multiple repositories (e.g. comparing or integrating "serenity" and "auto-youtube-channel"), multiple distinct services, or parallel research tracks:
+       • Master Agent Does Preliminary Work First: Always perform common preliminary discovery first yourself (e.g. call 'github_get_repositories' to discover the exact repo names, owners, default branches, and basic metadata) so that individual sub-agents do NOT waste tool calls repeating this common discovery.
+       • Pass Common Discoveries: When calling 'delegate_sub_task', supply these common findings in the 'initialContext' parameter (e.g. providing the confirmed repository owner, repo names, branches, and shared tech context).
+       • Sub-Agent Deep Investigation: Sub-Agent 1 inspects repository A; Sub-Agent 2 inspects repository B, each using their isolated tool budget (up to 8 calls).
+       • Master Synthesis: After receiving the substantive summaries from your delegated sub-agents, compile and synthesize the comprehensive final architectural blueprint or comparative analysis for the user.
 
 Identity & Personal Boundary Rules:
 - The verified user is "${toolContext.userName || 'Sushant'}".
@@ -268,7 +335,19 @@ Timezone & Scheduling Directive:
 - User active timezone is "${toolContext.timezone || 'UTC'}".
 - When creating reminders or tasks ('task_create') or events ('event_create'), user times are ALWAYS in their local timezone.
 - You MUST pass the 'schedule' argument as an ISO 8601 string including the user's timezone offset (e.g. 'YYYY-MM-DDTHH:mm:ss+05:30') or properly converted to UTC with 'Z'.
-- NEVER assume user local time is UTC and NEVER attach 'Z' directly to user local hours (e.g. 9:30 AM local in Asia/Kolkata is NOT 09:30:00Z; it is 09:30:00+05:30 or 04:00:00Z).`,
+- NEVER assume user local time is UTC and NEVER attach 'Z' directly to user local hours (e.g. 9:30 AM local in Asia/Kolkata is NOT 09:30:00Z; it is 09:30:00+05:30 or 04:00:00Z).`;
+
+    const toolsConfig = toolRegistry.getGeminiFunctionDeclarations();
+
+    try {
+      // 3. Autonomous Multi-Step ReAct Loop
+      while (stepCount < maxSteps) {
+        stepCount++;
+        toolContext.stepNumber = stepCount;
+
+        // Call Gemini with tools and system instruction
+        const response = await this.generateWithFallback({
+          systemInstruction,
           contents: contents as never,
           toolsConfig: toolsConfig as never,
         });
@@ -277,7 +356,36 @@ Timezone & Scheduling Directive:
 
         // No more tool calls -> Final Assistant Answer
         if (!functionCalls || functionCalls.length === 0) {
-          finalText = response.text?.trim() || 'Done.';
+          finalText = response.text?.trim() || '';
+
+          const isTrivialConfirmation =
+            !finalText ||
+            ['done', 'done.', 'finished', 'finished.', 'ok', 'ok.', 'completed', 'completed.'].includes(
+              finalText.toLowerCase().trim()
+            );
+
+          const isComplexQuery =
+            message.length > 25 ||
+            /architecture|design|overview|explain|capabilities|integrate|integration|how\s+to|what\s+all|plan|analysis|compare/i.test(
+              message
+            );
+
+          if (isTrivialConfirmation && (isComplexQuery || executedToolCalls.length > 0)) {
+            logger.info('Detected terse response on complex or tool-assisted query, triggering forced synthesis', {
+              agentRunId: agentRun.id,
+              originalText: finalText,
+            });
+            finalText = await this.synthesizeFinalAnswer({
+              message,
+              contents,
+              systemInstruction,
+              agentRunId: agentRun.id,
+              stepNumber: stepCount + 1,
+            });
+          } else if (!finalText) {
+            finalText = 'Done.';
+          }
+
           responseMode = executedToolCalls.length > 0 ? 'ACTION' : 'ANSWER';
 
           // If a pending confirmation existed but no action was called (e.g. user cancelled or changed topic), cancel previous pending state
@@ -300,16 +408,25 @@ Timezone & Scheduling Directive:
             }).catch(() => {});
           }
 
-          await prisma.agentStep.create({
-            data: {
+          const alreadyRecordedResponse = await prisma.agentStep.findFirst({
+            where: {
               agentRunId: agentRun.id,
-              stepNumber: stepCount,
               type: 'RESPONSE',
-              status: 'COMPLETED',
-              summary: 'Generated final response',
-              output: JSON.stringify({ text: finalText }),
             },
           });
+
+          if (!alreadyRecordedResponse) {
+            await prisma.agentStep.create({
+              data: {
+                agentRunId: agentRun.id,
+                stepNumber: stepCount,
+                type: 'RESPONSE',
+                status: 'COMPLETED',
+                summary: 'Generated final response',
+                output: JSON.stringify({ text: finalText }),
+              },
+            });
+          }
 
           break;
         }
@@ -449,19 +566,34 @@ Timezone & Scheduling Directive:
           const toolRes = await tool.execute(toolCall.input, toolContext);
           executedToolResults.push(toolRes);
 
+          const toolOutputOrError =
+            toolRes.output !== undefined && toolRes.output !== null
+              ? toolRes.output
+              : { success: false, error: toolRes.error || 'Tool execution failed' };
+
           await prisma.agentStep.update({
             where: { id: stepRecord.id },
             data: {
               status: toolRes.success ? 'COMPLETED' : 'FAILED',
-              output: JSON.stringify(toolRes.output),
+              output: JSON.stringify(toolOutputOrError),
               completedAt: new Date(),
             },
           });
 
+          const funcResponsePayload: Record<string, unknown> =
+            typeof toolOutputOrError === 'object' && toolOutputOrError !== null
+              ? { ...(toolOutputOrError as Record<string, unknown>) }
+              : { result: toolOutputOrError };
+
+          const remainingCalls = maxToolCalls - totalToolCalls;
+          if (remainingCalls <= 2 && remainingCalls > 0) {
+            funcResponsePayload._budgetNotice = `[RUNWAY WARNING: You have ${remainingCalls} tool call(s) remaining before budget limit. Prioritize inspecting critical files and prepare your final comprehensive response.]`;
+          }
+
           responseParts.push({
             functionResponse: {
               name: fcName,
-              response: (toolRes.output as Record<string, unknown>) || { success: toolRes.success },
+              response: funcResponsePayload,
             },
           });
         }
@@ -472,14 +604,41 @@ Timezone & Scheduling Directive:
             parts: responseParts,
           });
         }
+
+        // If tool execution budget reached, synthesize comprehensive final answer immediately
+        if (totalToolCalls >= maxToolCalls) {
+          logger.info('Agent reached tool budget limit, triggering forced synthesis', {
+            totalToolCalls,
+            maxToolCalls,
+            agentRunId: agentRun.id,
+          });
+          finalText = await this.synthesizeFinalAnswer({
+            message,
+            contents,
+            systemInstruction,
+            agentRunId: agentRun.id,
+            stepNumber: stepCount + 1,
+          });
+          responseMode = executedToolCalls.length > 0 ? 'ACTION' : 'ANSWER';
+          break;
+        }
       }
 
       // If loop finished due to step limit, synthesize from executed tool outputs
       if (!finalText) {
         if (executedToolResults.length > 0) {
-          const lastTool = executedToolCalls[executedToolCalls.length - 1];
-          const lastRes = executedToolResults[executedToolResults.length - 1];
-          finalText = this.formatDirectOutput(lastTool?.name || '', lastRes?.output);
+          logger.info('Step limit reached with executed tools, performing synthesis', {
+            agentRunId: agentRun.id,
+            executedToolsCount: executedToolResults.length,
+          });
+          finalText = await this.synthesizeFinalAnswer({
+            message,
+            contents,
+            systemInstruction,
+            agentRunId: agentRun.id,
+            stepNumber: stepCount + 1,
+          });
+          responseMode = 'ACTION';
         } else {
           finalText = 'I reached the step limit before completing this task. Please try a simpler request.';
         }
@@ -650,6 +809,56 @@ Timezone & Scheduling Directive:
     }
 
     return 'I was unable to process that request. Please try again.';
+  }
+
+  private async synthesizeFinalAnswer(params: {
+    message: string;
+    contents: Array<{ role: string; parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }> }>;
+    systemInstruction: string;
+    agentRunId: string;
+    stepNumber: number;
+  }): Promise<string> {
+    const synthesisDirective = `[SYSTEM DIRECTIVE: SYNTHESIZE FINAL COMPREHENSIVE RESPONSE]:
+You have finished gathering context and tool outputs (or reached your execution limit).
+Do NOT call any more tools. Now, synthesize a comprehensive, in-depth, and well-structured final answer directly satisfying the user's request: "${params.message}".
+Use all the observations, code snippets, and context gathered in this turn along with your software engineering and domain knowledge.
+CRITICAL: Never reply with a one-word confirmation like "Done.", "Finished.", or "OK.". Deliver the full, detailed answer.`;
+
+    const synthesisContents = [
+      ...params.contents,
+      {
+        role: 'user',
+        parts: [{ text: synthesisDirective }],
+      },
+    ];
+
+    try {
+      const response = await this.generateWithFallback({
+        systemInstruction: params.systemInstruction,
+        contents: synthesisContents,
+        toolsConfig: [],
+      });
+
+      const synthesizedText = response.text?.trim() || '';
+      if (synthesizedText) {
+        await prisma.agentStep.create({
+          data: {
+            agentRunId: params.agentRunId,
+            stepNumber: params.stepNumber,
+            type: 'RESPONSE',
+            status: 'COMPLETED',
+            summary: 'Synthesized comprehensive final response',
+            output: JSON.stringify({ text: synthesizedText }),
+          },
+        }).catch(() => {});
+
+        return synthesizedText;
+      }
+    } catch (err) {
+      logger.error('Error in synthesizeFinalAnswer', err, { agentRunId: params.agentRunId });
+    }
+
+    return 'I completed the necessary tool inspections, but was unable to produce the final synthesis. Please let me know how you would like me to proceed.';
   }
 
   private async generateWithFallback(params: {

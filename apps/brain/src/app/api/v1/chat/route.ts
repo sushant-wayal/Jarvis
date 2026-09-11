@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       inputType: 'TEXT',
       speakResponse: input.speakResponse,
       requestId,
+      asyncMode: input.asyncMode,
       phoneContext: input.phoneContext,
     });
 

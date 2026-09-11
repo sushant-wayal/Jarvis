@@ -22,7 +22,7 @@ export class SearchCodeTool extends BaseIntegrationTool<
         owner: z.string().describe('Repository owner username or organization'),
         repo: z.string().describe('Repository name'),
         query: z.string().min(1).describe('The code symbol, function name, class, or keyword to search for'),
-        limit: z.number().min(1).max(30).default(10).describe('Maximum search results to return'),
+        limit: z.coerce.number().min(1).max(30).default(10).describe('Maximum search results to return'),
       }),
       executor: async (input) => {
         const results = await client.searchCode(input.owner, input.repo, input.query, input.limit || 10);

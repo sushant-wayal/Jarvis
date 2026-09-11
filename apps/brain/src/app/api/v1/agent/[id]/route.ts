@@ -22,6 +22,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return errorResponse('NOT_FOUND', 'Agent run not found', requestId, 404);
     }
 
+    let finalResult: string | null = null;
+    if (run.status === 'COMPLETED' || run.status === 'FAILED') {
+      const assistantMessage = await prisma.message.findFirst({
+        where: {
+          conversationId: run.conversationId,
+          role: 'ASSISTANT',
+          metadata: { contains: run.id },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      finalResult = assistantMessage?.content || null;
+    }
+
     return successResponse(
       {
         id: run.id,
@@ -32,6 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         startedAt: run.startedAt.toISOString(),
         completedAt: run.completedAt?.toISOString(),
         error: run.error,
+        result: finalResult,
         steps: run.steps.map((s) => ({
           id: s.id,
           stepNumber: s.stepNumber,
