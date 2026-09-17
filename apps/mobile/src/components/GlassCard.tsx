@@ -36,7 +36,6 @@ const styles = StyleSheet.create({
     borderColor: colors.glassBorder,
     borderWidth: 1,
     borderRadius: rounded.lg,
-    overflow: 'hidden',
   },
   medium: {
     backgroundColor: colors.glassFillMedium,
