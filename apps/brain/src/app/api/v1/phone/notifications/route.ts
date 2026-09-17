@@ -11,6 +11,7 @@ import { PhoneNotificationEventSchema } from '@jarvis/shared';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const IngestNotificationsSchema = z.object({
   userId: z.string().optional().default('default-user'),

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const requestId = generateRequestId();

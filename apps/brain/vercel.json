@@ -1,9 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/**/*": {
+      "maxDuration": 300
+    },
+    "api/**/*": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/cleanup",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/media-maintenance",
+      "schedule": "0 4 * * *"
     }
   ]
 }

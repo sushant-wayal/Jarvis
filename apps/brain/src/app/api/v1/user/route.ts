@@ -4,6 +4,7 @@ import { generateRequestId, successResponse } from '@/lib/api/response';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();

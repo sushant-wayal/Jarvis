@@ -11,6 +11,7 @@ import { logger } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const ActionResultReportSchema = z.object({
   conversationId: z.string(),

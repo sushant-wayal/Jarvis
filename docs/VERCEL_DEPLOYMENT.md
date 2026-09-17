@@ -82,7 +82,7 @@ The repository includes automated cleanup cron configuration:
 
 ### Serverless Function Timeouts & Streaming
 - Streaming chat (`/api/v1/chat/stream`) utilizes Server-Sent Events (SSE) compatible with Vercel Serverless.
-- Heavy operations (Voice STT/TTS and multi-step agent loops) are configured with `maxDuration = 60` and `runtime = 'nodejs'` to prevent early timeouts.
+- Serverless API routes and heavy operations (Voice STT/TTS, multi-step agent loops, and cron jobs) are configured with `maxDuration = 300` (5 minutes) and `runtime = 'nodejs'` to maximize execution time on Vercel Pro.
 
 ### Global CORS & Preflight Handling
 - `apps/brain/src/middleware.ts` handles `OPTIONS` preflight requests (204 No Content) and attaches CORS headers so mobile clients can connect securely.

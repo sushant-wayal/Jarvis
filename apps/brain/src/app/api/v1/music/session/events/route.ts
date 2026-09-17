@@ -7,6 +7,7 @@ import { PlaybackEventInputSchema } from '@/modules/music/music-types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 const BatchPlaybackEventsSchema = z.object({
   events: z.array(PlaybackEventInputSchema),

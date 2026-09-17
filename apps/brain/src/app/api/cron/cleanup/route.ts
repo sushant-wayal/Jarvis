@@ -4,6 +4,8 @@ import { logger } from '@/lib/logging/logger';
 import { dataRetentionService } from '@/modules/brain/data-retention-service';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();

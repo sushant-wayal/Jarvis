@@ -5,6 +5,7 @@ import { memoryService } from '@/modules/memory/memory-service';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();

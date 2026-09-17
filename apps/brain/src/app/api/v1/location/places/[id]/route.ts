@@ -4,6 +4,7 @@ import { locationService } from '@/modules/location/location-service';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 export async function DELETE(
   req: NextRequest,
