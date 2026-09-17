@@ -250,7 +250,45 @@ apps/brain/src/modules/integrations/serenity/
 
 ---
 
-## 10. Creating a New Integration
+---
+
+## 10. Existing Integration: North (Personal Financial Advisor)
+
+The **North** integration connects Jarvis with the user's personal financial advisor system (`movenorth.vercel.app`). North tracks accounts, transactions, investments, goals, emergency runway, recurring subscriptions, and AI financial planning memories, while delegating complex scenarios to its embedded advisor loop.
+
+```text
+apps/brain/src/modules/integrations/north/
+├── NorthAuth.ts                     # Base URL & API Key management, /api/dashboard/overview verification
+├── NorthClient.ts                   # REST client encapsulating all PFA endpoints & error translation
+├── NorthIntegration.ts              # BaseIntegration lifecycle & 17 tool registrations
+├── index.ts                         # Barrel exports
+└── tools/
+    ├── GetFinancialContextTool.ts     # north.get_financial_context (READ, SAFE)
+    ├── GetDashboardOverviewTool.ts    # north.get_dashboard_overview (READ, SAFE)
+    ├── QueryTransactionsTool.ts       # north.query_transactions (READ, SAFE)
+    ├── AddTransactionTool.ts          # north.add_transaction (WRITE, HIGH_RISK, Confirmed)
+    ├── EvaluateAffordabilityTool.ts   # north.evaluate_affordability (READ, SAFE)
+    ├── GetGoalsTool.ts                # north.get_goals (READ, SAFE)
+    ├── CreateGoalTool.ts              # north.create_goal (WRITE, HIGH_RISK, Confirmed)
+    ├── GetNetworthTool.ts             # north.get_networth (READ, SAFE)
+    ├── GetInvestmentSuggestionTool.ts # north.get_investment_suggestion (READ, SAFE)
+    ├── RecordInvestmentTool.ts        # north.record_investment (WRITE, HIGH_RISK, Confirmed)
+    ├── TriggerGmailSyncTool.ts        # north.trigger_gmail_sync (EXTERNAL_ACTION, HIGH_RISK, Confirmed)
+    ├── SearchConversationsTool.ts     # north.search_conversations (READ, SAFE)
+    ├── QueryMemoriesTool.ts           # north.query_memories (READ, SAFE)
+    ├── SaveMemoryTool.ts              # north.save_memory (WRITE, HIGH_RISK, Confirmed)
+    ├── AskAdvisorTool.ts              # north.ask_advisor (READ, SAFE)
+    ├── GetEmergencyFundStatusTool.ts  # north.get_emergency_fund_status (READ, SAFE)
+    └── GetSubscriptionsTool.ts        # north.get_subscriptions (READ, SAFE)
+```
+
+### Configuration:
+- `NORTH_BASE_URL`: Base URL for North API (defaults to `https://movenorth.vercel.app` or `http://localhost:3000`).
+- `NORTH_API_KEY` / `NORTH_CRON_SECRET`: Optional Bearer token or Cron Secret for protected endpoints.
+
+---
+
+## 11. Creating a New Integration
 
 To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
@@ -269,7 +307,7 @@ To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
 ---
 
-## 11. Using the Integration Development Skill
+## 12. Using the Integration Development Skill
 
 The standardized engineering workflow is codified in the developer skill:
 `file:///.agents/skills/jarvis-integration-developer/SKILL.md`
