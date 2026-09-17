@@ -316,6 +316,27 @@ export class AppIntegration {
       }
     }
 
+    // ── 0b. In-App Fallback: If seed track has no direct audio stream but queue has playable tracks, stream in-app
+    if (!audioUrl && queue && queue.length > 0) {
+      const firstPlayableIndex = queue.findIndex((t) => Boolean(t.audioUrl));
+      if (firstPlayableIndex !== -1) {
+        const promoted = queue[firstPlayableIndex];
+        const remainingQueue = queue.filter((_, idx) => idx !== firstPlayableIndex);
+        return this.playMedia(
+          promoted.title,
+          appName,
+          undefined,
+          promoted.audioUrl,
+          promoted.title,
+          promoted.artist,
+          promoted.artworkUrl,
+          sessionId,
+          remainingQueue,
+          autoplayEnabled
+        );
+      }
+    }
+
     // YouTube playback takes precedence if videoId is resolved,
     // or if the app name or query explicitly specifies YouTube.
     const isYouTube = Boolean(

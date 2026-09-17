@@ -265,81 +265,93 @@ function fetchJson(url: string, timeoutMs = 4000): Promise<any> {
   });
 }
 
-async function resolveFromJioSaavn(query: string): Promise<ResolvedTrack | null> {
+async function resolveFromJioSaavn(query: string, artistHint?: string): Promise<ResolvedTrack | null> {
   try {
-    const searchUrl = `https://www.jiosaavn.com/api.php?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=${encodeURIComponent(query)}`;
-    const searchRes = await fetchJson(searchUrl, 3500);
-
-    const songs = searchRes?.songs?.data;
-    if (!Array.isArray(songs) || songs.length === 0) {
-      return null;
-    }
-
-    const queryLower = query.toLowerCase();
+    const queryLower = query.toLowerCase().trim();
     const wantsMix =
       queryLower.includes('mix') ||
       queryLower.includes('remix') ||
       queryLower.includes('lofi') ||
       queryLower.includes('mashup');
 
-    // Score candidates: prioritize exact titles and original releases over compilations/mixes
-    const scoredSongs = songs.map((s) => {
-      let score = 0;
-      const titleLower = (s.title || '').toLowerCase();
-      const descLower = (s.description || '').toLowerCase();
+    // Helper: score and select best song candidate from an array of song objects
+    const scoreAndExtractSong = (songs: any[]) => {
+      if (!Array.isArray(songs) || songs.length === 0) return null;
 
-      // Title matching
-      if (titleLower === queryLower) {
-        score += 20;
-      } else if (titleLower.startsWith(queryLower) || queryLower.startsWith(titleLower)) {
-        score += 12;
-      } else if (titleLower.includes(queryLower) || queryLower.includes(titleLower)) {
-        score += 8;
-      }
+      const scored = songs.map((s) => {
+        let score = 0;
+        const titleLower = (s.song || s.title || '').toLowerCase();
+        const descLower = (s.description || s.singers || s.music || s.primary_artists || '').toLowerCase();
 
-      // Penalize mixes, compilations, and unofficial playlists unless requested
-      if (!wantsMix) {
-        if (descLower.includes('mix') || descLower.includes('remix') || descLower.includes('mashup')) {
-          score -= 15;
+        if (titleLower === queryLower) {
+          score += 25;
+        } else if (titleLower.startsWith(queryLower) || queryLower.startsWith(titleLower)) {
+          score += 15;
+        } else if (titleLower.includes(queryLower) || queryLower.includes(titleLower)) {
+          score += 10;
         }
-        if (descLower.includes('hits') || descLower.includes('collection') || descLower.includes('party')) {
-          score -= 8;
+
+        if (artistHint && descLower.includes(artistHint.toLowerCase())) {
+          score += 15;
+        }
+
+        if (!wantsMix) {
+          if (descLower.includes('mix') || descLower.includes('remix') || descLower.includes('mashup')) {
+            score -= 15;
+          }
+          if (descLower.includes('hits') || descLower.includes('collection') || descLower.includes('party')) {
+            score -= 8;
+          }
+        }
+
+        if (descLower.includes('soundtrack') || descLower.includes('original') || !descLower.includes('·')) {
+          score += 5;
+        }
+
+        return { song: s, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map((item) => item.song);
+    };
+
+    // Helper: decrypt and return a ResolvedTrack from a song object (or fetch its details if enc_url missing)
+    const tryDecryptSong = async (rawSongObj: any, defaultTitle?: string): Promise<ResolvedTrack | null> => {
+      let songObj = rawSongObj;
+      let encUrl = songObj.encrypted_media_url || songObj.more_info?.encrypted_media_url;
+
+      if (!encUrl && songObj.id) {
+        try {
+          const detailsUrl = `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${songObj.id}&_format=json&_marker=0&api_version=4&ctx=web6dot0`;
+          const detailsRes = await fetchJson(detailsUrl, 3500);
+          const resolvedObj = detailsRes?.songs?.[0] || detailsRes?.[songObj.id];
+          if (resolvedObj) {
+            songObj = { ...songObj, ...resolvedObj };
+            encUrl = resolvedObj.encrypted_media_url || resolvedObj.more_info?.encrypted_media_url;
+          }
+        } catch {
+          // Ignore details fetch failure
         }
       }
 
-      // Bonus for movie/original soundtrack indicators
-      if (descLower.includes('soundtrack') || descLower.includes('original') || !descLower.includes('·')) {
-        score += 5;
-      }
-
-      return { song: s, score };
-    });
-
-    scoredSongs.sort((a, b) => b.score - a.score);
-
-    // Try candidates in order until valid decrypted media stream is resolved
-    for (const { song: chosenSong } of scoredSongs.slice(0, 3)) {
-      const songId = chosenSong.id;
-      if (!songId) continue;
-
-      const detailsUrl = `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${songId}&_format=json&_marker=0&api_version=4&ctx=web6dot0`;
-      const detailsRes = await fetchJson(detailsUrl, 3500);
-
-      const songObj = detailsRes?.songs?.[0] || detailsRes?.[songId];
-      if (!songObj) continue;
-
-      const encUrl = songObj.more_info?.encrypted_media_url;
-      if (!encUrl) continue;
+      if (!encUrl) return null;
 
       const decrypted = decryptDesEcb(encUrl, '38346591');
-      if (!decrypted || !decrypted.startsWith('http')) continue;
+      if (!decrypted || !decrypted.startsWith('http')) return null;
 
-      // Upgrade to 320kbps high-fidelity stream if available
       const highQualityUrl = decrypted.replace('_96.mp4', '_320.mp4').replace('_160.mp4', '_320.mp4');
-
-      const cleanTitle = (songObj.title || chosenSong.title || query).replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
-      const cleanArtist = (songObj.more_info?.music || chosenSong.description || 'Unknown Artist').replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
-      const artwork = songObj.image?.replace('150x150', '500x500') || chosenSong.image;
+      const cleanTitle = (songObj.song || songObj.title || defaultTitle || query)
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, '&')
+        .trim();
+      const cleanArtist = (songObj.singers || songObj.primary_artists || songObj.music || songObj.more_info?.music || songObj.description || 'Unknown Artist')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&amp;/g, '&')
+        .trim();
+      const artwork = songObj.image ? songObj.image.replace('150x150', '500x500') : undefined;
+      const duration = Number(songObj.duration || songObj.more_info?.duration || 0);
 
       return {
         success: true,
@@ -347,9 +359,99 @@ async function resolveFromJioSaavn(query: string): Promise<ResolvedTrack | null>
         artist: cleanArtist,
         artworkUrl: artwork,
         audioUrl: highQualityUrl,
-        duration: Number(songObj.more_info?.duration || 0),
+        duration,
         source: 'catalog',
       };
+    };
+
+    // ── Stage 1: Autocomplete search (fastest for exact/partial song titles) ────────
+    const searchUrl = `https://www.jiosaavn.com/api.php?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=${encodeURIComponent(query)}`;
+    const searchRes = await fetchJson(searchUrl, 3500);
+
+    const directSongs = searchRes?.songs?.data;
+    if (Array.isArray(directSongs) && directSongs.length > 0) {
+      const candidates = scoreAndExtractSong(directSongs);
+      if (candidates) {
+        for (const candidate of candidates.slice(0, 3)) {
+          const track = await tryDecryptSong(candidate, query);
+          if (track) return track;
+        }
+      }
+    }
+
+    // ── Stage 2: Check matching playlists from autocomplete (e.g. "Arijit Singh - Love Songs") ──
+    const playlists = searchRes?.playlists?.data;
+    if (Array.isArray(playlists) && playlists.length > 0) {
+      for (const pl of playlists.slice(0, 2)) {
+        if (!pl.id) continue;
+        try {
+          const plDetailsUrl = `https://www.jiosaavn.com/api.php?__call=playlist.getDetails&listid=${pl.id}&_format=json&_marker=0`;
+          const plRes = await fetchJson(plDetailsUrl, 3500);
+          const plSongs = plRes?.songs;
+          if (Array.isArray(plSongs) && plSongs.length > 0) {
+            for (const s of plSongs.slice(0, 3)) {
+              const track = await tryDecryptSong(s, s.song || s.title);
+              if (track) return track;
+            }
+          }
+        } catch {
+          // Continue to next playlist
+        }
+      }
+    }
+
+    // ── Stage 3: Check matching albums from autocomplete ─────────────────────────
+    const albums = searchRes?.albums?.data;
+    if (Array.isArray(albums) && albums.length > 0) {
+      const alb = albums[0];
+      if (alb.id) {
+        try {
+          const albDetailsUrl = `https://www.jiosaavn.com/api.php?__call=album.getDetails&albumid=${alb.id}&_format=json&_marker=0`;
+          const albRes = await fetchJson(albDetailsUrl, 3500);
+          const albSongs = albRes?.songs;
+          if (Array.isArray(albSongs) && albSongs.length > 0) {
+            for (const s of albSongs.slice(0, 3)) {
+              const track = await tryDecryptSong(s, s.song || s.title);
+              if (track) return track;
+            }
+          }
+        } catch {
+          // Ignore
+        }
+      }
+    }
+
+    // ── Stage 4: Full Catalog Search (for natural/descriptive search queries) ────
+    const catalogSearchUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&n=10&p=1&q=${encodeURIComponent(query)}`;
+    const catalogRes = await fetchJson(catalogSearchUrl, 3500);
+    const searchResults = catalogRes?.results;
+    if (Array.isArray(searchResults) && searchResults.length > 0) {
+      const candidates = scoreAndExtractSong(searchResults);
+      if (candidates) {
+        for (const candidate of candidates.slice(0, 4)) {
+          const track = await tryDecryptSong(candidate, query);
+          if (track) return track;
+        }
+      }
+    }
+
+    // ── Stage 5: Cleaned Query or Artist Fallback Search ─────────────────────────
+    const cleanTokens = query
+      .replace(/\b(romantic|love songs|love song|love|sad songs|sad song|songs|song|audio|track|music|mp3|hits|best of|all songs)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const fallbackQuery = artistHint || (cleanTokens.length >= 3 && cleanTokens !== query ? cleanTokens : null);
+    if (fallbackQuery) {
+      const fbSearchUrl = `https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&cc=in&n=10&p=1&q=${encodeURIComponent(fallbackQuery)}`;
+      const fbRes = await fetchJson(fbSearchUrl, 3500);
+      const fbResults = fbRes?.results;
+      if (Array.isArray(fbResults) && fbResults.length > 0) {
+        for (const candidate of fbResults.slice(0, 3)) {
+          const track = await tryDecryptSong(candidate, fallbackQuery);
+          if (track) return track;
+        }
+      }
     }
 
     return null;
@@ -381,7 +483,7 @@ async function resolveFromYouTube(query: string): Promise<ResolvedTrack | null> 
 
 // ── Public Cascading Track Resolver ──────────────────────────────────────────
 
-export async function resolveMusicTrack(query: string): Promise<ResolvedTrack> {
+export async function resolveMusicTrack(query: string, artistHint?: string): Promise<ResolvedTrack> {
   const cleanQuery = query.trim();
 
   // 1. Check cache for instant sub-millisecond return
@@ -391,7 +493,7 @@ export async function resolveMusicTrack(query: string): Promise<ResolvedTrack> {
   }
 
   // 2. Tier 1: Studio-grade CDN Stream (JioSaavn catalog)
-  const catalogTrack = await resolveFromJioSaavn(cleanQuery);
+  const catalogTrack = await resolveFromJioSaavn(cleanQuery, artistHint);
   if (catalogTrack && catalogTrack.audioUrl) {
     setCachedTrack(cleanQuery, catalogTrack);
     logger.info('Resolved studio audio stream from music catalog', {
@@ -462,7 +564,13 @@ function probeCdnUrl(url: string, timeoutMs = 5000): Promise<{ statusCode?: numb
       const lib = parsed.protocol === 'https:' ? https : http;
       const req = lib.request(
         url,
-        { method: 'HEAD', timeout: timeoutMs },
+        {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          },
+          timeout: timeoutMs,
+        },
         (res) => {
           resolve({
             statusCode: res.statusCode,
@@ -472,7 +580,7 @@ function probeCdnUrl(url: string, timeoutMs = 5000): Promise<{ statusCode?: numb
       );
       req.on('timeout', () => {
         req.destroy();
-        resolve({ latencyMs: Date.now() - start, error: 'CDN Probe Timeout' });
+        resolve({ latencyMs: Date.now() - start, error: 'Probe timeout' });
       });
       req.on('error', (err) => {
         resolve({ latencyMs: Date.now() - start, error: err.message });
@@ -487,6 +595,7 @@ function probeCdnUrl(url: string, timeoutMs = 5000): Promise<{ statusCode?: numb
 export async function diagnoseAndMaintainMediaProviders(): Promise<MediaDiagnosticsReport> {
   const timestamp = new Date().toISOString();
   const testQuery = 'Tum Mere Ho by Anuv Jain';
+  const testDescriptiveQuery = 'Arijit Singh romantic love songs';
 
   // 1. Cache maintenance - purge any invalid or expired entries
   let clearedEntries = 0;
@@ -497,14 +606,19 @@ export async function diagnoseAndMaintainMediaProviders(): Promise<MediaDiagnost
     }
   }
 
-  // 2. Probe Tier 1: JioSaavn Catalog & CDN Stream
+  // 2. Probe Tier 1: JioSaavn Catalog & CDN Stream (tests both direct & descriptive queries)
   const tier1Start = Date.now();
   let tier1Status: 'healthy' | 'degraded' | 'down' = 'down';
   let tier1Error: string | undefined;
   let resolvedInfo: MediaDiagnosticsReport['tier1']['resolvedTrack'] | undefined;
 
   try {
-    const track = await resolveFromJioSaavn(testQuery);
+    // Probe primary track
+    let track = await resolveFromJioSaavn(testQuery);
+    if (!track) {
+      track = await resolveFromJioSaavn(testDescriptiveQuery, 'Arijit Singh');
+    }
+
     if (track && track.audioUrl) {
       const cdnProbe = await probeCdnUrl(track.audioUrl, 5000);
       if (cdnProbe.statusCode && cdnProbe.statusCode >= 200 && cdnProbe.statusCode < 400) {

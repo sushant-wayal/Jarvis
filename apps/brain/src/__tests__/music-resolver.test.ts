@@ -18,6 +18,14 @@ describe('Music Resolver & Self-Healing Media Diagnostics', () => {
     expect(track.success).toBe(true);
   }, 10000);
 
+  it('resolves descriptive artist/genre queries to in-app studio catalog streams', async () => {
+    const track = await resolveMusicTrack('Arijit Singh romantic love songs', 'Arijit Singh');
+    expect(track.success).toBe(true);
+    expect(track.source).toBe('catalog');
+    expect(track.audioUrl).toBeDefined();
+    expect(track.audioUrl).toMatch(/^https:\/\/aac\.saavncdn\.com\/.*_320\.mp4$/);
+  }, 10000);
+
   it('runs diagnoseAndMaintainMediaProviders with live CDN probe and returns operational status', async () => {
     const report = await diagnoseAndMaintainMediaProviders();
     expect(report.timestamp).toBeDefined();

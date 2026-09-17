@@ -493,7 +493,7 @@ export const playMediaTool: JarvisTool<{
     }
 
     // 2. Direct fallback resolution if session resolution missed
-    const track = await resolveMusicTrack(cleanQuery);
+    const track = await resolveMusicTrack(cleanQuery, input.artist);
     if (track.audioUrl) {
       return {
         type: 'PLAY_MEDIA' as const,
@@ -512,6 +512,31 @@ export const playMediaTool: JarvisTool<{
         autoplayEnabled: session.autoplayEnabled,
         response: `Playing "${track.title || cleanQuery}" by ${track.artist || 'the artist'} in the background.`,
       };
+    }
+
+    // 2b. If seed track could not be resolved, but queue has playable in-app tracks, promote queue track
+    if (session.queue && session.queue.length > 0) {
+      const firstPlayableIndex = session.queue.findIndex((t) => Boolean(t.audioUrl));
+      if (firstPlayableIndex !== -1) {
+        const [promoted] = session.queue.splice(firstPlayableIndex, 1);
+        return {
+          type: 'PLAY_MEDIA' as const,
+          action: 'PLAY_MEDIA' as const,
+          query: cleanQuery,
+          app: rawApp,
+          sessionId: session.sessionId,
+          audioUrl: promoted.audioUrl,
+          title: promoted.title || cleanQuery,
+          artist: promoted.artist || '',
+          artworkUrl: promoted.artworkUrl,
+          duration: promoted.duration,
+          source: promoted.source || 'catalog',
+          videoId: promoted.videoId,
+          queue: session.queue,
+          autoplayEnabled: session.autoplayEnabled,
+          response: `Playing "${promoted.title || cleanQuery}" by ${promoted.artist || 'the artist'} in the background with autoplay enabled.`,
+        };
+      }
     }
 
     // 3. Fallback: YouTube video ID resolution

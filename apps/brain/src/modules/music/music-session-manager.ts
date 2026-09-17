@@ -66,7 +66,7 @@ export class MusicSessionManager {
         : (effectiveIntent.query || soundscape.primaryQuery);
 
       if (resolveQuery) {
-        const resolved = await resolveMusicTrack(resolveQuery);
+        const resolved = await resolveMusicTrack(resolveQuery, effectiveIntent.artist);
         if (resolved.success && resolved.audioUrl) {
           seedTrack = {
             id: randomUUID(),
@@ -107,6 +107,21 @@ export class MusicSessionManager {
       session.status = 'GENERATING_QUEUE';
       await queueManager.replenishQueue(session, 5, conversationId, timezone);
       session.status = 'PLAYING';
+    }
+
+    // 4. In-App Playback Guarantee: If seed track has no direct audio stream, promote the first in-app playable track from the queue
+    if ((!session.currentTrack || !session.currentTrack.audioUrl) && session.queue.length > 0) {
+      const firstPlayableIndex = session.queue.findIndex((t) => Boolean(t.audioUrl));
+      if (firstPlayableIndex !== -1) {
+        const [promoted] = session.queue.splice(firstPlayableIndex, 1);
+        session.currentTrack = promoted;
+        session.seedTrack = promoted;
+        logger.info('Promoted first in-app playable track from queue as seedTrack to guarantee in-app playback', {
+          title: promoted.title,
+          artist: promoted.artist,
+          audioUrl: promoted.audioUrl,
+        });
+      }
     }
 
     logger.info('Created new MusicSession', {
