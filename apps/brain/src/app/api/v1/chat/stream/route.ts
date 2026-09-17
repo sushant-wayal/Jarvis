@@ -21,8 +21,10 @@ export async function POST(req: NextRequest) {
           encoder.encode(`event: START\ndata: ${JSON.stringify({ requestId, conversationId: validated.conversationId })}\n\n`)
         );
 
-        // 2. Process through Brain Orchestrator
+        // 2. Process through Brain Orchestrator with real-time progress
         try {
+          const intermediateUpdates: unknown[] = [];
+
           const response = await brainOrchestrator.processMessage({
             message: validated.message,
             conversationId: validated.conversationId,
@@ -30,8 +32,20 @@ export async function POST(req: NextRequest) {
             timezone: validated.timezone,
             locale: validated.locale,
             speakResponse: validated.speakResponse,
+            speakIntermediateStatus: validated.speakIntermediateStatus ?? true,
             requestId,
             deviceId: validated.deviceId,
+            phoneContext: validated.phoneContext,
+            onProgress: (update) => {
+              intermediateUpdates.push(update);
+              try {
+                controller.enqueue(
+                  encoder.encode(`event: STATUS\ndata: ${JSON.stringify(update)}\n\n`)
+                );
+              } catch {
+                // stream may have closed
+              }
+            },
           });
 
           // 3. Send tool events if any
@@ -48,7 +62,7 @@ export async function POST(req: NextRequest) {
 
           // 5. Send COMPLETED event
           controller.enqueue(
-            encoder.encode(`event: COMPLETED\ndata: ${JSON.stringify(response)}\n\n`)
+            encoder.encode(`event: COMPLETED\ndata: ${JSON.stringify({ ...response, intermediateUpdates })}\n\n`)
           );
         } catch (err) {
           controller.enqueue(

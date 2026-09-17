@@ -43,6 +43,7 @@ export const ChatRequestSchema = z.object({
   timezone: z.string().optional().default('UTC'),
   locale: z.string().optional().default('en-US'),
   speakResponse: z.boolean().optional().default(false),
+  speakIntermediateStatus: z.boolean().optional().default(true),
   deviceId: z.string().optional(),
   /** Enable asynchronous background execution (Deep Work mode) */
   asyncMode: z.boolean().optional().default(false),
@@ -60,6 +61,7 @@ export const VoiceUploadSchema = z.object({
   timezone: z.string().optional().default('UTC'),
   locale: z.string().optional().default('en-US'),
   deviceId: z.string().optional(),
+  speakIntermediateStatus: z.boolean().optional().default(true),
   /** Phone context snapshot from the mobile device */
   phoneContext: PhoneContextSchema,
 });

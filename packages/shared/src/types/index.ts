@@ -550,6 +550,22 @@ export interface ScheduledReminder {
   description?: string;
 }
 
+export type IntermediateStatusType = 'THINKING' | 'EXECUTING' | 'SYNTHESIZING';
+
+export interface IntermediateStatusUpdate {
+  status: IntermediateStatusType;
+  step?: string;
+  toolName?: string;
+  spokenText: string;
+  audioBase64?: string;
+  timestamp: number;
+}
+
+export interface VoiceStreamEvent {
+  event: 'START' | 'TRANSCRIPT' | 'STATUS' | 'TOOL_STARTED' | 'TOOL_COMPLETED' | 'TEXT_DELTA' | 'FINAL_RESPONSE' | 'ERROR' | 'DONE';
+  data: unknown;
+}
+
 export interface VoiceResponse {
   transcript: string;
   response: string;
@@ -561,6 +577,7 @@ export interface VoiceResponse {
   agentRunId?: string;
   pendingPhoneAction?: JarvisPhoneAction;
   scheduledReminder?: ScheduledReminder;
+  intermediateUpdates?: IntermediateStatusUpdate[];
 }
 
 export interface HealthStatus {

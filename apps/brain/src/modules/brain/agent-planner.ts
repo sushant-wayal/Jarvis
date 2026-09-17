@@ -2,6 +2,7 @@ import {
   AgentRunStatus,
   BrainResponse,
   IntentType,
+  IntermediateStatusUpdate,
   ResponseMode,
   ToolCall,
   ToolContext,
@@ -11,7 +12,9 @@ import { aiClient, DEFAULT_MODEL, FAST_FALLBACK_MODELS } from '@/lib/ai/gemini';
 import { prisma } from '@/lib/db/prisma';
 import { logger } from '@/lib/logging/logger';
 import { toolRegistry } from '@/modules/tools/registry';
+import { ttsProvider } from '@/modules/voice/tts-provider';
 import { AssembledContext } from './context-engine';
+import { spokenStatusFormatter, StatusSpeechThrottler } from './spoken-status-formatter';
 
 export interface ToolBudgetConfig {
   maxToolCalls: number;
@@ -74,6 +77,9 @@ export interface PlanAndExecuteOptions {
   intent?: IntentType;
   maxSteps?: number;
   maxToolCalls?: number;
+  speakResponse?: boolean;
+  speakIntermediateStatus?: boolean;
+  onProgress?: (update: IntermediateStatusUpdate) => Promise<void> | void;
 }
 
 export class AgentPlanner {
@@ -94,6 +100,7 @@ export class AgentPlanner {
     const executedToolResults: ToolResult[] = [];
     let finalText = '';
     let responseMode: ResponseMode = 'ANSWER';
+    const speechThrottler = new StatusSpeechThrottler(2, 3000);
 
     // 1. Create or reuse AgentRun record in database for observability
     let agentRun = toolContext.agentRunId
@@ -469,6 +476,38 @@ Timezone & Scheduling Directive:
 
           const tool = toolRegistry.getTool(fcName);
           if (!tool) continue;
+
+          // Trigger spoken intermediate status update (throttled & safe)
+          if (
+            options.onProgress &&
+            (options.speakIntermediateStatus ?? true) &&
+            speechThrottler.shouldSpeak()
+          ) {
+            speechThrottler.recordSpoken();
+            const spokenText = spokenStatusFormatter.formatToolStatus(fcName, toolCall.input);
+            let audioBase64: string | undefined = undefined;
+
+            if (options.speakResponse) {
+              try {
+                const ttsRes = await ttsProvider.synthesize(spokenText);
+                audioBase64 = ttsRes.audioBase64;
+              } catch (ttsErr) {
+                logger.warn('Intermediate status TTS synthesis warning', { error: String(ttsErr) });
+              }
+            }
+
+            try {
+              await options.onProgress({
+                status: 'EXECUTING',
+                toolName: fcName,
+                spokenText,
+                audioBase64,
+                timestamp: Date.now(),
+              });
+            } catch (progErr) {
+              logger.warn('Intermediate status onProgress callback warning', { error: String(progErr) });
+            }
+          }
 
           const isCanonicalMatch = (nameA: string, nameB: string) => {
             const normA = nameA.replace(/\./g, '_').toLowerCase();

@@ -2,6 +2,7 @@ import { EarbudEventType, EarbudSettings, EarbudStatus, JarvisState } from '@jar
 import * as React from 'react';
 import { earbudService } from '../services/earbudService';
 import { apiClient } from '../services/apiClient';
+import { appSettingsService } from '../services/appSettingsService';
 import { reminderScheduler } from '../services/reminderScheduler';
 import { useVoiceRecorder } from './useVoiceRecorder';
 import { useAudioPlayer } from './useAudioPlayer';
@@ -41,7 +42,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
   const { isRecording, recordingLevel, startRecording, stopRecording, cancelRecording } =
     useVoiceRecorder();
-  const { isPlaying, playBase64Audio, stopAudio } = useAudioPlayer();
+  const { isPlaying, playBase64Audio, enqueueBase64Audio, stopAudio } = useAudioPlayer();
 
   const stateRef = React.useRef<{
     jarvisState: JarvisState;
@@ -204,13 +205,28 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
 
       // Build phone context snapshot to send alongside the voice request
       const phoneContext = await integrationManager.buildPhoneContext().catch(() => undefined);
+      const currentAppSettings = appSettingsService.getSettings();
 
-      const response = await apiClient.sendVoiceAudio(
-        audioData.audioBase64,
-        audioData.mimeType,
-        stateRef.current.conversationId,
-        phoneContext
-      );
+      const response = await apiClient.sendVoiceAudioStream({
+        audioBase64: audioData.audioBase64,
+        mimeType: audioData.mimeType,
+        conversationId: stateRef.current.conversationId,
+        phoneContext,
+        speakIntermediateStatus: currentAppSettings.speakIntermediateStatus,
+        onTranscript: (liveTranscript) => {
+          setLastTranscript(liveTranscript);
+        },
+        onIntermediateStatus: (status) => {
+          if (status.spokenText) {
+            setAssistantSpokenText(status.spokenText);
+          }
+          if (status.audioBase64) {
+            void backgroundMusicPlayer.pauseForSpeaking();
+            setJarvisState('SPEAKING');
+            void enqueueBase64Audio(status.audioBase64, 'audio/mp3');
+          }
+        },
+      });
 
       setConversationId(response.conversationId);
       setLastTranscript(response.transcript);
@@ -256,7 +272,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         // Pause music again while Jarvis is speaking so voice response is crystal clear!
         await backgroundMusicPlayer.pauseForSpeaking();
         setJarvisState('SPEAKING');
-        await playBase64Audio(response.audioBase64, 'audio/mp3', async () => {
+        await enqueueBase64Audio(response.audioBase64, 'audio/mp3', async () => {
           // Play media cleanly AFTER Jarvis finishes speaking so voice and music do not collide
           if (isPlayMedia) {
             void handlePendingPhoneAction(response);
@@ -300,7 +316,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         earbudService.resumeTapDetection(200);
       }, 3000);
     }
-  }, [stopRecording, cancelRecording, playBase64Audio, handlePendingPhoneAction, startVoiceListening]);
+  }, [stopRecording, cancelRecording, playBase64Audio, enqueueBase64Audio, handlePendingPhoneAction, startVoiceListening]);
 
 
   const toggleVoiceInteraction = React.useCallback(async (): Promise<void> => {

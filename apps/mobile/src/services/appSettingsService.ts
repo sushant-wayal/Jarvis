@@ -14,6 +14,7 @@ export interface AppSettings {
   responseProtocol: ResponseProtocol;
   serverUrl: string;
   autoSpeak: boolean;
+  speakIntermediateStatus: boolean;
   locationEnabled: boolean;
 }
 
@@ -24,6 +25,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   responseProtocol: 'Concise',
   serverUrl: apiClient.getBaseUrl() || 'https://brainofjarvis.vercel.app/api/v1',
   autoSpeak: true,
+  speakIntermediateStatus: true,
   locationEnabled: true,
 };
 

@@ -42,6 +42,9 @@ export default function SettingsScreen(): React.ReactElement {
   const [serverUrl, setServerUrl] = React.useState<string>(initialSettings.serverUrl);
   const [healthStatus, setHealthStatus] = React.useState<HealthStatus | null>(null);
   const [autoSpeak, setAutoSpeak] = React.useState<boolean>(initialSettings.autoSpeak);
+  const [speakIntermediateStatus, setSpeakIntermediateStatus] = React.useState<boolean>(
+    initialSettings.speakIntermediateStatus ?? true
+  );
   const [locationEnabled, setLocationEnabled] = React.useState<boolean>(initialSettings.locationEnabled);
   const [currentLocation, setCurrentLocation] = React.useState<LocationContext | null>(null);
   const [knownPlaces, setKnownPlaces] = React.useState<KnownPlaceItem[]>([]);
@@ -114,6 +117,7 @@ export default function SettingsScreen(): React.ReactElement {
       setResponseProtocol(appSettings.responseProtocol);
       setServerUrl(appSettings.serverUrl);
       setAutoSpeak(appSettings.autoSpeak);
+      setSpeakIntermediateStatus(appSettings.speakIntermediateStatus ?? true);
       setLocationEnabled(appSettings.locationEnabled);
 
       await Promise.all([
@@ -421,6 +425,27 @@ export default function SettingsScreen(): React.ReactElement {
                 Primary speaker verified
               </Text>
             </View>
+          </View>
+
+          {/* Spoken Status Updates Toggle */}
+          <View style={styles.toggleSettingRow}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={[typography.bodyMd, styles.toggleTitle]}>
+                Spoken Status Updates
+              </Text>
+              <Text style={[typography.bodySm, styles.toggleSubtitle]}>
+                Jarvis speaks his work and thinking aloud in between before the final response
+              </Text>
+            </View>
+            <Switch
+              value={speakIntermediateStatus}
+              onValueChange={async (val) => {
+                setSpeakIntermediateStatus(val);
+                await appSettingsService.updateSettings({ speakIntermediateStatus: val });
+              }}
+              trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+              thumbColor={speakIntermediateStatus ? colors.primaryFixed : colors.outline}
+            />
           </View>
         </GlassCard>
 
@@ -1403,6 +1428,25 @@ const styles = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  toggleSettingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    marginTop: 10,
+  },
+  toggleTitle: {
+    color: colors.onSurface,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  toggleSubtitle: {
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
 

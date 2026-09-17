@@ -24,9 +24,11 @@ import {
   UpdateUserEventRequest,
   UserEventItem,
   VoiceResponse,
+  IntermediateStatusUpdate,
 } from '@jarvis/shared';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { startSseStream } from './streamingClient';
 
 // Production Jarvis Brain backend on Vercel (overridable via EXPO_PUBLIC_JARVIS_API_URL)
 const DEFAULT_API_URL =
@@ -232,6 +234,154 @@ export class JarvisApiClient {
     }
 
     return json.data;
+  }
+
+  /**
+   * Transmits voice audio and receives real-time SSE stream events:
+   * - onTranscript: Fired as soon as STT completes (low latency UI update)
+   * - onIntermediateStatus: Fired whenever Jarvis speaks an intermediate progress update
+   * - returns Promise<VoiceResponse> with the final response payload
+   */
+  async sendVoiceAudioStream(params: {
+    audioBase64: string;
+    mimeType?: string;
+    conversationId?: string;
+    phoneContext?: PhoneContext;
+    speakIntermediateStatus?: boolean;
+    onTranscript?: (transcript: string) => void;
+    onIntermediateStatus?: (status: IntermediateStatusUpdate) => void;
+  }): Promise<VoiceResponse> {
+    const streamUrl = `${this.baseUrl}/voice/stream`;
+    const payload = {
+      audioBase64: params.audioBase64,
+      mimeType: params.mimeType || 'audio/m4a',
+      conversationId: params.conversationId,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      phoneContext: params.phoneContext,
+      speakIntermediateStatus: params.speakIntermediateStatus ?? true,
+    };
+
+    return new Promise<VoiceResponse>((resolve, reject) => {
+      let finalResponse: VoiceResponse | null = null;
+      let completed = false;
+
+      startSseStream({
+        url: streamUrl,
+        body: payload,
+        handlers: {
+          onTranscript: (t) => {
+            params.onTranscript?.(t);
+          },
+          onStatus: (st) => {
+            params.onIntermediateStatus?.(st);
+          },
+          onFinalResponse: (resp) => {
+            finalResponse = resp;
+          },
+          onDone: () => {
+            if (completed) return;
+            completed = true;
+            if (finalResponse) {
+              resolve(finalResponse);
+            } else {
+              this.sendVoiceAudio(
+                params.audioBase64,
+                params.mimeType,
+                params.conversationId,
+                params.phoneContext
+              )
+                .then(resolve)
+                .catch(reject);
+            }
+          },
+          onError: () => {
+            if (completed) return;
+            completed = true;
+            // Fallback gracefully to non-streaming REST endpoint
+            this.sendVoiceAudio(
+              params.audioBase64,
+              params.mimeType,
+              params.conversationId,
+              params.phoneContext
+            )
+              .then(resolve)
+              .catch(reject);
+          },
+        },
+      });
+    });
+  }
+
+  /**
+   * Transmits a chat message and streams real-time intermediate status and token events.
+   */
+  async sendChatMessageStream(params: {
+    message: string;
+    conversationId?: string;
+    speakResponse?: boolean;
+    speakIntermediateStatus?: boolean;
+    phoneContext?: PhoneContext;
+    onIntermediateStatus?: (status: IntermediateStatusUpdate) => void;
+    onTextDelta?: (text: string) => void;
+  }): Promise<BrainResponse> {
+    const streamUrl = `${this.baseUrl}/chat/stream`;
+    const payload = {
+      message: params.message,
+      conversationId: params.conversationId,
+      speakResponse: params.speakResponse ?? false,
+      speakIntermediateStatus: params.speakIntermediateStatus ?? true,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      phoneContext: params.phoneContext,
+    };
+
+    return new Promise<BrainResponse>((resolve, reject) => {
+      let finalResponse: BrainResponse | null = null;
+      let completed = false;
+
+      startSseStream({
+        url: streamUrl,
+        body: payload,
+        handlers: {
+          onStatus: (st) => {
+            params.onIntermediateStatus?.(st);
+          },
+          onTextDelta: (delta) => {
+            params.onTextDelta?.(delta);
+          },
+          onFinalResponse: (resp) => {
+            finalResponse = resp as unknown as BrainResponse;
+          },
+          onDone: () => {
+            if (completed) return;
+            completed = true;
+            if (finalResponse) {
+              resolve(finalResponse);
+            } else {
+              this.sendChatMessage(
+                params.message,
+                params.conversationId,
+                params.speakResponse,
+                params.phoneContext
+              )
+                .then(resolve)
+                .catch(reject);
+            }
+          },
+          onError: () => {
+            if (completed) return;
+            completed = true;
+            this.sendChatMessage(
+              params.message,
+              params.conversationId,
+              params.speakResponse,
+              params.phoneContext
+            )
+              .then(resolve)
+              .catch(reject);
+          },
+        },
+      });
+    });
   }
 
   async synthesizeSpeech(text: string): Promise<{ audioBase64: string } | null> {

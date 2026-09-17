@@ -36,6 +36,7 @@ export default function ConversationScreen(): React.ReactElement {
   const [loading, setLoading] = React.useState<boolean>(false);
   const [sending, setSending] = React.useState<boolean>(false);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
+  const [currentStatus, setCurrentStatus] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setSpeakResponse(appSettingsService.getSettings().autoSpeak);
@@ -45,7 +46,7 @@ export default function ConversationScreen(): React.ReactElement {
     return () => unsub();
   }, []);
 
-  const { playBase64Audio } = useAudioPlayer();
+  const { playBase64Audio, enqueueBase64Audio } = useAudioPlayer();
 
   const loadMessages = async (convId: string): Promise<void> => {
     try {
@@ -119,14 +120,25 @@ export default function ConversationScreen(): React.ReactElement {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
+      setCurrentStatus(null);
       const phoneContext = await integrationManager.buildPhoneContext().catch(() => undefined);
 
-      const res = await apiClient.sendMessage({
+      const res = await apiClient.sendChatMessageStream({
         message: textToSend,
         conversationId: activeConvId || undefined,
         speakResponse,
         phoneContext,
+        onIntermediateStatus: (status) => {
+          if (status.spokenText) {
+            setCurrentStatus(status.spokenText);
+          }
+          if (speakResponse && status.audioBase64) {
+            void enqueueBase64Audio(status.audioBase64, 'audio/mp3');
+          }
+        },
       });
+
+      setCurrentStatus(null);
 
       if (!activeConvId) {
         setActiveConvId(res.conversationId);
@@ -167,10 +179,11 @@ export default function ConversationScreen(): React.ReactElement {
       if (res.shouldSpeak && res.text) {
         const ttsRes = await apiClient.synthesizeSpeech(res.text);
         if (ttsRes?.audioBase64) {
-          playBase64Audio(ttsRes.audioBase64);
+          enqueueBase64Audio(ttsRes.audioBase64);
         }
       }
     } catch (err: unknown) {
+      setCurrentStatus(null);
       const detail = err instanceof Error ? err.message : 'I am temporarily unable to reach my core cognition matrix.';
       const errorMsg: ChatMessage = {
         id: `temp_err_${Date.now()}`,
@@ -182,6 +195,7 @@ export default function ConversationScreen(): React.ReactElement {
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
+      setCurrentStatus(null);
       setSending(false);
     }
   };
@@ -333,6 +347,16 @@ export default function ConversationScreen(): React.ReactElement {
             </View>
           }
         />
+      )}
+
+      {/* Live Thinking / Spoken Status Pill */}
+      {sending && (
+        <View style={styles.thinkingPill}>
+          <ActivityIndicator size="small" color={colors.primaryFixed} />
+          <Text style={[typography.bodySm, styles.thinkingText]}>
+            {currentStatus || 'Jarvis is processing...'}
+          </Text>
+        </View>
       )}
 
       {/* Floating Glass Input Bar matching Conversation.html */}
@@ -493,6 +517,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 14,
+  },
+  thinkingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 230, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 255, 0.25)',
+    borderRadius: rounded.full,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    gap: 8,
+    marginBottom: 8,
+  },
+  thinkingText: {
+    color: colors.primaryFixed,
+    fontSize: 13,
   },
   controlsRow: {
     flexDirection: 'row',

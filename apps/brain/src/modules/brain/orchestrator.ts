@@ -22,6 +22,10 @@ export interface ProcessMessageInput {
   asyncMode?: boolean;
   /** Phone context snapshot from the mobile device */
   phoneContext?: import('@jarvis/shared').PhoneContext;
+  /** Whether to speak intermediate progress / status aloud */
+  speakIntermediateStatus?: boolean;
+  /** Callback for real-time intermediate status updates */
+  onProgress?: (update: import('@jarvis/shared').IntermediateStatusUpdate) => Promise<void> | void;
 }
 
 export class BrainOrchestrator {
@@ -94,6 +98,9 @@ export class BrainOrchestrator {
       context: assembledContext,
       toolContext,
       intent: classifiedIntent.intent,
+      speakResponse: input.speakResponse,
+      speakIntermediateStatus: input.speakIntermediateStatus,
+      onProgress: input.onProgress,
     });
 
     brainResponse.shouldSpeak = Boolean(input.speakResponse);
