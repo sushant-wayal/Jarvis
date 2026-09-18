@@ -29,6 +29,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
   const queueRef = React.useRef<QueuedAudioItem[]>([]);
   const isBusyRef = React.useRef<boolean>(false);
 
+  // Stable ref to playNextInQueue — breaks the circular useCallback dependency.
+  // playRawItem always reads this ref so it always calls the latest version,
+  // even though playRawItem itself is memoized with [] deps.
+  const playNextInQueueRef = React.useRef<() => void>(() => {});
+
   const stopAudio = React.useCallback(async (triggerCallback = false): Promise<void> => {
     // Clear queued audio chunks
     queueRef.current = [];
@@ -53,13 +58,15 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
     }
   }, []);
 
+  // playRawItem is stable ([] deps) and uses playNextInQueueRef to avoid
+  // stale closure — the ref always points to the current playNextInQueue.
   const playRawItem = React.useCallback(
     async (item: QueuedAudioItem): Promise<void> => {
       const { base64Data, mimeType, onFinished } = item;
 
       if (!base64Data) {
         onFinished?.();
-        playNextInQueue();
+        playNextInQueueRef.current();
         return;
       }
 
@@ -96,14 +103,14 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           onFinishedRef.current = null;
           cb?.();
 
-          // Move to next queued audio if available
-          playNextInQueue();
+          // Use ref so we always call the latest playNextInQueue, not a stale closure
+          playNextInQueueRef.current();
         };
 
-        // Safety fallback timer for long tracks
+        // Safety fallback timer — covers tracks up to 30s
         const safetyTimer = setTimeout(() => {
           invokeFinished();
-        }, 20000);
+        }, 30000);
 
         (player as any).addListener('playbackStatusUpdate', (playbackStatus: AudioStatus) => {
           if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
@@ -117,9 +124,10 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         const cb = onFinishedRef.current;
         onFinishedRef.current = null;
         cb?.();
-        playNextInQueue();
+        playNextInQueueRef.current();
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -132,6 +140,11 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setIsPlaying(false);
     }
   }, [playRawItem]);
+
+  // Keep the ref always pointing to the latest version of playNextInQueue
+  React.useEffect(() => {
+    playNextInQueueRef.current = playNextInQueue;
+  }, [playNextInQueue]);
 
   /**
    * Immediately plays audio, interrupting any active playback and clearing the queue.
