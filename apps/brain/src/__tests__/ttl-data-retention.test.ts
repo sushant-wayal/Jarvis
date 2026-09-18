@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterAll } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { brainOrchestrator } from '@/modules/brain/orchestrator';
 import { dataRetentionService } from '@/modules/brain/data-retention-service';
@@ -172,5 +172,11 @@ describe('Jarvis Dynamic TTL & Data Retention', () => {
 
     // Clean up active test conversation
     await prisma.conversation.delete({ where: { id: activeConv.id } });
+  });
+
+  afterAll(async () => {
+    await prisma.memory.deleteMany({ where: { userId: testUserId } });
+    await prisma.conversation.deleteMany({ where: { userId: testUserId } });
+    await prisma.user.deleteMany({ where: { id: testUserId } });
   });
 });

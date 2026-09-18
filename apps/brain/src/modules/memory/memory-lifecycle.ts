@@ -65,20 +65,31 @@ export class MemoryLifecycleService {
         expiresAt = ttlEngine.calculateExpiryDate(suggestedDays);
       }
 
-      // ── Step 2: Fetch existing relevant memories ──────────────────────────
+      // ── Step 2: Fetch existing relevant memories across all types ──────────
       const existingMemories = await prisma.memory.findMany({
         where: {
           userId: candidate.userId,
-          type: candidate.type,
         },
-        orderBy: { updatedAt: 'desc' },
-        take: 20,
+        orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+        take: 50,
       });
 
-      // Exact content duplicate check
+      // Normalized content duplicate check
+      const normalizeContent = (text: string) =>
+        text
+          .toLowerCase()
+          .trim()
+          .replace(/^the\s+/i, '')
+          .replace(/[.!?]+$/, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const normalizedCandidate = normalizeContent(trimmedContent);
+
       const exactMatch = existingMemories.find(
-        (m) => m.content.toLowerCase().trim() === trimmedContent.toLowerCase()
+        (m) => normalizeContent(m.content) === normalizedCandidate
       );
+
       if (exactMatch) {
         await prisma.memory.update({
           where: { id: exactMatch.id },
@@ -325,6 +336,33 @@ Respond strictly with JSON:
       } catch (err) {
         logger.warn(`LLM Memory Arbiter call failed on model ${model}`, { error: String(err) });
       }
+    }
+
+    // Safe fallback when LLM Arbiter is unreachable:
+    // Avoid blindly inserting duplicates if an existing memory closely matches
+    const normalize = (t: string) =>
+      t
+        .toLowerCase()
+        .trim()
+        .replace(/^the\s+/i, '')
+        .replace(/[.!?]+$/, '')
+        .trim();
+    const normCand = normalize(candidateContent);
+    const existingFuzzy = existingMemories.find((m) => {
+      const normEx = normalize(m.content);
+      return (
+        normEx === normCand ||
+        (normEx.length > 6 && normCand.includes(normEx)) ||
+        (normCand.length > 6 && normEx.includes(normCand))
+      );
+    });
+
+    if (existingFuzzy) {
+      return {
+        action: 'RENEWED',
+        targetMemoryId: existingFuzzy.id,
+        reason: 'LLM Arbiter unavailable; matching memory already exists, renewed safely',
+      };
     }
 
     return { action: 'INSERTED', reason: 'LLM Arbiter unavailable, inserted safely' };

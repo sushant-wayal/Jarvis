@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { aiClient } from '@/lib/ai/gemini';
 import { memoryExtractor } from '../modules/brain/memory-extractor';
@@ -62,5 +62,10 @@ describe('MemoryExtractor Hardening & False-Inference Prevention', () => {
     expect(allergyMem).toBeDefined();
 
     spy.mockRestore();
+  });
+
+  afterAll(async () => {
+    await prisma.memory.deleteMany({ where: { userId: testUserId } });
+    await prisma.user.deleteMany({ where: { id: testUserId } });
   });
 });

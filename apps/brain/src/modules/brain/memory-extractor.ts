@@ -37,7 +37,8 @@ Instructions:
    - QUESTIONS ARE NOT FACTS: Casual questions or queries (e.g. "what is mom's phone number", "where is John") state NO facts about the user.
    - NEVER INFER IDENTITY FROM CONTACTS: If the conversation mentions a third-party contact (e.g. "Darshan's mom", "Rahul's brother"), NEVER infer that the user is that person!
    - IDENTITY PROTECTION: The user is "${verifiedUserName}". NEVER extract a memory claiming the user has a different name unless the user explicitly said "Call me [Name]" or "My name is [Name]".
-   - DO NOT save temporary plans, casual chatter, or current tasks (e.g. "I am going to the store", "What is the weather").
+   - DECOUPLE PERSISTENT FACTS FROM TRANSIENT PLANS: If the user mentions persistent personal details (such as their home, hometown, residence, family location, vehicle, or frequent travel corridor) while discussing a trip, event, or immediate plan, EXTRACT the persistent underlying fact (e.g. "User's home / hometown is Watur in Jalna district, Maharashtra") while discarding the transient dates ("leaving tomorrow Saturday").
+   - DO NOT save pure transient tasks, one-off errands, or casual chatter (e.g. "I am going to buy milk", "What is the weather today?").
 
 3. Output format:
 If a persistent long-term memory is found, respond strictly with a JSON array:

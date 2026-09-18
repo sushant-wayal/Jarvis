@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { memoryLifecycleService } from '../modules/memory/memory-lifecycle';
 
@@ -76,4 +76,9 @@ describe('Semantic Memory Lifecycle & Identity Guard', () => {
     });
     expect(blackCoffee).toBeDefined();
   }, 120000);
+
+  afterAll(async () => {
+    await prisma.memory.deleteMany({ where: { userId: testUserId } });
+    await prisma.user.deleteMany({ where: { id: testUserId } });
+  });
 });

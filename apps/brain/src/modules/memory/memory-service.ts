@@ -9,7 +9,7 @@ export class MemoryService {
   async getRelevantMemories(userId: string, query?: string, limit = 5): Promise<MemoryItem[]> {
     try {
       const now = new Date();
-      const memories = await prisma.memory.findMany({
+      const rawMemories = await prisma.memory.findMany({
         where: {
           userId,
           OR: [
@@ -18,8 +18,27 @@ export class MemoryService {
           ],
         },
         orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
-        take: limit * 2,
+        take: Math.max(limit * 6, 50),
       });
+
+      // In-memory deduplication across types/variations
+      const normalize = (t: string) =>
+        t
+          .toLowerCase()
+          .trim()
+          .replace(/^the\s+/i, '')
+          .replace(/[.!?]+$/, '')
+          .trim();
+
+      const seen = new Set<string>();
+      const memories: typeof rawMemories = [];
+      for (const m of rawMemories) {
+        const norm = normalize(m.content);
+        if (!seen.has(norm)) {
+          seen.add(norm);
+          memories.push(m);
+        }
+      }
 
       if (!query || memories.length === 0 || memories.length <= limit) {
         return memories.slice(0, limit).map(this.mapToMemoryItem);
@@ -31,7 +50,7 @@ export class MemoryService {
 User context / message: "${query}"
 
 Available user memories:
-${JSON.stringify(memories.map((m, idx) => ({ index: idx, type: m.type, content: m.content })), null, 2)}
+${JSON.stringify(memories.slice(0, 30).map((m, idx) => ({ index: idx, type: m.type, content: m.content })), null, 2)}
 
 Instructions:
 Select up to ${limit} most relevant memories for the user's situation. Understand conceptual synonyms (e.g. food restrictions relate to allergies; work relates to job/tech stack).
