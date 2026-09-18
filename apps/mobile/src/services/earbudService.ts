@@ -39,6 +39,7 @@ class EarbudService {
   private tapTimeout: ReturnType<typeof setTimeout> | null = null;
   private isInternalPause = false;
   private wasPlayingBefore = true;
+  private isJarvisSpeakingOrChiming = false;
 
   private settings: EarbudSettings = {
     enabled: true,
@@ -172,13 +173,37 @@ class EarbudService {
   }
 
   /**
+   * Guards against false tap events caused by OS audio focus changes
+   * when Jarvis is actively speaking or playing audio.
+   */
+  public setSpeakingActive(active: boolean): void {
+    this.isJarvisSpeakingOrChiming = active;
+    if (active) {
+      this.isInternalPause = true;
+      if (this.tapTimeout) {
+        clearTimeout(this.tapTimeout);
+        this.tapTimeout = null;
+      }
+    } else {
+      setTimeout(() => {
+        if (!this.isJarvisSpeakingOrChiming) {
+          this.isInternalPause = false;
+          this.wasPlayingBefore = true;
+        }
+      }, 500);
+    }
+  }
+
+  /**
    * Re-enables tap detection after a recording/processing cycle completes.
    * Includes a settling delay so audio mode transitions stabilise.
    */
   public resumeTapDetection(delayMs = 400): void {
     setTimeout(() => {
-      this.isInternalPause = false;
-      this.wasPlayingBefore = true;
+      if (!this.isJarvisSpeakingOrChiming) {
+        this.isInternalPause = false;
+        this.wasPlayingBefore = true;
+      }
     }, delayMs);
   }
 
@@ -224,13 +249,22 @@ class EarbudService {
 
       // Delay clearing the guard so the initial status update doesn't false-fire
       setTimeout(() => {
-        this.isInternalPause = false;
+        if (!this.isJarvisSpeakingOrChiming) {
+          this.isInternalPause = false;
+        }
       }, 500);
 
       (player as any).addListener('playbackStatusUpdate', (status: AudioStatus) => {
         if (!status.isLoaded) return;
 
-        if (this.isStandbyRunning && !this.isInternalPause) {
+        // If Jarvis is currently speaking, playing a chime, or tap detection is suppressed,
+        // ignore all pause/play changes on the carrier sound!
+        if (this.isInternalPause || this.isJarvisSpeakingOrChiming) {
+          this.wasPlayingBefore = status.playing;
+          return;
+        }
+
+        if (this.isStandbyRunning) {
           if (this.wasPlayingBefore && !status.playing) {
             const now = Date.now();
             if (now - this.lastTapTimestamp > 500) {
@@ -240,8 +274,10 @@ class EarbudService {
             this.isInternalPause = true;
             player.play();
             setTimeout(() => {
-              this.isInternalPause = false;
-              this.wasPlayingBefore = true;
+              if (!this.isJarvisSpeakingOrChiming) {
+                this.isInternalPause = false;
+                this.wasPlayingBefore = true;
+              }
             }, 300);
             return;
           }
@@ -336,7 +372,9 @@ class EarbudService {
       const done = () => {
         if (!resolved) {
           resolved = true;
-          this.isInternalPause = false;
+          if (!this.isJarvisSpeakingOrChiming) {
+            this.isInternalPause = false;
+          }
           resolve();
         }
       };

@@ -52,6 +52,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     conversationId: undefined,
   });
 
+  const updateJarvisState = React.useCallback((newState: JarvisState) => {
+    stateRef.current.jarvisState = newState;
+    setJarvisState(newState);
+  }, []);
+
   React.useEffect(() => {
     stateRef.current.jarvisState = jarvisState;
     stateRef.current.conversationId = conversationId;
@@ -60,11 +65,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
   // Update overall jarvis state based on recording and playing
   React.useEffect(() => {
     if (isRecording) {
-      setJarvisState('LISTENING');
+      updateJarvisState('LISTENING');
     } else if (isPlaying) {
-      setJarvisState('SPEAKING');
+      updateJarvisState('SPEAKING');
     }
-  }, [isRecording, isPlaying]);
+  }, [isRecording, isPlaying, updateJarvisState]);
 
   const updateSettings = React.useCallback((partial: Partial<EarbudSettings>) => {
     earbudService.updateSettings(partial);
@@ -75,21 +80,22 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
   const interruptOrStop = React.useCallback(async (): Promise<void> => {
     setErrorMessage(null);
     await backgroundMusicPlayer.resumeAfterSpeaking();
+    earbudService.setSpeakingActive(false);
     if (isPlaying) {
       await stopAudio();
-      setJarvisState('IDLE');
+      updateJarvisState('IDLE');
       earbudService.resumeTapDetection(300);
       await earbudService.playErrorChime();
       return;
     }
     if (isRecording) {
       await cancelRecording();
-      setJarvisState('IDLE');
+      updateJarvisState('IDLE');
       earbudService.resumeTapDetection(300);
       await earbudService.playErrorChime();
       return;
     }
-  }, [isPlaying, isRecording, stopAudio, cancelRecording]);
+  }, [isPlaying, isRecording, stopAudio, cancelRecording, updateJarvisState]);
 
   const startVoiceListening = React.useCallback(
     async (isAutoContinuation: boolean = false): Promise<void> => {
@@ -104,35 +110,37 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         setAssistantSpokenText('');
         setLastTranscript('');
 
-        if (isPlaying) {
-          await stopAudio();
-        }
+        // Unconditionally stop any active audio player so speech never leaks into listening mode
+        await stopAudio();
+        earbudService.setSpeakingActive(false);
 
-      // Temporarily pause background music so mic captures ONLY clean user voice (no song lyrics)
-      await backgroundMusicPlayer.pauseForVoiceInput();
+        // Temporarily pause background music so mic captures ONLY clean user voice (no song lyrics)
+        await backgroundMusicPlayer.pauseForVoiceInput();
 
-      // Suppress tap detection while recording so audio mode changes
-      // don't false-trigger the carrier tap detector
-      earbudService.suppressTapDetection();
+        // Suppress tap detection while recording so audio mode changes
+        // don't cause false-trigger events
+        earbudService.suppressTapDetection();
 
-      // 1. Play the wake chime in full through earbuds FIRST
-      await earbudService.playWakeChime();
+        // 1. Play the wake chime in full through earbuds FIRST
+        await earbudService.playWakeChime();
 
-      // 2. ONLY THEN switch state to LISTENING and start microphone recording
-      setJarvisState('LISTENING');
-      await startRecording();
-    } catch (err: unknown) {
-      // On failure, restore tap detection immediately
-      earbudService.resumeTapDetection(200);
-      setJarvisState('ERROR');
-      const errorMsg = err instanceof Error ? err.message : 'Microphone initialization failed.';
-      setErrorMessage(errorMsg);
-      setAssistantSpokenText(
-        `### ⚠️ Microphone Hardware Failed\n\n${errorMsg}\n\n*Please ensure microphone permissions are granted in Android Settings.*`
-      );
-      await earbudService.playErrorChime();
-    }
-  }, [isPlaying, stopAudio, startRecording]);
+        // 2. ONLY THEN switch state to LISTENING and start microphone recording
+        updateJarvisState('LISTENING');
+        await startRecording();
+      } catch (err: unknown) {
+        // On failure, restore tap detection immediately
+        earbudService.resumeTapDetection(200);
+        updateJarvisState('ERROR');
+        const errorMsg = err instanceof Error ? err.message : 'Microphone initialization failed.';
+        setErrorMessage(errorMsg);
+        setAssistantSpokenText(
+          `### ⚠️ Microphone Hardware Failed\n\n${errorMsg}\n\n*Please ensure microphone permissions are granted in Android Settings.*`
+        );
+        await earbudService.playErrorChime();
+      }
+    },
+    [stopAudio, startRecording, updateJarvisState]
+  );
 
   /**
    * After Jarvis finishes speaking a response, check if the brain attached a
@@ -174,7 +182,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       if (!force && !speechDetectedRef.current) {
         await cancelRecording();
         await backgroundMusicPlayer.resumeAfterSpeaking();
-        setJarvisState('IDLE');
+        updateJarvisState('IDLE');
         earbudService.resumeTapDetection(200);
         return;
       }
@@ -189,11 +197,11 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       await earbudService.playProcessChime();
 
       // 3. ONLY THEN switch state to PROCESSING / THINKING
-      setJarvisState('PROCESSING');
+      updateJarvisState('PROCESSING');
 
       if (!audioData || !audioData.audioBase64) {
         await backgroundMusicPlayer.resumeAfterSpeaking();
-        setJarvisState('ERROR');
+        updateJarvisState('ERROR');
         const emptyAudioMsg = '[Step: Audio Capture · Empty Stream]\nNo voice audio was detected from your microphone.';
         setErrorMessage(emptyAudioMsg);
         setAssistantSpokenText(
@@ -201,14 +209,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         );
         await earbudService.playErrorChime();
         setTimeout(() => {
-          setJarvisState('IDLE');
+          updateJarvisState('IDLE');
           // Re-arm tap detection after error
           earbudService.resumeTapDetection(200);
         }, 3000);
         return;
       }
 
-      setJarvisState('THINKING');
+      updateJarvisState('THINKING');
 
       // Build phone context snapshot to send alongside the voice request
       const phoneContext = await integrationManager.buildPhoneContext().catch(() => undefined);
@@ -229,7 +237,8 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           }
           if (status.audioBase64) {
             void backgroundMusicPlayer.pauseForSpeaking();
-            setJarvisState('SPEAKING');
+            updateJarvisState('SPEAKING');
+            earbudService.setSpeakingActive(true);
             void enqueueBase64Audio(status.audioBase64, 'audio/mp3');
           }
         },
@@ -276,11 +285,21 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         void handlePendingPhoneAction(response);
       }
 
-      if (response.audioBase64) {
+      const audioChunks = response.audioChunks && response.audioChunks.length > 0
+        ? response.audioChunks
+        : response.audioBase64
+          ? [response.audioBase64]
+          : [];
+
+      if (audioChunks.length > 0) {
         // Pause music again while Jarvis is speaking so voice response is crystal clear!
         await backgroundMusicPlayer.pauseForSpeaking();
-        setJarvisState('SPEAKING');
-        await enqueueBase64Audio(response.audioBase64, 'audio/mp3', async () => {
+        updateJarvisState('SPEAKING');
+        earbudService.setSpeakingActive(true);
+
+        const onSpeechFinished = async () => {
+          earbudService.setSpeakingActive(false);
+
           // Play media cleanly AFTER Jarvis finishes speaking so voice and music do not collide
           if (isPlayMedia) {
             void handlePendingPhoneAction(response);
@@ -292,10 +311,19 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           if (shouldContinue) {
             await startVoiceListening(true);
           } else {
-            setJarvisState('IDLE');
+            updateJarvisState('IDLE');
             earbudService.resumeTapDetection(200);
           }
-        });
+        };
+
+        for (let i = 0; i < audioChunks.length; i++) {
+          const isLast = i === audioChunks.length - 1;
+          await enqueueBase64Audio(
+            audioChunks[i],
+            'audio/mp3',
+            isLast ? onSpeechFinished : undefined
+          );
+        }
       } else {
         if (isPlayMedia) {
           void handlePendingPhoneAction(response);
@@ -305,13 +333,14 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
         if (shouldContinue) {
           await startVoiceListening(true);
         } else {
-          setJarvisState('IDLE');
+          updateJarvisState('IDLE');
           earbudService.resumeTapDetection(200);
         }
       }
     } catch (err: unknown) {
       await backgroundMusicPlayer.resumeAfterSpeaking();
-      setJarvisState('ERROR');
+      earbudService.setSpeakingActive(false);
+      updateJarvisState('ERROR');
       const errorMsg = err instanceof Error ? err.message : 'Cognitive brain link failed.';
       setErrorMessage(errorMsg);
       setAssistantSpokenText(
@@ -319,12 +348,12 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       );
       await earbudService.playErrorChime();
       setTimeout(() => {
-        setJarvisState('IDLE');
+        updateJarvisState('IDLE');
         // Re-arm tap detection after error recovery
         earbudService.resumeTapDetection(200);
       }, 3000);
     }
-  }, [stopRecording, cancelRecording, playBase64Audio, enqueueBase64Audio, handlePendingPhoneAction, startVoiceListening]);
+  }, [stopRecording, cancelRecording, playBase64Audio, enqueueBase64Audio, handlePendingPhoneAction, startVoiceListening, updateJarvisState]);
 
 
   const toggleVoiceInteraction = React.useCallback(async (): Promise<void> => {

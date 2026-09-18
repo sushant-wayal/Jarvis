@@ -527,6 +527,7 @@ export interface BrainResponse {
   conversationId: string;
   requestId: string;
   audioBase64?: string;
+  audioChunks?: string[];
   audioUrl?: string;
   mode?: ResponseMode;
   agentRunId?: string;
@@ -570,6 +571,7 @@ export interface VoiceResponse {
   transcript: string;
   response: string;
   audioBase64?: string;
+  audioChunks?: string[];
   audioUrl?: string;
   conversationId: string;
   requestId: string;

@@ -44,9 +44,11 @@ export async function POST(req: NextRequest) {
     });
 
     let audioBase64: string | undefined;
+    let audioChunks: string[] | undefined;
     if (input.speakResponse) {
       const ttsRes = await ttsProvider.synthesize(brainResult.text);
       audioBase64 = ttsRes.audioBase64;
+      audioChunks = ttsRes.audioChunks;
     }
 
     const durationMs = Date.now() - startTime;
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
       {
         ...brainResult,
         audioBase64,
+        audioChunks,
       },
       requestId
     );

@@ -3,6 +3,7 @@ import { logger } from '@/lib/logging/logger';
 export interface AudioResult {
   audioBase64: string;
   mimeType: string;
+  audioChunks?: string[];
 }
 
 export interface TextToSpeechProvider {
@@ -80,6 +81,25 @@ export class DefaultTextToSpeechProvider implements TextToSpeechProvider {
   }
 
   /**
+   * Strips trailing LAME tags and 0x55/0xAA padding bytes from an MP3 buffer.
+   * This ensures seamless playback without causing ExoPlayer to enter STATE_ENDED prematurely.
+   */
+  private stripTrailingMpegPadding(buf: Buffer): Buffer {
+    let end = buf.length;
+    while (end > 4 && (buf[end - 1] === 0x55 || buf[end - 1] === 0xaa || buf[end - 1] === 0x00)) {
+      end--;
+    }
+    const lameIdx = buf.lastIndexOf(Buffer.from('LAME'), end);
+    if (lameIdx !== -1 && end - lameIdx < 250) {
+      end = lameIdx;
+      while (end > 4 && (buf[end - 1] === 0x55 || buf[end - 1] === 0xaa || buf[end - 1] === 0x00)) {
+        end--;
+      }
+    }
+    return buf.subarray(0, end);
+  }
+
+  /**
    * Fetches single chunk MP3 audio buffer
    */
   private async fetchChunkAudio(chunk: string): Promise<Buffer | null> {
@@ -112,27 +132,39 @@ export class DefaultTextToSpeechProvider implements TextToSpeechProvider {
   async synthesize(text: string): Promise<AudioResult> {
     const cleaned = this.cleanTextForSpeech(text);
     if (!cleaned) {
-      return { audioBase64: '', mimeType: 'audio/mp3' };
+      return { audioBase64: '', mimeType: 'audio/mp3', audioChunks: [] };
     }
 
     try {
       const chunks = this.splitIntoChunks(cleaned);
       const audioBuffers: Buffer[] = [];
+      const base64Chunks: string[] = [];
 
-      // Fetch chunks sequentially or small concurrent batches to preserve order
+      // Fetch chunks sequentially to preserve conversational timing
       for (const chunk of chunks) {
         const buffer = await this.fetchChunkAudio(chunk);
         if (buffer && buffer.length > 0) {
           audioBuffers.push(buffer);
+          base64Chunks.push(buffer.toString('base64'));
         }
       }
 
       if (audioBuffers.length > 0) {
-        // Concatenate MP3 frames seamlessly into a single valid MP3 stream
-        const combinedBuffer = Buffer.concat(audioBuffers);
+        // Strip trailing padding from non-final chunks so concatenated buffer plays cleanly
+        const cleanedBuffers: Buffer[] = [];
+        for (let i = 0; i < audioBuffers.length; i++) {
+          if (i === audioBuffers.length - 1) {
+            cleanedBuffers.push(audioBuffers[i]);
+          } else {
+            cleanedBuffers.push(this.stripTrailingMpegPadding(audioBuffers[i]));
+          }
+        }
+
+        const combinedBuffer = Buffer.concat(cleanedBuffers);
         return {
           audioBase64: combinedBuffer.toString('base64'),
           mimeType: 'audio/mp3',
+          audioChunks: base64Chunks,
         };
       }
     } catch (e) {
@@ -144,6 +176,7 @@ export class DefaultTextToSpeechProvider implements TextToSpeechProvider {
     return {
       audioBase64: '',
       mimeType: 'audio/mp3',
+      audioChunks: [],
     };
   }
 }

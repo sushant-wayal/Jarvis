@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
         transcript,
         response: brainResult.text,
         audioBase64: ttsResult.audioBase64,
+        audioChunks: ttsResult.audioChunks,
         conversationId: brainResult.conversationId,
         requestId,
         shouldSpeak: true,

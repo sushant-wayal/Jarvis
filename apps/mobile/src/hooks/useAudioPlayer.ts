@@ -25,38 +25,58 @@ export interface UseAudioPlayerReturn {
 export function useAudioPlayer(): UseAudioPlayerReturn {
   const [isPlaying, setIsPlaying] = React.useState<boolean>(false);
   const playerRef = React.useRef<AudioPlayer | null>(null);
+  const subscriptionRef = React.useRef<{ remove: () => void } | null>(null);
+  const safetyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drainTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const onFinishedRef = React.useRef<(() => void) | null>(null);
   const queueRef = React.useRef<QueuedAudioItem[]>([]);
   const isBusyRef = React.useRef<boolean>(false);
 
   // Stable ref to playNextInQueue — breaks the circular useCallback dependency.
-  // playRawItem always reads this ref so it always calls the latest version,
-  // even though playRawItem itself is memoized with [] deps.
   const playNextInQueueRef = React.useRef<() => void>(() => {});
 
-  const stopAudio = React.useCallback(async (triggerCallback = false): Promise<void> => {
-    // Clear queued audio chunks
-    queueRef.current = [];
-    isBusyRef.current = false;
-
+  const cleanupCurrentPlayback = React.useCallback((): void => {
+    if (safetyTimerRef.current) {
+      clearTimeout(safetyTimerRef.current);
+      safetyTimerRef.current = null;
+    }
+    if (drainTimerRef.current) {
+      clearTimeout(drainTimerRef.current);
+      drainTimerRef.current = null;
+    }
+    if (subscriptionRef.current) {
+      try {
+        subscriptionRef.current.remove();
+      } catch {}
+      subscriptionRef.current = null;
+    }
     if (playerRef.current) {
       try {
         playerRef.current.pause();
         playerRef.current.remove();
-      } catch {
-        // Safe catch for already unloaded sound
-      }
+      } catch {}
       playerRef.current = null;
     }
-    setIsPlaying(false);
-    if (triggerCallback && onFinishedRef.current) {
-      const cb = onFinishedRef.current;
-      onFinishedRef.current = null;
-      cb();
-    } else if (!triggerCallback) {
-      onFinishedRef.current = null;
-    }
   }, []);
+
+  const stopAudio = React.useCallback(
+    async (triggerCallback = false): Promise<void> => {
+      // Clear queued audio chunks
+      queueRef.current = [];
+      isBusyRef.current = false;
+      cleanupCurrentPlayback();
+      setIsPlaying(false);
+
+      if (triggerCallback && onFinishedRef.current) {
+        const cb = onFinishedRef.current;
+        onFinishedRef.current = null;
+        cb();
+      } else if (!triggerCallback) {
+        onFinishedRef.current = null;
+      }
+    },
+    [cleanupCurrentPlayback]
+  );
 
   // playRawItem is stable ([] deps) and uses playNextInQueueRef to avoid
   // stale closure — the ref always points to the current playNextInQueue.
@@ -70,14 +90,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         return;
       }
 
-      // Cleanup previous player instance if any
-      if (playerRef.current) {
-        try {
-          playerRef.current.pause();
-          playerRef.current.remove();
-        } catch {}
-        playerRef.current = null;
-      }
+      cleanupCurrentPlayback();
 
       onFinishedRef.current = onFinished ?? null;
       isBusyRef.current = true;
@@ -94,31 +107,56 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
           if (finishedHandled) return;
           finishedHandled = true;
 
-          try {
-            player.remove();
-          } catch {}
-          playerRef.current = null;
+          // Clear safety timer and listener immediately
+          if (safetyTimerRef.current) {
+            clearTimeout(safetyTimerRef.current);
+            safetyTimerRef.current = null;
+          }
+          if (subscriptionRef.current) {
+            try {
+              subscriptionRef.current.remove();
+            } catch {}
+            subscriptionRef.current = null;
+          }
+          if (playerRef.current) {
+            try {
+              playerRef.current.pause();
+              playerRef.current.remove();
+            } catch {}
+            playerRef.current = null;
+          }
 
           const cb = onFinishedRef.current;
           onFinishedRef.current = null;
-          cb?.();
 
-          // Use ref so we always call the latest playNextInQueue, not a stale closure
-          playNextInQueueRef.current();
+          // AudioTrack hardware buffer drain delay:
+          // Give 250ms for the Android hardware audio buffer to completely finish
+          // playing through the speaker before invoking callback or starting next chunk.
+          drainTimerRef.current = setTimeout(() => {
+            drainTimerRef.current = null;
+            cb?.();
+            playNextInQueueRef.current();
+          }, 250);
         };
 
-        // Safety fallback timer — covers tracks up to 30s
-        const safetyTimer = setTimeout(() => {
+        // Safety fallback timer — covers tracks up to 45s per chunk
+        safetyTimerRef.current = setTimeout(() => {
           invokeFinished();
-        }, 30000);
+        }, 45000);
 
-        (player as any).addListener('playbackStatusUpdate', (playbackStatus: AudioStatus) => {
-          if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
-            clearTimeout(safetyTimer);
-            invokeFinished();
+        const subscription = (player as any).addListener(
+          'playbackStatusUpdate',
+          (playbackStatus: AudioStatus) => {
+            if (playbackStatus.isLoaded && playbackStatus.didJustFinish) {
+              invokeFinished();
+            } else if ((playbackStatus as any).error) {
+              invokeFinished();
+            }
           }
-        });
+        );
+        subscriptionRef.current = subscription;
       } catch {
+        cleanupCurrentPlayback();
         isBusyRef.current = false;
         setIsPlaying(false);
         const cb = onFinishedRef.current;
@@ -127,8 +165,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
         playNextInQueueRef.current();
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [cleanupCurrentPlayback]
   );
 
   const playNextInQueue = React.useCallback((): void => {
