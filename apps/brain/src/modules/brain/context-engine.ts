@@ -42,7 +42,7 @@ export class ContextEngine {
       prisma.message.findMany({
         where: { conversationId },
         orderBy: { createdAt: 'desc' },
-        take: 6,
+        take: 20,
       }),
       prisma.task.findMany({
         where: { userId, status: 'ACTIVE' },

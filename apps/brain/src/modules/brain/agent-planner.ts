@@ -123,13 +123,28 @@ export class AgentPlanner {
     const contents: Array<{ role: string; parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }> }> = [];
 
     for (const msg of context.recentHistory) {
+      const text = msg.content?.trim();
+      if (!text) continue;
+
       if (msg.role === 'USER') {
-        if (contents.length === 0 || contents[contents.length - 1].role === 'model') {
-          contents.push({ role: 'user', parts: [{ text: msg.content }] });
+        if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+          // Merge consecutive user messages
+          const prev = contents[contents.length - 1].parts[0]?.text || '';
+          contents[contents.length - 1].parts[0] = { text: `${prev}\n${text}` };
+        } else {
+          contents.push({ role: 'user', parts: [{ text }] });
         }
       } else if (msg.role === 'ASSISTANT') {
-        if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-          contents.push({ role: 'model', parts: [{ text: msg.content }] });
+        if (contents.length === 0) {
+          // Gemini chat contents must start with a user turn
+          contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
+          contents.push({ role: 'model', parts: [{ text }] });
+        } else if (contents[contents.length - 1].role === 'model') {
+          // Merge consecutive model messages
+          const prev = contents[contents.length - 1].parts[0]?.text || '';
+          contents[contents.length - 1].parts[0] = { text: `${prev}\n${text}` };
+        } else {
+          contents.push({ role: 'model', parts: [{ text }] });
         }
       }
     }
@@ -198,7 +213,9 @@ Core Principles:
 2. For casual, advisory, weekend, lifestyle, or brainstorming queries (e.g., "what should I do this weekend?", "recommend something fun", "how should I plan my evening?"):
    - Respond with inspiring, structured, and practical recommendations right away.
    - Do NOT stall, output raw tool parameters, or complain about missing location data.
-3. Context Awareness: Current time, date, day of week, user name, and known context are already provided in the context above. Do NOT invoke 'date_time', 'current_time', or 'location_get' tools simply to check the day/time for casual chatting.
+3. Context Awareness & Multi-Turn Dialogue Continuity:
+   - Current time, date, day of week, user name, and known context are already provided in the context above. Do NOT invoke 'date_time', 'current_time', or 'location_get' tools simply to check the day/time for casual chatting.
+   - Continuous Dialogue Memory: You maintain persistent multi-turn conversations. When the user asks follow-up questions, refers to pronouns ("it", "that", "these", "those"), or references earlier recommendations (e.g. "for all the travel options, check availability", "remove the reminder", "which one is fastest?"), ALWAYS resolve them directly against the prior turns in this conversation. Never lose track of what was just discussed or treat a follow-up query as an isolated new topic.
 4. Intelligent Tool Use: Use tools when actions or external lookups are genuinely required (e.g. creating reminders/tasks with 'task_create', creating trips/events with 'event_create', location reminders with 'event_reminder_create', web searching with 'web_search', or saving memories).
 5. Full Entity Lifecycle Management (CRITICAL — NEVER claim an action was done without executing the corresponding tool):
    - Tasks & Reminders:

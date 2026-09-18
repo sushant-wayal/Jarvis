@@ -23,7 +23,7 @@ export interface EarbudManagerContextValue {
   conversationId?: string;
   updateSettings: (partial: Partial<EarbudSettings>) => void;
   triggerSimulatedTap: (event?: EarbudEventType) => void;
-  startVoiceListening: () => Promise<void>;
+  startVoiceListening: (isAutoContinuation?: boolean) => Promise<void>;
   stopAndProcessVoice: (force?: boolean) => Promise<void>;
   interruptOrStop: () => Promise<void>;
   toggleVoiceInteraction: () => Promise<void>;
@@ -91,15 +91,22 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [isPlaying, isRecording, stopAudio, cancelRecording]);
 
-  const startVoiceListening = React.useCallback(async (): Promise<void> => {
-    try {
-      setErrorMessage(null);
-      setAssistantSpokenText('');
-      setLastTranscript('');
+  const startVoiceListening = React.useCallback(
+    async (isAutoContinuation: boolean = false): Promise<void> => {
+      try {
+        if (!isAutoContinuation) {
+          // Explicit manual start: begin a fresh conversation
+          setConversationId(undefined);
+          stateRef.current.conversationId = undefined;
+        }
 
-      if (isPlaying) {
-        await stopAudio();
-      }
+        setErrorMessage(null);
+        setAssistantSpokenText('');
+        setLastTranscript('');
+
+        if (isPlaying) {
+          await stopAudio();
+        }
 
       // Temporarily pause background music so mic captures ONLY clean user voice (no song lyrics)
       await backgroundMusicPlayer.pauseForVoiceInput();
@@ -229,6 +236,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
       });
 
       setConversationId(response.conversationId);
+      stateRef.current.conversationId = response.conversationId;
       setLastTranscript(response.transcript);
       setAssistantSpokenText(response.response);
 
@@ -282,7 +290,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           }
 
           if (shouldContinue) {
-            await startVoiceListening();
+            await startVoiceListening(true);
           } else {
             setJarvisState('IDLE');
             earbudService.resumeTapDetection(200);
@@ -295,7 +303,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           await backgroundMusicPlayer.resumeAfterSpeaking();
         }
         if (shouldContinue) {
-          await startVoiceListening();
+          await startVoiceListening(true);
         } else {
           setJarvisState('IDLE');
           earbudService.resumeTapDetection(200);
@@ -327,7 +335,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
     } else if (currentState === 'LISTENING') {
       await stopAndProcessVoice(true);
     } else if (currentState === 'IDLE' || currentState === 'ERROR' || currentState === 'OFFLINE') {
-      await startVoiceListening();
+      await startVoiceListening(false);
     }
   }, [interruptOrStop, stopAndProcessVoice, startVoiceListening]);
 
@@ -393,7 +401,7 @@ export function EarbudProvider({ children }: { children: React.ReactNode }): Rea
           event === 'MEDIA_PLAY' ||
           event === 'MEDIA_PAUSE'
         ) {
-          await startVoiceListening();
+          await startVoiceListening(false);
         }
       } else if (currentState === 'LISTENING') {
         // Tapping while listening completes & processes voice immediately (supports boAt double-tap as well)
