@@ -748,6 +748,92 @@ export class JarvisApiClient {
       return false;
     }
   }
+
+  async getIntegrations(): Promise<IntegrationItem[]> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/integrations`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as ApiResponse<IntegrationItem[]>;
+      return json.data || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async toggleIntegration(
+    id: string,
+    enabled: boolean,
+    clearCredentials?: boolean
+  ): Promise<ToggleIntegrationResult | null> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/integrations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id, enabled, clearCredentials }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as ApiResponse<ToggleIntegrationResult>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getGoogleAuthUrl(redirectScheme: string = 'jarvis://integrations'): Promise<{ authUrl: string } | null> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(
+        `${this.baseUrl}/integrations/google/auth-url?redirect=${encodeURIComponent(redirectScheme)}`,
+        { headers: { Accept: 'application/json' } }
+      );
+      if (!res.ok) return null;
+      const json = (await res.json()) as ApiResponse<{ authUrl: string }>;
+      return json.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async disconnectIntegration(id: string): Promise<boolean> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/integrations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id, action: 'disconnect' }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+export interface IntegrationItem {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  enabled: boolean;
+  status: 'ENABLED' | 'CONFIG_REQUIRED' | 'DISABLED' | 'ERROR';
+  authType: 'OAUTH' | 'TOKEN' | 'API_KEY' | 'NONE' | 'CUSTOM';
+  isConfigured: boolean;
+  connectedAccount: string | null;
+  toolCount: number;
+  permissions: string[];
+}
+
+export interface ToggleIntegrationResult {
+  id: string;
+  enabled: boolean;
+  status: string;
+  requiresAuth?: boolean;
+  message?: string;
 }
 
 export const apiClient = new JarvisApiClient();
+

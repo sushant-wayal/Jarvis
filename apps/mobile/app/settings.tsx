@@ -1,4 +1,5 @@
 import { HealthStatus, KnownPlaceItem, LocationContext, MemoryItem } from '@jarvis/shared';
+import { router } from 'expo-router';
 import * as React from 'react';
 import {
   Alert,
@@ -447,6 +448,45 @@ export default function SettingsScreen(): React.ReactElement {
               thumbColor={speakIntermediateStatus ? colors.primaryFixed : colors.outline}
             />
           </View>
+        </GlassCard>
+
+        {/* Connected Integrations Bento Card */}
+        <GlassCard style={styles.bentoCard}>
+          <View style={styles.cardHeaderRow}>
+            <Icon name="extension" size={18} color={colors.primaryContainer} />
+            <Text style={[typography.labelCaps, styles.cardCategory]}>CONNECTED INTEGRATIONS</Text>
+          </View>
+
+          <Text style={[typography.bodyMd, styles.locationDesc]}>
+            Manage external tools, services, and accounts (Gmail, GitHub, YouTube, Financial Advisor) for Jarvis to execute tasks.
+          </Text>
+
+          <View style={styles.integrationsPreviewRow}>
+            <View style={styles.integrationBadge}>
+              <Icon name="mail" size={14} color="#EF4444" />
+              <Text style={styles.integrationBadgeText}>Gmail</Text>
+            </View>
+            <View style={styles.integrationBadge}>
+              <Icon name="code" size={14} color="#8B5CF6" />
+              <Text style={styles.integrationBadgeText}>GitHub</Text>
+            </View>
+            <View style={styles.integrationBadge}>
+              <Icon name="smart_display" size={14} color="#EC4899" />
+              <Text style={styles.integrationBadgeText}>Serenity</Text>
+            </View>
+            <View style={styles.integrationBadge}>
+              <Icon name="account_balance" size={14} color="#10B981" />
+              <Text style={styles.integrationBadgeText}>North</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.manageIntegrationsBtn}
+            onPress={() => router.push('/integrations')}
+          >
+            <Text style={styles.manageIntegrationsBtnText}>Manage Integrations & Permissions</Text>
+            <Icon name="arrow_forward" size={16} color="#0A0D14" />
+          </TouchableOpacity>
         </GlassCard>
 
         {/* Intelligence Link Bento Card */}
@@ -1447,6 +1487,44 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     fontSize: 12,
     lineHeight: 16,
+  },
+  integrationsPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 14,
+  },
+  integrationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: rounded.full,
+  },
+  integrationBadgeText: {
+    color: colors.onSurface,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  manageIntegrationsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryFixed,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: rounded.md,
+    gap: 8,
+  },
+  manageIntegrationsBtnText: {
+    color: '#0A0D14',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

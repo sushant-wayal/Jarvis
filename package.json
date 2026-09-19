@@ -22,7 +22,8 @@
     "postinstall": "npm run build:shared && npm run prisma:generate --workspace=apps/brain --if-present && node scripts/postinstall.js",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "auth:gmail": "node scripts/authenticate-gmail.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

@@ -117,6 +117,12 @@ export default function RootLayout(): React.ReactElement {
               ),
             }}
           />
+          <Tabs.Screen
+            name="integrations"
+            options={{
+              href: null,
+            }}
+          />
         </Tabs>
         <View style={styles.miniPlayerWrapper} pointerEvents="box-none">
           <MiniPlayer />

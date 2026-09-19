@@ -57,7 +57,14 @@ export type IconName =
   | 'skip_next'
   | 'skip_previous'
   | 'music_note'
-  | 'insights';
+  | 'insights'
+  | 'mail'
+  | 'code'
+  | 'smart_display'
+  | 'account_balance'
+  | 'extension'
+  | 'extension_off'
+  | 'login';
 
 export interface IconProps {
   name: IconName;
@@ -179,6 +186,20 @@ export function Icon({
       return <MaterialIcons name="skip-previous" size={size} color={color} style={style} />;
     case 'music_note':
       return <MaterialIcons name="music-note" size={size} color={color} style={style} />;
+    case 'mail':
+      return <MaterialIcons name="mail-outline" size={size} color={color} style={style} />;
+    case 'code':
+      return <MaterialIcons name="code" size={size} color={color} style={style} />;
+    case 'smart_display':
+      return <MaterialIcons name="smart-display" size={size} color={color} style={style} />;
+    case 'account_balance':
+      return <MaterialIcons name="account-balance" size={size} color={color} style={style} />;
+    case 'extension':
+      return <MaterialIcons name="extension" size={size} color={color} style={style} />;
+    case 'extension_off':
+      return <MaterialIcons name="extension-off" size={size} color={color} style={style} />;
+    case 'login':
+      return <MaterialIcons name="login" size={size} color={color} style={style} />;
     default:
       return <MaterialIcons name="blur-on" size={size} color={color} style={style} />;
   }

@@ -288,7 +288,39 @@ apps/brain/src/modules/integrations/north/
 
 ---
 
-## 11. Creating a New Integration
+---
+
+## 11. Existing Integration: Gmail (Email Management)
+
+The **Gmail** integration connects Jarvis with the user's Google Workspace/Gmail account. Jarvis can search, read, draft, send, reply to emails, modify labels (mark read/unread, star, archive), and move emails to trash with strict risk classifications and user confirmations.
+
+```text
+apps/brain/src/modules/integrations/gmail/
+├── GmailAuth.ts                     # Token lifecycle, auto-refresh via Google OAuth2, profile validation
+├── GmailClient.ts                   # REST client encapsulating Gmail API v1 with MIME RFC 2822 formatting
+├── GmailIntegration.ts              # BaseIntegration lifecycle & 10 tool registrations
+├── index.ts                         # Clean barrel export
+└── tools/
+    ├── ListEmailsTool.ts            # gmail.list_emails (READ, SAFE)
+    ├── GetEmailTool.ts              # gmail.get_email (READ, SAFE)
+    ├── ListThreadsTool.ts           # gmail.list_threads (READ, SAFE)
+    ├── GetThreadTool.ts             # gmail.get_thread (READ, SAFE)
+    ├── SendEmailTool.ts             # gmail.send_email (EXTERNAL_ACTION, HIGH_RISK, Confirmed)
+    ├── CreateDraftTool.ts           # gmail.create_draft (WRITE, LOW_RISK)
+    ├── ReplyEmailTool.ts            # gmail.reply_email (EXTERNAL_ACTION, HIGH_RISK, Confirmed)
+    ├── ModifyEmailLabelsTool.ts     # gmail.modify_labels (WRITE, LOW_RISK)
+    ├── TrashEmailTool.ts            # gmail.trash_email (DESTRUCTIVE, HIGH_RISK, Confirmed)
+    └── GetProfileTool.ts            # gmail.get_profile (READ, SAFE)
+```
+
+### Configuration:
+- `GMAIL_ACCESS_TOKEN` or `GOOGLE_ACCESS_TOKEN`: Bearer access token for Gmail API (`https://mail.google.com/`).
+- `GMAIL_REFRESH_TOKEN`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`: Optional OAuth2 credentials for automatic token refreshing.
+- Runtime connection via `authenticate({ token })`.
+
+---
+
+## 12. Creating a New Integration
 
 To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
@@ -307,10 +339,11 @@ To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
 ---
 
-## 12. Using the Integration Development Skill
+## 13. Using the Integration Development Skill
 
 The standardized engineering workflow is codified in the developer skill:
 `file:///.agents/skills/jarvis-integration-developer/SKILL.md`
 
 Whenever you or an AI agent needs to add a new integration, activate the skill and follow its 14-stage checklist. It contains the complete self-contained answers to all 13 core fundamentals, directory conventions, and verification steps.
+
 
