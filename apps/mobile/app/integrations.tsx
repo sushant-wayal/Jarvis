@@ -193,6 +193,44 @@ export default function IntegrationsScreen(): React.ReactElement {
     }
   };
 
+  const handleTogglePermission = async (
+    integrationId: string,
+    actionType: 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE',
+    value: boolean
+  ): Promise<void> => {
+    const currentItem = integrations.find((i) => i.id === integrationId);
+    const updatedAutoApprove = {
+      ...(currentItem?.autoApprove || {}),
+      [actionType]: value,
+    };
+
+    // Optimistic synchronous UI update
+    setIntegrations((prev) =>
+      prev.map((it) => {
+        if (it.id !== integrationId) return it;
+        return {
+          ...it,
+          autoApprove: updatedAutoApprove,
+        };
+      })
+    );
+
+    try {
+      const ok = await apiClient.updateIntegrationPermissions(integrationId, updatedAutoApprove);
+      if (!ok) {
+        setIntegrations((prev) =>
+          prev.map((it) => (it.id === integrationId ? currentItem || it : it))
+        );
+        Alert.alert('Error', 'Failed to update permission setting.');
+      }
+    } catch {
+      setIntegrations((prev) =>
+        prev.map((it) => (it.id === integrationId ? currentItem || it : it))
+      );
+      Alert.alert('Error', 'Failed to update permission setting.');
+    }
+  };
+
   const handleDisconnect = (item: IntegrationItem): void => {
     Alert.alert(
       `Disconnect ${item.name}?`,
@@ -295,6 +333,76 @@ export default function IntegrationsScreen(): React.ReactElement {
             </Text>
           )}
         </View>
+
+        {/* Granular Action Permissions Section */}
+        {item.enabled && (
+          <View style={styles.permissionsSection}>
+            <View style={styles.permissionsHeader}>
+              <Icon name="shield" size={13} color={colors.primaryFixed} />
+              <Text style={styles.permissionsHeaderText}>Auto-Execution Permissions</Text>
+            </View>
+
+            {/* WRITE Toggle */}
+            {(!item.supportedActionTypes || item.supportedActionTypes.includes('WRITE')) && (
+              <View style={styles.permissionRow}>
+                <View style={styles.permissionInfo}>
+                  <Text style={styles.permissionTitle}>Workspace Changes</Text>
+                  <Text style={styles.permissionSubtitle}>
+                    {item.autoApprove?.WRITE
+                      ? 'Auto-approved (Drafts, issues, records)'
+                      : 'Asks confirmation in conversation'}
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(item.autoApprove?.WRITE)}
+                  onValueChange={(val) => handleTogglePermission(item.id, 'WRITE', val)}
+                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                  thumbColor={item.autoApprove?.WRITE ? colors.primaryFixed : colors.outline}
+                />
+              </View>
+            )}
+
+            {/* EXTERNAL_ACTION Toggle */}
+            {item.supportedActionTypes?.includes('EXTERNAL_ACTION') && (
+              <View style={styles.permissionRow}>
+                <View style={styles.permissionInfo}>
+                  <Text style={styles.permissionTitle}>Outbound Actions</Text>
+                  <Text style={styles.permissionSubtitle}>
+                    {item.autoApprove?.EXTERNAL_ACTION
+                      ? 'Auto-approved (Send & reply to emails)'
+                      : 'Asks confirmation in conversation'}
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(item.autoApprove?.EXTERNAL_ACTION)}
+                  onValueChange={(val) => handleTogglePermission(item.id, 'EXTERNAL_ACTION', val)}
+                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                  thumbColor={item.autoApprove?.EXTERNAL_ACTION ? colors.primaryFixed : colors.outline}
+                />
+              </View>
+            )}
+
+            {/* DESTRUCTIVE Toggle */}
+            {item.supportedActionTypes?.includes('DESTRUCTIVE') && (
+              <View style={styles.permissionRow}>
+                <View style={styles.permissionInfo}>
+                  <Text style={styles.permissionTitle}>Destructive Actions</Text>
+                  <Text style={styles.permissionSubtitle}>
+                    {item.autoApprove?.DESTRUCTIVE
+                      ? 'Auto-approved (Trash & permanent delete)'
+                      : 'Asks confirmation in conversation'}
+                  </Text>
+                </View>
+                <Switch
+                  value={Boolean(item.autoApprove?.DESTRUCTIVE)}
+                  onValueChange={(val) => handleTogglePermission(item.id, 'DESTRUCTIVE', val)}
+                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
+                  thumbColor={item.autoApprove?.DESTRUCTIVE ? colors.primaryFixed : colors.outline}
+                />
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Action Button if Config Required or Connected OAuth */}
         {item.enabled && isConfigRequired && item.authType === 'OAUTH' && (
@@ -554,6 +662,46 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 11,
     fontWeight: '600',
+  },
+  permissionsSection: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  permissionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  permissionsHeaderText: {
+    color: colors.primaryFixed,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  permissionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+  },
+  permissionInfo: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  permissionTitle: {
+    color: colors.onSurface,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  permissionSubtitle: {
+    color: colors.outline,
+    fontSize: 10,
+    marginTop: 1,
+    lineHeight: 14,
   },
   emptyCard: {
     padding: 32,

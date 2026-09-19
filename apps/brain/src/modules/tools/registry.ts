@@ -148,12 +148,15 @@ class ToolRegistry {
 
   private wrapJarvisTool(tool: JarvisTool): RegisteredTool {
     const jsonSchema = this.zodToJsonSchema(tool.inputSchema);
+    const intTool = tool as { actionType?: any; integrationId?: string };
     return {
       name: tool.name,
       description: tool.description,
       category: tool.category,
       riskLevel: tool.riskLevel,
       requiresConfirmation: Boolean(tool.requiresConfirmation),
+      actionType: intTool.actionType,
+      integrationId: intTool.integrationId,
       parameters: jsonSchema,
       execute: async (input: unknown, context: ToolContext): Promise<ToolResult> => {
         const startTime = Date.now();

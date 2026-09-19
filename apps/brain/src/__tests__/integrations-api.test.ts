@@ -86,4 +86,37 @@ describe('Integrations API & OAuth Reset Lifecycle', () => {
     expect(json.data.authUrl).toContain('prompt=consent');
     expect(json.data.authUrl).toContain('scope=https%3A%2F%2Fmail.google.com%2F');
   });
+
+  it('GET /api/v1/integrations returns supportedActionTypes and autoApprove settings', async () => {
+    const req = new NextRequest('http://localhost:3000/api/v1/integrations');
+    const res = await getIntegrations(req);
+    const json = await res.json();
+
+    expect(json.success).toBe(true);
+    const gmail = json.data.find((i: any) => i.id === 'gmail');
+    expect(gmail).toBeDefined();
+    expect(gmail.supportedActionTypes).toContain('EXTERNAL_ACTION');
+    expect(gmail.supportedActionTypes).toContain('DESTRUCTIVE');
+    expect(gmail.autoApprove).toBeDefined();
+    expect(typeof gmail.autoApprove.EXTERNAL_ACTION).toBe('boolean');
+  });
+
+  it('POST /api/v1/integrations updatePermissions updates autoApprove preferences', async () => {
+    const req = new NextRequest('http://localhost:3000/api/v1/integrations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'gmail',
+        action: 'updatePermissions',
+        autoApprove: { EXTERNAL_ACTION: true, WRITE: true },
+      }),
+    });
+
+    const res = await postIntegration(req);
+    const json = await res.json();
+
+    expect(json.success).toBe(true);
+    expect(json.data.id).toBe('gmail');
+    expect(json.data.autoApprove.EXTERNAL_ACTION).toBe(true);
+    expect(json.data.autoApprove.WRITE).toBe(true);
+  });
 });

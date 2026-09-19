@@ -811,6 +811,23 @@ export class JarvisApiClient {
       return false;
     }
   }
+
+  async updateIntegrationPermissions(
+    id: string,
+    autoApprove: Record<string, boolean>
+  ): Promise<boolean> {
+    try {
+      await this.initializeUrl();
+      const res = await fetch(`${this.baseUrl}/integrations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ id, action: 'updatePermissions', autoApprove }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
 }
 
 export interface IntegrationItem {
@@ -825,6 +842,12 @@ export interface IntegrationItem {
   connectedAccount: string | null;
   toolCount: number;
   permissions: string[];
+  supportedActionTypes?: ('WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE')[];
+  autoApprove?: {
+    WRITE?: boolean;
+    EXTERNAL_ACTION?: boolean;
+    DESTRUCTIVE?: boolean;
+  };
 }
 
 export interface ToggleIntegrationResult {

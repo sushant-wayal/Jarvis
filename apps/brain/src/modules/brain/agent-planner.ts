@@ -204,9 +204,37 @@ CRITICAL INSTRUCTIONS FOR THIS TURN:
 `
       : '';
 
+    // Check user integration pre-authorized permissions
+    const userPrefs = context.userProfile?.preferences as Record<string, any> | undefined;
+    const integrationsConfig = userPrefs?.integrations as Record<string, any> | undefined;
+    let integrationPermissionsDirective = '';
+    if (integrationsConfig) {
+      const preApprovedLines: string[] = [];
+      for (const [intId, config] of Object.entries(integrationsConfig)) {
+        const autoApprove = (config as any)?.autoApprove;
+        if (autoApprove && typeof autoApprove === 'object') {
+          const approvedTypes = Object.entries(autoApprove)
+            .filter(([_, allowed]) => allowed === true)
+            .map(([type]) => type);
+          if (approvedTypes.length > 0) {
+            preApprovedLines.push(`- Integration "${intId}": Pre-authorized for ${approvedTypes.join(', ')}.`);
+          }
+        }
+      }
+      if (preApprovedLines.length > 0) {
+        integrationPermissionsDirective = `
+[PRE-AUTHORIZED INTEGRATION PERMISSIONS]:
+The user has configured explicit auto-approval for the following integration action types in Settings:
+${preApprovedLines.join('\n')}
+For these pre-authorized actions, invoke the tools directly without asking for confirmation.
+`;
+      }
+    }
+
     const systemInstruction = `You are Jarvis, a proactive, capable, and natural personal AI operating layer.
 ${context.systemContextString}
 ${confirmationDirective}
+${integrationPermissionsDirective}
 
 Core Principles:
 1. Deliver direct, high-value, and engaging answers to the user's questions immediately.
@@ -536,9 +564,16 @@ Timezone & Scheduling Directive:
             Boolean(activePendingConfirmation) &&
             isCanonicalMatch(fcName, activePendingConfirmation!.toolName);
 
+          const isAutoApprovedBySettings = Boolean(
+            tool.actionType &&
+            tool.integrationId &&
+            integrationsConfig?.[tool.integrationId]?.autoApprove?.[tool.actionType] === true
+          );
+
           // Check if action requires confirmation
           if (
             !isAuthorizedConfirmation &&
+            !isAutoApprovedBySettings &&
             (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK')
           ) {
             const pendingData = {

@@ -1,4 +1,4 @@
-import { ToolCategory, ToolContext, ToolResult, ToolRiskLevel } from '@jarvis/shared';
+import { IntegrationActionType, ToolCategory, ToolContext, ToolResult, ToolRiskLevel } from '@jarvis/shared';
 import { z } from 'zod';
 
 export interface JarvisTool<TInput = unknown, TOutput = unknown> {
@@ -17,6 +17,8 @@ export interface RegisteredTool {
   category: ToolCategory;
   riskLevel: ToolRiskLevel;
   requiresConfirmation: boolean;
+  actionType?: IntegrationActionType;
+  integrationId?: string;
   parameters: Record<string, unknown>; // JSON Schema format for Gemini Function Declaration
   execute: (input: unknown, context: ToolContext) => Promise<ToolResult>;
 }
