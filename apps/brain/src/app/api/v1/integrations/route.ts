@@ -7,12 +7,38 @@ import { GmailIntegration } from '@/modules/integrations/gmail';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+/**
+ * Persists the integration enabled/disabled state to the database so that a server
+ * restart or Next.js cold-start doesn't silently revert the user's preference back
+ * to the in-memory default (always true).
+ */
+async function persistIntegrationState(userId: string, integrationId: string, enabled: boolean): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const prefs = user?.preferences ? JSON.parse(user.preferences) : {};
+    if (!prefs.integrations) prefs.integrations = {};
+    if (!prefs.integrations[integrationId]) prefs.integrations[integrationId] = {};
+
+    // Only update the enabled flag; never touch credentials or policies here
+    prefs.integrations[integrationId].enabled = enabled;
+
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: { preferences: JSON.stringify(prefs) },
+      create: { id: userId, name: 'Sushant', preferences: JSON.stringify(prefs) },
+    });
+  } catch {
+    // Non-fatal — in-memory state still reflects intent
+  }
+}
+
 export async function GET(req: NextRequest) {
   const requestId = generateRequestId();
 
   let user = null;
   try {
-    user = await prisma.user.findFirst();
+    // Always use the canonical default-user so policies/credentials are consistent
+    user = await prisma.user.findUnique({ where: { id: 'default-user' } });
   } catch {
     // fallback if db is unreachable
   }
@@ -125,12 +151,13 @@ export async function POST(req: NextRequest) {
 
     // Action: Update Permissions / 3-Way Policy Settings (Action-Level and Tool-Level)
     if (body.action === 'updatePermissions' && (body.policies || body.toolPolicies || body.autoApprove)) {
-      let user = await prisma.user.findFirst();
+      // Always upsert on the canonical default-user
+      let user = await prisma.user.findUnique({ where: { id: 'default-user' } });
       if (!user) {
         user = await prisma.user.create({
           data: {
-            id: 'user_default',
-            name: 'User',
+            id: 'default-user',
+            name: 'Sushant',
             preferences: '{}',
           },
         });
@@ -174,7 +201,7 @@ export async function POST(req: NextRequest) {
       prefs.integrations[int.metadata.id].autoApprove = autoApprove;
 
       await prisma.user.update({
-        where: { id: user.id },
+        where: { id: 'default-user' },
         data: { preferences: JSON.stringify(prefs) },
       });
 
@@ -209,6 +236,8 @@ export async function POST(req: NextRequest) {
     if (typeof body.enabled === 'boolean') {
       if (body.enabled) {
         await int.enable();
+        // Persist enabled state so server restarts don't lose the toggle
+        await persistIntegrationState('default-user', int.metadata.id, true);
         const status = await int.getStatus();
         const requiresAuth = status === 'CONFIG_REQUIRED';
 
@@ -225,12 +254,15 @@ export async function POST(req: NextRequest) {
           requestId
         );
       } else {
-        // Disabling: If OAuth or explicit clearCredentials requested, clear credentials
-        const isOAuth = int.metadata.authRequirements.type === 'OAUTH';
-        if (isOAuth || body.clearCredentials) {
+        // Disabling: ONLY clear credentials if the caller explicitly requests it.
+        // A simple toggle-off must NEVER wipe OAuth tokens — the user should be able
+        // to re-enable without going through a full OAuth consent flow again.
+        if (body.clearCredentials === true) {
           await int.disconnect();
         }
         await int.disable();
+        // Persist the disabled state so a server restart doesn't silently re-enable
+        await persistIntegrationState('default-user', int.metadata.id, false);
         const status = await int.getStatus();
 
         return successResponse(
@@ -238,8 +270,8 @@ export async function POST(req: NextRequest) {
             id: int.metadata.id,
             enabled: false,
             status,
-            message: isOAuth
-              ? `${int.metadata.name} disabled and credentials wiped.`
+            message: body.clearCredentials
+              ? `${int.metadata.name} disabled and credentials cleared.`
               : `${int.metadata.name} disabled.`,
           },
           requestId

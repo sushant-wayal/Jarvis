@@ -211,7 +211,7 @@ export default function IntegrationsScreen(): React.ReactElement {
       const result = await apiClient.toggleIntegration(
         item.id,
         nextValue,
-        !nextValue && item.authType === 'OAUTH'
+        false // Never wipe credentials on a plain toggle — only on explicit Disconnect
       );
 
       if (!result) {

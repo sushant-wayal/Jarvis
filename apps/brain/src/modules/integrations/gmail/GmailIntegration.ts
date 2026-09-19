@@ -45,8 +45,28 @@ export class GmailIntegration extends BaseIntegration {
 
   public override async initialize(): Promise<void> {
     await this.auth.loadStoredCredentials().catch(() => {});
+    // Restore the persisted enabled/disabled preference from the database so that
+    // toggling off and restarting the server keeps the integration disabled.
+    await this.loadPersistedEnabledState().catch(() => {});
     await super.initialize();
   }
+
+  private async loadPersistedEnabledState(): Promise<void> {
+    try {
+      const { prisma } = await import('@/lib/db/prisma');
+      const user = await prisma.user.findUnique({ where: { id: 'default-user' } });
+      if (user?.preferences) {
+        const prefs = JSON.parse(user.preferences) as Record<string, any>;
+        const gmailPrefs = prefs?.integrations?.gmail;
+        if (gmailPrefs && typeof gmailPrefs.enabled === 'boolean') {
+          this.enabled = gmailPrefs.enabled;
+        }
+      }
+    } catch {
+      // Non-fatal — keep default in-memory value
+    }
+  }
+
 
   public override async getStatus(): Promise<IntegrationStatus> {
     if (!this.enabled) {
