@@ -15,6 +15,7 @@ import { toolRegistry } from '@/modules/tools/registry';
 import { ttsProvider } from '@/modules/voice/tts-provider';
 import { AssembledContext } from './context-engine';
 import { spokenStatusFormatter, StatusSpeechThrottler } from './spoken-status-formatter';
+import { gmailIntegration } from '@/modules/integrations/gmail';
 
 export interface ToolBudgetConfig {
   maxToolCalls: number;
@@ -405,6 +406,9 @@ Timezone & Scheduling Directive:
 - When creating reminders or tasks ('task_create') or events ('event_create'), user times are ALWAYS in their local timezone.
 - You MUST pass the 'schedule' argument as an ISO 8601 string including the user's timezone offset (e.g. 'YYYY-MM-DDTHH:mm:ss+05:30') or properly converted to UTC with 'Z'.
 - NEVER assume user local time is UTC and NEVER attach 'Z' directly to user local hours (e.g. 9:30 AM local in Asia/Kolkata is NOT 09:30:00Z; it is 09:30:00+05:30 or 04:00:00Z).`;
+
+    // Ensure active integration credentials (such as Gmail OAuth) are loaded for this user
+    await gmailIntegration.getAuth().loadStoredCredentials(toolContext.userId || 'default-user').catch(() => {});
 
     const toolsConfig = toolRegistry.getGeminiFunctionDeclarations();
 

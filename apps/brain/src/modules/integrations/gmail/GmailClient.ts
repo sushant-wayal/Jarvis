@@ -85,7 +85,11 @@ export class GmailClient {
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
-    const token = this.auth.getAccessToken();
+    let token = this.auth.getAccessToken();
+    if (!token) {
+      await this.auth.loadStoredCredentials().catch(() => {});
+      token = this.auth.getAccessToken();
+    }
     if (!token) {
       throw new Error('Gmail integration is not configured. Please connect your Google account or provide a token.');
     }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BaseIntegrationTool } from '../../integration-tool';
+import { BaseIntegrationTool, flexibleBoolean } from '../../integration-tool';
 import { GmailClient, SendEmailResult } from '../GmailClient';
 
 export class SendEmailTool extends BaseIntegrationTool<
@@ -22,7 +22,7 @@ export class SendEmailTool extends BaseIntegrationTool<
         body: z.string().min(1).describe('Email body text or HTML content'),
         cc: z.string().optional().describe('Optional CC email address(es)'),
         bcc: z.string().optional().describe('Optional BCC email address(es)'),
-        isHtml: z.boolean().optional().default(false).describe('Whether body contains HTML formatted markup'),
+        isHtml: flexibleBoolean.default(false).describe('Whether body contains HTML formatted markup'),
       }),
       executor: async (input) => {
         const result = await client.sendEmail({

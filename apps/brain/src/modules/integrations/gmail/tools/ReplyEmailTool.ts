@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BaseIntegrationTool } from '../../integration-tool';
+import { BaseIntegrationTool, flexibleBoolean } from '../../integration-tool';
 import { GmailClient, SendEmailResult } from '../GmailClient';
 
 export class ReplyEmailTool extends BaseIntegrationTool<
@@ -23,7 +23,7 @@ export class ReplyEmailTool extends BaseIntegrationTool<
         subject: z.string().min(1).describe('Subject of the reply'),
         body: z.string().min(1).describe('Reply message body content'),
         cc: z.string().optional().describe('Optional CC recipient email address(es)'),
-        isHtml: z.boolean().optional().default(false).describe('Whether body contains HTML'),
+        isHtml: flexibleBoolean.default(false).describe('Whether body contains HTML'),
       }),
       executor: async (input) => {
         const result = await client.replyEmail({

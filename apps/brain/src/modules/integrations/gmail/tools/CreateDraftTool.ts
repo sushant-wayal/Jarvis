@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BaseIntegrationTool } from '../../integration-tool';
+import { BaseIntegrationTool, flexibleBoolean } from '../../integration-tool';
 import { DraftSummary, GmailClient } from '../GmailClient';
 
 export class CreateDraftTool extends BaseIntegrationTool<
@@ -23,7 +23,7 @@ export class CreateDraftTool extends BaseIntegrationTool<
         cc: z.string().optional().describe('Optional CC address(es)'),
         bcc: z.string().optional().describe('Optional BCC address(es)'),
         threadId: z.string().optional().describe('Optional thread ID to attach draft to an existing conversation'),
-        isHtml: z.boolean().optional().default(false).describe('Whether content is HTML'),
+        isHtml: flexibleBoolean.default(false).describe('Whether content is HTML'),
       }),
       executor: async (input) => {
         const draft = await client.createDraft({

@@ -24,6 +24,21 @@ export interface IntegrationToolOptions<TInput, TOutput> {
   executor: (input: TInput, context: ToolContext) => Promise<StandardToolResult<TOutput>>;
 }
 
+/**
+ * A tolerant boolean schema helper that handles native booleans as well as
+ * stringified booleans ('true', 'false', '1', '0', 'yes', 'no') frequently
+ * emitted by LLM function calls.
+ */
+export const flexibleBoolean = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase();
+    if (s === 'true' || s === '1' || s === 'yes') return true;
+    if (s === 'false' || s === '0' || s === 'no') return false;
+  }
+  return val;
+}, z.boolean());
+
+
 export class BaseIntegrationTool<TInput = unknown, TOutput = unknown>
   implements IntegrationTool<TInput, TOutput>
 {

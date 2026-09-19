@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BaseIntegrationTool } from '../../integration-tool';
+import { BaseIntegrationTool, flexibleBoolean } from '../../integration-tool';
 import { GmailClient, GmailMessageSummary } from '../GmailClient';
 
 export class ListEmailsTool extends BaseIntegrationTool<
@@ -20,7 +20,7 @@ export class ListEmailsTool extends BaseIntegrationTool<
         query: z.string().optional().describe('Gmail search filter (e.g., "from:alice is:unread", "subject:meeting")'),
         labelIds: z.array(z.string()).optional().describe('Label filters, e.g. ["INBOX", "UNREAD", "STARRED"]'),
         maxResults: z.coerce.number().min(1).max(30).default(10).describe('Maximum number of emails to return (1-30)'),
-        includeSpamTrash: z.boolean().optional().describe('Include spam and trash in results'),
+        includeSpamTrash: flexibleBoolean.optional().describe('Include spam and trash in results'),
       }),
       executor: async (input) => {
         const result = await client.listEmails({

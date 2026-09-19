@@ -43,6 +43,11 @@ export class GmailIntegration extends BaseIntegration {
     return this.client;
   }
 
+  public override async initialize(): Promise<void> {
+    await this.auth.loadStoredCredentials().catch(() => {});
+    await super.initialize();
+  }
+
   public override async getStatus(): Promise<IntegrationStatus> {
     if (!this.enabled) {
       return 'DISABLED';
