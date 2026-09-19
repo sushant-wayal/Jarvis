@@ -86,6 +86,7 @@ const withAndroidEarbudService = (config) => {
       'android.permission.BLUETOOTH_CONNECT',
       'android.permission.CALL_PHONE',
       'android.permission.QUERY_ALL_PACKAGES',
+      'android.permission.WAKE_LOCK',
     ];
     for (const perm of requiredPermissions) {
       if (!manifest['uses-permission'].some((p) => p.$ && p.$['android:name'] === perm)) {

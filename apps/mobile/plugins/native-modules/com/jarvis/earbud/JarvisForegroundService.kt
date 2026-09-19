@@ -65,6 +65,9 @@ class JarvisForegroundService : Service() {
         // Intent extras / actions
         const val ACTION_MEDIA_BUTTON = "com.jarvis.MEDIA_BUTTON"
         const val ACTION_STOP_RECORDING = "com.jarvis.STOP_RECORDING"
+        const val ACTION_MUSIC_PLAY_PAUSE = "com.jarvis.MUSIC_PLAY_PAUSE"
+        const val ACTION_MUSIC_NEXT = "com.jarvis.MUSIC_NEXT"
+        const val ACTION_MUSIC_PREV = "com.jarvis.MUSIC_PREV"
         const val EXTRA_BRAIN_URL = "BRAIN_URL"
         const val EXTRA_KEY_CODE = "KEY_CODE"
 
@@ -103,6 +106,17 @@ class JarvisForegroundService : Service() {
     // ─── Silent Audio Carrier ─────────────────────────────────────────────────
     // Critical: Keeps Android AudioFlinger / Bluetooth AVRCP active so taps route to Jarvis
     private var silentAudioTrack: AudioTrack? = null
+
+    // ─── Native Background Music Streaming ────────────────────────────────────
+    private var musicPlayer: MediaPlayer? = null
+    private var currentTrackTitle: String = ""
+    private var currentTrackArtist: String = ""
+    private var currentTrackArtworkUrl: String = ""
+    private var musicSessionId: String? = null
+    private var autoplayEnabled: Boolean = true
+    private var isMusicPlaying: Boolean = false
+    private var isMusicPausedForVoice: Boolean = false
+    private val musicQueue: MutableList<JSONObject> = mutableListOf()
 
     // ─── MediaSession ─────────────────────────────────────────────────────────
 
@@ -188,6 +202,15 @@ class JarvisForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_MUSIC_PLAY_PAUSE -> {
+                if (isMusicPlaying) pauseNativeMusic() else resumeNativeMusic()
+            }
+            ACTION_MUSIC_NEXT -> {
+                skipNextTrack()
+            }
+            ACTION_MUSIC_PREV -> {
+                restartOrPrevTrack()
+            }
             ACTION_MEDIA_BUTTON -> {
                 val keyCode = intent.getIntExtra(EXTRA_KEY_CODE, KeyEvent.KEYCODE_UNKNOWN)
                 if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
@@ -221,6 +244,7 @@ class JarvisForegroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         mainHandler.removeCallbacksAndMessages(null)
+        stopNativeMusic()
         stopSilentAudioCarrier()
         cleanupRecorder()
         abandonAudioFocus()
@@ -272,11 +296,11 @@ class JarvisForegroundService : Service() {
                     return super.onMediaButtonEvent(event)
                 }
 
-                override fun onPlay()           { handleMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY) }
-                override fun onPause()          { handleMediaButton(KeyEvent.KEYCODE_MEDIA_PAUSE) }
-                override fun onStop()           { handleMediaButton(KeyEvent.KEYCODE_MEDIA_STOP) }
-                override fun onSkipToNext()     { handleMediaButton(KeyEvent.KEYCODE_MEDIA_NEXT) }
-                override fun onSkipToPrevious() { handleMediaButton(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }
+                override fun onPlay()           { if (musicPlayer != null) resumeNativeMusic() else handleMediaButton(KeyEvent.KEYCODE_MEDIA_PLAY) }
+                override fun onPause()          { if (musicPlayer != null) pauseNativeMusic() else handleMediaButton(KeyEvent.KEYCODE_MEDIA_PAUSE) }
+                override fun onStop()           { if (musicPlayer != null) stopNativeMusic() else handleMediaButton(KeyEvent.KEYCODE_MEDIA_STOP) }
+                override fun onSkipToNext()     { if (musicPlayer != null) skipNextTrack() else handleMediaButton(KeyEvent.KEYCODE_MEDIA_NEXT) }
+                override fun onSkipToPrevious() { if (musicPlayer != null) restartOrPrevTrack() else handleMediaButton(KeyEvent.KEYCODE_MEDIA_PREVIOUS) }
             })
             isActive = true
         }
@@ -375,8 +399,11 @@ class JarvisForegroundService : Service() {
     }
 
     private fun resumeSilentAudioCarrier() {
+        if (isMusicPlaying) return
         try {
-            if (silentAudioTrack?.playState != AudioTrack.PLAYSTATE_PLAYING) {
+            if (silentAudioTrack == null) {
+                startSilentAudioCarrier()
+            } else if (silentAudioTrack?.playState != AudioTrack.PLAYSTATE_PLAYING) {
                 silentAudioTrack?.play()
             }
         } catch (_: Exception) {}
@@ -422,6 +449,21 @@ class JarvisForegroundService : Service() {
             KeyEvent.KEYCODE_CALL -> {
                 when (state) {
                     State.IDLE -> {
+                        // If music is actively playing in background, pause it so user can speak cleanly
+                        if (isMusicPlaying) {
+                            try {
+                                musicPlayer?.pause()
+                                isMusicPlaying = false
+                                isMusicPausedForVoice = true
+                                updateMediaSessionState(PlaybackStateCompat.STATE_PAUSED)
+                                updateMusicNotification(PlaybackStateCompat.STATE_PAUSED)
+                                startSilentAudioCarrier()
+                                Log.d(TAG, "Paused music playback for earbud voice command")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error pausing music on earbud tap: ${e.message}")
+                            }
+                        }
+
                         // Check if app is open on screen with an active React context
                         if (JarvisEarbudModule.isAppInForeground()) {
                             val eventName = when (keyCode) {
@@ -444,27 +486,37 @@ class JarvisForegroundService : Service() {
                 }
             }
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                when (state) {
-                    State.IDLE -> {
-                        if (JarvisEarbudModule.isAppInForeground()) {
-                            JarvisEarbudModule.emitEarbudEvent("DOUBLE_TAP")
-                        } else {
-                            startNativeRecording()
+                if (isMusicPlaying || musicPlayer != null) {
+                    skipNextTrack()
+                } else {
+                    when (state) {
+                        State.IDLE -> {
+                            if (JarvisEarbudModule.isAppInForeground()) {
+                                JarvisEarbudModule.emitEarbudEvent("DOUBLE_TAP")
+                            } else {
+                                startNativeRecording()
+                            }
                         }
+                        State.RECORDING -> stopNativeRecording()
+                        State.PROCESSING -> {}
                     }
-                    State.RECORDING -> stopNativeRecording()
-                    State.PROCESSING -> {}
                 }
             }
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                if (JarvisEarbudModule.isAppInForeground()) {
+                if (isMusicPlaying || musicPlayer != null) {
+                    restartOrPrevTrack()
+                } else if (JarvisEarbudModule.isAppInForeground()) {
                     JarvisEarbudModule.emitEarbudEvent("TRIPLE_TAP")
                 }
             }
             KeyEvent.KEYCODE_MEDIA_STOP -> {
-                if (state == State.RECORDING) stopNativeRecording()
-                if (JarvisEarbudModule.isAppInForeground()) {
-                    JarvisEarbudModule.emitEarbudEvent("LONG_PRESS")
+                if (isMusicPlaying || musicPlayer != null) {
+                    stopNativeMusic()
+                } else {
+                    if (state == State.RECORDING) stopNativeRecording()
+                    if (JarvisEarbudModule.isAppInForeground()) {
+                        JarvisEarbudModule.emitEarbudEvent("LONG_PRESS")
+                    }
                 }
             }
         }
@@ -675,8 +727,12 @@ class JarvisForegroundService : Service() {
         if (!sendToBrain || file == null || !file.exists() || file.length() == 0L) {
             file?.delete()
             state = State.IDLE
-            resumeSilentAudioCarrier()
-            updateNotification("Jarvis · Tap earbud to speak")
+            if (isMusicPausedForVoice) {
+                resumeNativeMusic()
+            } else {
+                resumeSilentAudioCarrier()
+                updateNotification("Jarvis · Tap earbud to speak")
+            }
             return
         }
 
@@ -696,7 +752,11 @@ class JarvisForegroundService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Audio processing failed: ${e.message}", e)
                     state = State.IDLE
-                    resumeSilentAudioCarrier()
+                    if (isMusicPausedForVoice) {
+                        resumeNativeMusic()
+                    } else {
+                        resumeSilentAudioCarrier()
+                    }
                     playErrorChime()
                     showResultNotification("Jarvis couldn't process that. Try again.")
                     updateNotification("Jarvis · Tap earbud to speak")
@@ -712,7 +772,9 @@ class JarvisForegroundService : Service() {
         recordingFile?.delete()
         recordingFile = null
         releaseBluetoothAudioRouting()
-        resumeSilentAudioCarrier()
+        if (!isMusicPlaying && !isMusicPausedForVoice) {
+            resumeSilentAudioCarrier()
+        }
     }
 
     // ─── Brain API call ───────────────────────────────────────────────────────
@@ -832,12 +894,16 @@ class JarvisForegroundService : Service() {
 
             http.newCall(request).execute().use { response ->
                 state = State.IDLE
-                resumeSilentAudioCarrier()
 
                 if (!response.isSuccessful) {
                     val code = response.code
                     val errorBody = response.body?.string() ?: ""
                     Log.e(TAG, "Brain API error $code: $errorBody")
+                    if (isMusicPausedForVoice) {
+                        resumeNativeMusic()
+                    } else {
+                        resumeSilentAudioCarrier()
+                    }
                     playErrorChime()
                     showResultNotification("Jarvis: couldn't connect ($code). Try again.")
                     updateNotification("Jarvis · Tap earbud to speak")
@@ -858,27 +924,47 @@ class JarvisForegroundService : Service() {
                 // If Brain returned an empty silence turn, remain in IDLE without speaking or restarting listening
                 if (textResponse.isEmpty() && audioB64.isEmpty()) {
                     Log.d(TAG, "Empty/silence response received from brain; remaining peacefully in IDLE")
-                    updateNotification("Jarvis · Tap earbud to speak")
+                    if (isMusicPausedForVoice) {
+                        resumeNativeMusic()
+                    } else {
+                        updateNotification("Jarvis · Tap earbud to speak")
+                    }
                     return
                 }
 
                 // If phone action is executing, do not restart listening
                 val shouldAutoListen = continuous && (phoneAction == null)
 
-                // Execute phone action immediately without delaying for audio playback
-                if (phoneAction != null) {
+                val phoneActionType = phoneAction?.optString("type")?.ifEmpty { phoneAction.optString("action") } ?: ""
+                val isPlayMediaAction = phoneActionType == "PLAY_MEDIA"
+
+                // Execute immediate non-play-media phone actions (calls, SMS, media control)
+                if (phoneAction != null && !isPlayMediaAction) {
                     executeNativePhoneAction(phoneAction)
                 }
 
                 // Play audio response through earbuds if available
                 if (audioB64.isNotEmpty()) {
-                    playAudioResponse(audioB64, autoListenAfter = shouldAutoListen)
-                } else if (shouldAutoListen && textResponse.isNotEmpty()) {
-                    mainHandler.postDelayed({
-                        if (state == State.IDLE) {
-                            startNativeRecording()
+                    playAudioResponse(audioB64, autoListenAfter = shouldAutoListen, onComplete = {
+                        if (isPlayMediaAction && phoneAction != null) {
+                            executeNativePhoneAction(phoneAction)
+                        } else if (isMusicPausedForVoice && phoneAction == null) {
+                            resumeNativeMusic()
                         }
-                    }, 800)
+                    })
+                } else {
+                    if (isPlayMediaAction && phoneAction != null) {
+                        executeNativePhoneAction(phoneAction)
+                    } else if (isMusicPausedForVoice && phoneAction == null) {
+                        resumeNativeMusic()
+                    }
+                    if (shouldAutoListen && textResponse.isNotEmpty()) {
+                        mainHandler.postDelayed({
+                            if (state == State.IDLE) {
+                                startNativeRecording()
+                            }
+                        }, 800)
+                    }
                 }
 
                 // Show notification with the text response
@@ -887,11 +973,17 @@ class JarvisForegroundService : Service() {
                     showResultNotification(preview)
                 }
 
-                updateNotification("Jarvis · Tap earbud to speak")
+                if (!isPlayMediaAction && !isMusicPlaying) {
+                    updateNotification("Jarvis · Tap earbud to speak")
+                }
             }
         } catch (e: Exception) {
             state = State.IDLE
-            resumeSilentAudioCarrier()
+            if (isMusicPausedForVoice) {
+                resumeNativeMusic()
+            } else {
+                resumeSilentAudioCarrier()
+            }
             Log.e(TAG, "Brain API call failed: ${e.message}", e)
             playErrorChime()
             showResultNotification("Jarvis: network error. Check your connection.")
@@ -1139,6 +1231,7 @@ class JarvisForegroundService : Service() {
                     }
 
                     "PLAY_MEDIA" -> {
+                        val audioUrl = action.optString("audioUrl")
                         val query = action.optString("query")
                         val videoId = action.optString("videoId")
                         val rawApp = action.optString("app")
@@ -1146,7 +1239,32 @@ class JarvisForegroundService : Service() {
                             rawApp.contains("youtube", ignoreCase = true) ||
                             query.contains("youtube", ignoreCase = true)
 
-                        if (isYt) {
+                        var resolvedAudioUrl = audioUrl
+                        if (resolvedAudioUrl.isBlank()) {
+                            val q = action.optJSONArray("queue")
+                            if (q != null && q.length() > 0) {
+                                for (i in 0 until q.length()) {
+                                    val item = q.optJSONObject(i)
+                                    val u = item?.optString("audioUrl") ?: ""
+                                    if (u.isNotBlank()) {
+                                        resolvedAudioUrl = u
+                                        action.put("audioUrl", u)
+                                        if (action.optString("title").isBlank()) {
+                                            action.put("title", item?.optString("title", query))
+                                        }
+                                        if (action.optString("artist").isBlank()) {
+                                            action.put("artist", item?.optString("artist", ""))
+                                        }
+                                        break
+                                    }
+                                }
+                            }
+                        }
+
+                        if (resolvedAudioUrl.isNotBlank()) {
+                            // Direct audio stream resolved — stream natively into earbuds in background!
+                            startNativeMusicPlayback(action)
+                        } else if (isYt) {
                             if (videoId.isNotBlank()) {
                                 val ytIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).apply {
                                     setPackage("com.google.android.youtube")
@@ -1181,8 +1299,24 @@ class JarvisForegroundService : Service() {
                                 val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(query))).apply {
                                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                startActivity(fallbackIntent)
+                                try {
+                                    startActivity(fallbackIntent)
+                                } catch (_: Exception) {}
                             }
+                        }
+                    }
+
+                    "CONTROL_MEDIA" -> {
+                        val command = action.optString("command").lowercase()
+                        Log.d(TAG, "Native executing CONTROL_MEDIA: $command")
+                        when (command) {
+                            "pause" -> pauseNativeMusic()
+                            "resume" -> resumeNativeMusic()
+                            "stop" -> stopNativeMusic()
+                            "next" -> skipNextTrack()
+                            "previous" -> restartOrPrevTrack()
+                            "dislike" -> skipNextTrack()
+                            "like" -> { /* Track liked */ }
                         }
                     }
 
@@ -1268,6 +1402,288 @@ class JarvisForegroundService : Service() {
         }
     }
 
+    // ─── Native Background Music Streaming ────────────────────────────────────
+
+    private fun startNativeMusicPlayback(action: JSONObject) {
+        val audioUrl = action.optString("audioUrl")
+        if (audioUrl.isNullOrBlank()) {
+            Log.w(TAG, "startNativeMusicPlayback called without valid audioUrl")
+            return
+        }
+
+        currentTrackTitle = action.optString("title").ifEmpty { action.optString("query", "Music Track") }
+        currentTrackArtist = action.optString("artist")
+        currentTrackArtworkUrl = action.optString("artworkUrl")
+        musicSessionId = action.optString("sessionId").takeIf { it.isNotBlank() }
+        autoplayEnabled = action.optBoolean("autoplayEnabled", true)
+
+        val queueArray = action.optJSONArray("queue")
+        musicQueue.clear()
+        if (queueArray != null) {
+            for (i in 0 until queueArray.length()) {
+                val item = queueArray.optJSONObject(i)
+                if (item != null && item.optString("audioUrl").isNotBlank()) {
+                    musicQueue.add(item)
+                }
+            }
+        }
+
+        playAudioStream(audioUrl)
+    }
+
+    private fun playAudioStream(url: String) {
+        mainHandler.post {
+            try {
+                // Real music is about to play; stop the silent audio carrier
+                stopSilentAudioCarrier()
+
+                musicPlayer?.apply {
+                    try { stop() } catch (_: Exception) {}
+                    try { release() } catch (_: Exception) {}
+                }
+                musicPlayer = null
+
+                val mp = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .build()
+                    )
+                    setWakeMode(applicationContext, PowerManager.PARTIAL_WAKE_LOCK)
+                    setDataSource(url)
+
+                    setOnPreparedListener { player ->
+                        requestAudioFocus()
+                        player.start()
+                        isMusicPlaying = true
+                        isMusicPausedForVoice = false
+                        Log.i(TAG, "Native music streaming started: $currentTrackTitle · $currentTrackArtist")
+                        updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING)
+                        updateMediaSessionMetadata(currentTrackTitle, currentTrackArtist)
+                        updateMusicNotification(PlaybackStateCompat.STATE_PLAYING)
+                    }
+
+                    setOnCompletionListener { player ->
+                        player.release()
+                        musicPlayer = null
+                        isMusicPlaying = false
+                        Log.i(TAG, "Native track playback completed: $currentTrackTitle")
+
+                        // Advance to next track in queue if available
+                        if (musicQueue.isNotEmpty()) {
+                            val nextTrack = musicQueue.removeAt(0)
+                            currentTrackTitle = nextTrack.optString("title", "Next Track")
+                            currentTrackArtist = nextTrack.optString("artist", "")
+                            currentTrackArtworkUrl = nextTrack.optString("artworkUrl", "")
+                            val nextUrl = nextTrack.optString("audioUrl")
+                            if (nextUrl.isNotBlank()) {
+                                Log.i(TAG, "Advancing to next track in queue: $currentTrackTitle")
+                                playAudioStream(nextUrl)
+                                return@setOnCompletionListener
+                            }
+                        }
+
+                        // Queue ended; resume silent carrier and reset notification
+                        updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED)
+                        updateNotification("Jarvis · Tap earbud to speak")
+                        startSilentAudioCarrier()
+                    }
+
+                    setOnErrorListener { player, what, extra ->
+                        Log.e(TAG, "Native MediaPlayer error: what=$what, extra=$extra")
+                        player.release()
+                        musicPlayer = null
+                        isMusicPlaying = false
+
+                        if (musicQueue.isNotEmpty()) {
+                            val nextTrack = musicQueue.removeAt(0)
+                            val nextUrl = nextTrack.optString("audioUrl")
+                            if (nextUrl.isNotBlank()) {
+                                currentTrackTitle = nextTrack.optString("title", "")
+                                currentTrackArtist = nextTrack.optString("artist", "")
+                                playAudioStream(nextUrl)
+                                return@setOnErrorListener true
+                            }
+                        }
+
+                        startSilentAudioCarrier()
+                        updateNotification("Jarvis · Tap earbud to speak")
+                        true
+                    }
+                }
+
+                musicPlayer = mp
+                mp.prepareAsync()
+                updateNotification("🎵 Loading $currentTrackTitle…")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start native audio stream: ${e.message}", e)
+                startSilentAudioCarrier()
+                updateNotification("Jarvis · Tap earbud to speak")
+            }
+        }
+    }
+
+    private fun pauseNativeMusic() {
+        mainHandler.post {
+            try {
+                if (musicPlayer?.isPlaying == true) {
+                    musicPlayer?.pause()
+                    isMusicPlaying = false
+                    updateMediaSessionState(PlaybackStateCompat.STATE_PAUSED)
+                    updateMusicNotification(PlaybackStateCompat.STATE_PAUSED)
+                    startSilentAudioCarrier()
+                    Log.d(TAG, "Native music playback paused")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error pausing music: ${e.message}")
+            }
+        }
+    }
+
+    private fun resumeNativeMusic() {
+        mainHandler.post {
+            try {
+                if (musicPlayer != null && !isMusicPlaying) {
+                    stopSilentAudioCarrier()
+                    requestAudioFocus()
+                    musicPlayer?.start()
+                    isMusicPlaying = true
+                    isMusicPausedForVoice = false
+                    updateMediaSessionState(PlaybackStateCompat.STATE_PLAYING)
+                    updateMusicNotification(PlaybackStateCompat.STATE_PLAYING)
+                    Log.d(TAG, "Native music playback resumed")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resuming music: ${e.message}")
+            }
+        }
+    }
+
+    private fun stopNativeMusic() {
+        mainHandler.post {
+            try {
+                musicPlayer?.apply {
+                    try { stop() } catch (_: Exception) {}
+                    try { release() } catch (_: Exception) {}
+                }
+                musicPlayer = null
+                isMusicPlaying = false
+                isMusicPausedForVoice = false
+                musicQueue.clear()
+                updateMediaSessionState(PlaybackStateCompat.STATE_STOPPED)
+                updateNotification("Jarvis · Tap earbud to speak")
+                startSilentAudioCarrier()
+                Log.d(TAG, "Native music playback stopped")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping music: ${e.message}")
+            }
+        }
+    }
+
+    private fun skipNextTrack() {
+        mainHandler.post {
+            if (musicQueue.isNotEmpty()) {
+                val nextTrack = musicQueue.removeAt(0)
+                currentTrackTitle = nextTrack.optString("title", "Next Track")
+                currentTrackArtist = nextTrack.optString("artist", "")
+                currentTrackArtworkUrl = nextTrack.optString("artworkUrl", "")
+                val nextUrl = nextTrack.optString("audioUrl")
+                if (nextUrl.isNotBlank()) {
+                    playAudioStream(nextUrl)
+                }
+            } else {
+                stopNativeMusic()
+            }
+        }
+    }
+
+    private fun restartOrPrevTrack() {
+        mainHandler.post {
+            val player = musicPlayer
+            if (player != null) {
+                try {
+                    player.seekTo(0)
+                    if (!player.isPlaying) {
+                        resumeNativeMusic()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun updateMediaSessionMetadata(title: String, artist: String) {
+        mediaSession?.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Jarvis Music")
+                .build()
+        )
+    }
+
+    private fun updateMediaSessionState(playbackState: Int) {
+        mediaSession?.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_STOP
+                )
+                .setState(playbackState, musicPlayer?.currentPosition?.toLong() ?: 0L, 1.0f)
+                .build()
+        )
+    }
+
+    private fun updateMusicNotification(playbackState: Int) {
+        val isPlaying = playbackState == PlaybackStateCompat.STATE_PLAYING
+        val title = currentTrackTitle.ifEmpty { "Jarvis Music" }
+        val artist = currentTrackArtist.ifEmpty { "Streaming in earbuds" }
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val contentPi = PendingIntent.getActivity(
+            this, 0, launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val prevIntent = Intent(this, JarvisForegroundService::class.java).apply { action = ACTION_MUSIC_PREV }
+        val prevPi = PendingIntent.getService(this, 10, prevIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val playPauseIntent = Intent(this, JarvisForegroundService::class.java).apply { action = ACTION_MUSIC_PLAY_PAUSE }
+        val playPausePi = PendingIntent.getService(this, 11, playPauseIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val nextIntent = Intent(this, JarvisForegroundService::class.java).apply { action = ACTION_MUSIC_NEXT }
+        val nextPi = PendingIntent.getService(this, 12, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val playPauseText = if (isPlaying) "Pause" else "Play"
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(artist)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(contentPi)
+            .setOngoing(isPlaying)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevPi)
+            .addAction(playPauseIcon, playPauseText, playPausePi)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextPi)
+
+        mediaSession?.let { session ->
+            builder.setStyle(
+                MediaStyle()
+                    .setMediaSession(session.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+        }
+
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, builder.build())
+    }
+
     // ─── Notifications ────────────────────────────────────────────────────────
 
     private fun createNotificationChannel() {
@@ -1313,6 +1729,10 @@ class JarvisForegroundService : Service() {
     }
 
     private fun updateNotification(text: String) {
+        if (isMusicPlaying) {
+            updateMusicNotification(PlaybackStateCompat.STATE_PLAYING)
+            return
+        }
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification(text))
     }
