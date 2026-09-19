@@ -213,8 +213,16 @@ CRITICAL INSTRUCTIONS FOR THIS TURN:
       const denyLines: string[] = [];
 
       for (const [intId, config] of Object.entries(integrationsConfig)) {
+        const toolPolicies = (config as any)?.toolPolicies;
         const policies = (config as any)?.policies;
         const autoApprove = (config as any)?.autoApprove;
+
+        if (toolPolicies && typeof toolPolicies === 'object') {
+          for (const [tName, policy] of Object.entries(toolPolicies)) {
+            if (policy === 'ALLOW') allowLines.push(`- Tool "${tName}": Pre-authorized by user (Execute directly without confirmation).`);
+            if (policy === 'DENY') denyLines.push(`- Tool "${tName}": Disallowed / Blocked by user in settings.`);
+          }
+        }
 
         if (policies && typeof policies === 'object') {
           for (const [action, policy] of Object.entries(policies)) {
@@ -573,23 +581,40 @@ Timezone & Scheduling Directive:
             Boolean(activePendingConfirmation) &&
             isCanonicalMatch(fcName, activePendingConfirmation!.toolName);
 
+          const intConfig = tool.integrationId ? integrationsConfig?.[tool.integrationId] : undefined;
+          const toolPolicies = intConfig?.toolPolicies as Record<string, 'ALLOW' | 'ASK' | 'DENY'> | undefined;
+
+          // Check direct tool-level policy first (support dot and underscore keys)
+          const directToolPolicy =
+            toolPolicies?.[tool.name] ||
+            toolPolicies?.[fcName] ||
+            toolPolicies?.[tool.name.replace(/\./g, '_')] ||
+            toolPolicies?.[tool.name.replace(/_/g, '.')];
+
           const autoApproveVal = (tool.integrationId && tool.actionType)
-            ? integrationsConfig?.[tool.integrationId]?.autoApprove?.[tool.actionType]
+            ? intConfig?.autoApprove?.[tool.actionType]
             : undefined;
-          const toolPolicy = (tool.actionType && tool.integrationId)
-            ? integrationsConfig?.[tool.integrationId]?.policies?.[tool.actionType] ||
+
+          const actionPolicy = (tool.actionType && tool.integrationId)
+            ? intConfig?.policies?.[tool.actionType] ||
               (autoApproveVal === true ? 'ALLOW' : autoApproveVal === false ? 'ASK' : undefined)
             : undefined;
 
+          const effectivePolicy = directToolPolicy || actionPolicy;
+
           // 1. Enforce DENY policy
-          if (toolPolicy === 'DENY') {
+          if (effectivePolicy === 'DENY') {
             logger.warn('Tool execution blocked by user permission policy (DENY)', {
               toolName: tool.name,
               integrationId: tool.integrationId,
               actionType: tool.actionType,
+              directToolPolicy,
             });
+            const reason = directToolPolicy
+              ? `tool "${tool.name}" is disabled in your settings`
+              : `${tool.actionType} actions for ${tool.integrationId} are disallowed in your settings`;
             return {
-              text: `I cannot execute "${tool.name}" because ${tool.actionType} actions for ${tool.integrationId} are disallowed in your settings. You can enable them in Settings > Integrations.`,
+              text: `I cannot execute "${tool.name}" because ${reason}. You can enable it in Settings > Integrations.`,
               shouldSpeak: true,
               toolCalls: [toolCall],
               toolResults: [
@@ -597,7 +622,7 @@ Timezone & Scheduling Directive:
                   toolName: tool.name,
                   success: false,
                   output: null,
-                  error: `Action disallowed by user permission policy: ${tool.actionType}`,
+                  error: `Action disallowed by user permission policy: ${reason}`,
                   durationMs: 0,
                 },
               ],
@@ -606,14 +631,14 @@ Timezone & Scheduling Directive:
             };
           }
 
-          const isAutoApprovedBySettings = toolPolicy === 'ALLOW';
+          const isAutoApprovedBySettings = effectivePolicy === 'ALLOW';
 
           // Check if action requires confirmation:
-          // 1. If tool policy is explicitly 'ASK', always require confirmation unless pre-authorized.
+          // 1. If effective policy is explicitly 'ASK', always require confirmation unless pre-authorized.
           // 2. Otherwise, require confirmation if not auto-approved and tool is critical/high risk.
           const requiresConfirmation =
             !isAuthorizedConfirmation &&
-            (toolPolicy === 'ASK' ||
+            (effectivePolicy === 'ASK' ||
               (!isAutoApprovedBySettings &&
                 (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK')));
 

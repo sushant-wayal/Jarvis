@@ -56,6 +56,26 @@ export async function GET(req: NextRequest) {
         DESTRUCTIVE: policies.DESTRUCTIVE === 'ALLOW',
       };
 
+      const storedToolPolicies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> =
+        userPrefs?.integrations?.[meta.id]?.toolPolicies || {};
+
+      const toolList = tools.map((t) => {
+        const policy: 'ALLOW' | 'ASK' | 'DENY' =
+          storedToolPolicies[t.id] ||
+          storedToolPolicies[t.name] ||
+          policies[t.actionType] ||
+          (t.actionType === 'READ' ? 'ALLOW' : 'ASK');
+
+        return {
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          actionType: t.actionType,
+          riskLevel: t.riskLevel,
+          policy,
+        };
+      });
+
       return {
         id: meta.id,
         name: meta.name,
@@ -70,6 +90,8 @@ export async function GET(req: NextRequest) {
         permissions: meta.permissions,
         supportedActionTypes,
         policies,
+        toolPolicies: storedToolPolicies,
+        tools: toolList,
         autoApprove,
       };
     })
@@ -87,6 +109,7 @@ export async function POST(req: NextRequest) {
       enabled?: boolean;
       action?: 'toggle' | 'disconnect' | 'updatePermissions';
       policies?: Record<string, 'ALLOW' | 'ASK' | 'DENY'>;
+      toolPolicies?: Record<string, 'ALLOW' | 'ASK' | 'DENY'>;
       autoApprove?: Record<string, boolean>;
       clearCredentials?: boolean;
     };
@@ -100,8 +123,8 @@ export async function POST(req: NextRequest) {
       return errorResponse('NOT_FOUND', `Integration "${body.id}" not found.`, requestId, 404);
     }
 
-    // Action: Update Permissions / 3-Way Policy Settings
-    if (body.action === 'updatePermissions' && (body.policies || body.autoApprove)) {
+    // Action: Update Permissions / 3-Way Policy Settings (Action-Level and Tool-Level)
+    if (body.action === 'updatePermissions' && (body.policies || body.toolPolicies || body.autoApprove)) {
       let user = await prisma.user.findFirst();
       if (!user) {
         user = await prisma.user.create({
@@ -123,6 +146,12 @@ export async function POST(req: NextRequest) {
         ...(body.policies || {}),
       };
 
+      const existingToolPolicies = prefs.integrations[int.metadata.id].toolPolicies || {};
+      const updatedToolPolicies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> = {
+        ...existingToolPolicies,
+        ...(body.toolPolicies || {}),
+      };
+
       // If legacy autoApprove was sent, map it to policies
       if (body.autoApprove) {
         for (const [action, allowed] of Object.entries(body.autoApprove)) {
@@ -141,6 +170,7 @@ export async function POST(req: NextRequest) {
       };
 
       prefs.integrations[int.metadata.id].policies = updatedPolicies;
+      prefs.integrations[int.metadata.id].toolPolicies = updatedToolPolicies;
       prefs.integrations[int.metadata.id].autoApprove = autoApprove;
 
       await prisma.user.update({
@@ -152,6 +182,7 @@ export async function POST(req: NextRequest) {
         {
           id: int.metadata.id,
           policies: updatedPolicies,
+          toolPolicies: updatedToolPolicies,
           autoApprove,
           message: `Permissions updated for ${int.metadata.name}.`,
         },

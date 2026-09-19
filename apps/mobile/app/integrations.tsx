@@ -53,11 +53,41 @@ const PERMISSION_LEVELS: PermissionLevelConfig[] = [
   },
 ];
 
+const formatToolDisplayName = (toolNameOrId: string): string => {
+  const parts = toolNameOrId.split('.');
+  const base = parts.length > 1 ? parts.slice(1).join(' ') : toolNameOrId;
+  return base
+    .replace(/[._]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+const getActionBadgeInfo = (actionType: string): { label: string; color: string } => {
+  switch (actionType) {
+    case 'EXTERNAL_ACTION':
+      return { label: 'Outbound', color: '#38BDF8' };
+    case 'DESTRUCTIVE':
+      return { label: 'Destructive', color: '#F87171' };
+    case 'WRITE':
+      return { label: 'Write', color: '#FBBF24' };
+    case 'READ':
+    default:
+      return { label: 'Read', color: '#34D399' };
+  }
+};
+
 export default function IntegrationsScreen(): React.ReactElement {
   const [integrations, setIntegrations] = React.useState<IntegrationItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(true);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
   const pendingTogglesRef = React.useRef<Set<string>>(new Set());
+  const [collapsedIntegrations, setCollapsedIntegrations] = React.useState<Record<string, boolean>>({});
+
+  const toggleExpandTools = (id: string) => {
+    setCollapsedIntegrations((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   const loadIntegrations = React.useCallback(async (): Promise<void> => {
     try {
@@ -254,7 +284,9 @@ export default function IntegrationsScreen(): React.ReactElement {
     );
 
     try {
-      const ok = await apiClient.updateIntegrationPermissions(integrationId, updatedPolicies);
+      const ok = await apiClient.updateIntegrationPermissions(integrationId, {
+        policies: updatedPolicies,
+      });
       if (!ok) {
         setIntegrations((prev) =>
           prev.map((it) => (it.id === integrationId ? currentItem || it : it))
@@ -266,6 +298,47 @@ export default function IntegrationsScreen(): React.ReactElement {
         prev.map((it) => (it.id === integrationId ? currentItem || it : it))
       );
       Alert.alert('Error', 'Failed to update permission setting.');
+    }
+  };
+
+  const handleSetToolPolicy = async (
+    integrationId: string,
+    toolId: string,
+    policy: 'ALLOW' | 'ASK' | 'DENY'
+  ): Promise<void> => {
+    const currentItem = integrations.find((i) => i.id === integrationId);
+    const updatedToolPolicies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> = {
+      ...(currentItem?.toolPolicies || {}),
+      [toolId]: policy,
+    };
+
+    // Optimistic synchronous UI update
+    setIntegrations((prev) =>
+      prev.map((it) => {
+        if (it.id !== integrationId) return it;
+        return {
+          ...it,
+          toolPolicies: updatedToolPolicies,
+          tools: it.tools?.map((t) => (t.id === toolId || t.name === toolId ? { ...t, policy } : t)),
+        };
+      })
+    );
+
+    try {
+      const ok = await apiClient.updateIntegrationPermissions(integrationId, {
+        toolPolicies: updatedToolPolicies,
+      });
+      if (!ok) {
+        setIntegrations((prev) =>
+          prev.map((it) => (it.id === integrationId ? currentItem || it : it))
+        );
+        Alert.alert('Error', 'Failed to update tool permission setting.');
+      }
+    } catch {
+      setIntegrations((prev) =>
+        prev.map((it) => (it.id === integrationId ? currentItem || it : it))
+      );
+      Alert.alert('Error', 'Failed to update tool permission setting.');
     }
   };
 
@@ -372,106 +445,215 @@ export default function IntegrationsScreen(): React.ReactElement {
           )}
         </View>
 
-        {/* Granular Action Permissions Section */}
+        {/* Granular Tool Permissions Section */}
         {item.enabled && (
           <View style={styles.permissionsSection}>
-            <View style={styles.permissionsHeader}>
-              <Icon name="shield" size={13} color={colors.primaryFixed} />
-              <Text style={styles.permissionsHeaderText}>Action Permissions & Control</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.permissionsHeaderToggle}
+              onPress={() => toggleExpandTools(item.id)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.permissionsHeaderLeft}>
+                <Icon name="shield" size={13} color={colors.primaryFixed} />
+                <Text style={styles.permissionsHeaderText}>
+                  Tool Permissions ({item.tools?.length || item.toolCount} tools)
+                </Text>
+              </View>
+              <Icon
+                name={collapsedIntegrations[item.id] !== true ? 'expand_more' : 'arrow_forward'}
+                size={16}
+                color={colors.outline}
+              />
+            </TouchableOpacity>
 
-            {PERMISSION_LEVELS.filter(
-              (perm) =>
-                !item.supportedActionTypes ||
-                item.supportedActionTypes.length === 0 ||
-                item.supportedActionTypes.includes(perm.actionType)
-            ).map((perm) => {
-              const currentPolicy: 'ALLOW' | 'ASK' | 'DENY' =
-                item.policies?.[perm.actionType] ??
-                (perm.actionType === 'READ'
-                  ? (item.autoApprove?.READ === false ? 'DENY' : 'ALLOW')
-                  : (item.autoApprove?.[perm.actionType] ? 'ALLOW' : 'ASK'));
+            {collapsedIntegrations[item.id] !== true && item.tools && item.tools.length > 0 ? (
+              item.tools.map((tool) => {
+                const currentPolicy: 'ALLOW' | 'ASK' | 'DENY' =
+                  item.toolPolicies?.[tool.id] ||
+                  item.toolPolicies?.[tool.name] ||
+                  tool.policy ||
+                  (tool.actionType === 'READ' ? 'ALLOW' : 'ASK');
 
-              return (
-                <View key={perm.actionType} style={styles.permissionPolicyBlock}>
-                  <View style={styles.permissionTopRow}>
-                    <View style={styles.permissionTitleRow}>
-                      <Icon name={perm.icon} size={14} color={colors.primaryFixed} style={{ marginRight: 6 }} />
-                      <Text style={styles.permissionTitle}>{perm.title}</Text>
+                const badge = getActionBadgeInfo(tool.actionType);
+
+                return (
+                  <View key={tool.id} style={styles.permissionPolicyBlock}>
+                    <View style={styles.permissionTopRow}>
+                      <View style={styles.permissionTitleRow}>
+                        <Text style={styles.permissionTitle}>
+                          {formatToolDisplayName(tool.name || tool.id)}
+                        </Text>
+                        <View style={[styles.actionTypeBadge, { backgroundColor: `${badge.color}18` }]}>
+                          <Text style={[styles.actionTypeBadgeText, { color: badge.color }]}>{badge.label}</Text>
+                        </View>
+                      </View>
+                      <Text
+                        style={[
+                          styles.policyBadgeText,
+                          currentPolicy === 'ALLOW' && styles.policyAllowText,
+                          currentPolicy === 'ASK' && styles.policyAskText,
+                          currentPolicy === 'DENY' && styles.policyDenyText,
+                        ]}
+                      >
+                        {currentPolicy === 'ALLOW' ? 'Auto-Executes' : currentPolicy === 'ASK' ? 'Asks in Chat' : 'Blocked'}
+                      </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.policyBadgeText,
-                        currentPolicy === 'ALLOW' && styles.policyAllowText,
-                        currentPolicy === 'ASK' && styles.policyAskText,
-                        currentPolicy === 'DENY' && styles.policyDenyText,
-                      ]}
-                    >
-                      {currentPolicy === 'ALLOW' ? 'Auto-Executes' : currentPolicy === 'ASK' ? 'Asks in Chat' : 'Blocked'}
-                    </Text>
+
+                    <Text style={styles.permissionSubtitle}>{tool.description}</Text>
+
+                    {/* 3-Way Segmented Control */}
+                    <View style={styles.segmentedControl}>
+                      <TouchableOpacity
+                        style={[
+                          styles.segmentBtn,
+                          currentPolicy === 'ALLOW' && styles.segmentBtnActiveAllow,
+                        ]}
+                        onPress={() => handleSetToolPolicy(item.id, tool.id, 'ALLOW')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'ALLOW' && styles.segmentBtnTextActiveAllow,
+                          ]}
+                        >
+                          Allow
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.segmentBtn,
+                          currentPolicy === 'ASK' && styles.segmentBtnActiveAsk,
+                        ]}
+                        onPress={() => handleSetToolPolicy(item.id, tool.id, 'ASK')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'ASK' && styles.segmentBtnTextActiveAsk,
+                          ]}
+                        >
+                          Ask
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.segmentBtn,
+                          currentPolicy === 'DENY' && styles.segmentBtnActiveDeny,
+                        ]}
+                        onPress={() => handleSetToolPolicy(item.id, tool.id, 'DENY')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'DENY' && styles.segmentBtnTextActiveDeny,
+                          ]}
+                        >
+                          Deny
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
+                );
+              })
+            ) : collapsedIntegrations[item.id] !== true && (!item.tools || item.tools.length === 0) ? (
+              PERMISSION_LEVELS.filter(
+                (perm) =>
+                  !item.supportedActionTypes ||
+                  item.supportedActionTypes.length === 0 ||
+                  item.supportedActionTypes.includes(perm.actionType)
+              ).map((perm) => {
+                const currentPolicy: 'ALLOW' | 'ASK' | 'DENY' =
+                  item.policies?.[perm.actionType] ??
+                  (perm.actionType === 'READ'
+                    ? (item.autoApprove?.READ === false ? 'DENY' : 'ALLOW')
+                    : (item.autoApprove?.[perm.actionType] ? 'ALLOW' : 'ASK'));
 
-                  <Text style={styles.permissionSubtitle}>{perm.desc}</Text>
-
-                  {/* 3-Way Segmented Control */}
-                  <View style={styles.segmentedControl}>
-                    <TouchableOpacity
-                      style={[
-                        styles.segmentBtn,
-                        currentPolicy === 'ALLOW' && styles.segmentBtnActiveAllow,
-                      ]}
-                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'ALLOW')}
-                      activeOpacity={0.7}
-                    >
+                return (
+                  <View key={perm.actionType} style={styles.permissionPolicyBlock}>
+                    <View style={styles.permissionTopRow}>
+                      <View style={styles.permissionTitleRow}>
+                        <Icon name={perm.icon} size={14} color={colors.primaryFixed} style={{ marginRight: 6 }} />
+                        <Text style={styles.permissionTitle}>{perm.title}</Text>
+                      </View>
                       <Text
                         style={[
-                          styles.segmentBtnText,
-                          currentPolicy === 'ALLOW' && styles.segmentBtnTextActiveAllow,
+                          styles.policyBadgeText,
+                          currentPolicy === 'ALLOW' && styles.policyAllowText,
+                          currentPolicy === 'ASK' && styles.policyAskText,
+                          currentPolicy === 'DENY' && styles.policyDenyText,
                         ]}
                       >
-                        Allow
+                        {currentPolicy === 'ALLOW' ? 'Auto-Executes' : currentPolicy === 'ASK' ? 'Asks in Chat' : 'Blocked'}
                       </Text>
-                    </TouchableOpacity>
+                    </View>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.segmentBtn,
-                        currentPolicy === 'ASK' && styles.segmentBtnActiveAsk,
-                      ]}
-                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'ASK')}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentBtnText,
-                          currentPolicy === 'ASK' && styles.segmentBtnTextActiveAsk,
-                        ]}
-                      >
-                        Ask
-                      </Text>
-                    </TouchableOpacity>
+                    <Text style={styles.permissionSubtitle}>{perm.desc}</Text>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.segmentBtn,
-                        currentPolicy === 'DENY' && styles.segmentBtnActiveDeny,
-                      ]}
-                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'DENY')}
-                      activeOpacity={0.7}
-                    >
-                      <Text
+                    {/* 3-Way Segmented Control */}
+                    <View style={styles.segmentedControl}>
+                      <TouchableOpacity
                         style={[
-                          styles.segmentBtnText,
-                          currentPolicy === 'DENY' && styles.segmentBtnTextActiveDeny,
+                          styles.segmentBtn,
+                          currentPolicy === 'ALLOW' && styles.segmentBtnActiveAllow,
                         ]}
+                        onPress={() => handleSetPolicy(item.id, perm.actionType, 'ALLOW')}
+                        activeOpacity={0.7}
                       >
-                        Deny
-                      </Text>
-                    </TouchableOpacity>
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'ALLOW' && styles.segmentBtnTextActiveAllow,
+                          ]}
+                        >
+                          Allow
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.segmentBtn,
+                          currentPolicy === 'ASK' && styles.segmentBtnActiveAsk,
+                        ]}
+                        onPress={() => handleSetPolicy(item.id, perm.actionType, 'ASK')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'ASK' && styles.segmentBtnTextActiveAsk,
+                          ]}
+                        >
+                          Ask
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.segmentBtn,
+                          currentPolicy === 'DENY' && styles.segmentBtnActiveDeny,
+                        ]}
+                        onPress={() => handleSetPolicy(item.id, perm.actionType, 'DENY')}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          style={[
+                            styles.segmentBtnText,
+                            currentPolicy === 'DENY' && styles.segmentBtnTextActiveDeny,
+                          ]}
+                        >
+                          Deny
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })
+            ) : null}
           </View>
         )}
 
@@ -751,6 +933,30 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  permissionsHeaderToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  permissionsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: rounded.sm,
+    marginLeft: 8,
+  },
+  actionTypeBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
   permissionPolicyBlock: {

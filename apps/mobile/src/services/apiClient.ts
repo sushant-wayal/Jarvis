@@ -814,14 +814,22 @@ export class JarvisApiClient {
 
   async updateIntegrationPermissions(
     id: string,
-    policies: Record<string, 'ALLOW' | 'ASK' | 'DENY'>
+    params: {
+      policies?: Record<string, 'ALLOW' | 'ASK' | 'DENY'>;
+      toolPolicies?: Record<string, 'ALLOW' | 'ASK' | 'DENY'>;
+    } | Record<string, 'ALLOW' | 'ASK' | 'DENY'>
   ): Promise<boolean> {
     try {
       await this.initializeUrl();
+      const bodyPayload =
+        'policies' in params || 'toolPolicies' in params
+          ? { id, action: 'updatePermissions', ...params }
+          : { id, action: 'updatePermissions', policies: params };
+
       const res = await fetch(`${this.baseUrl}/integrations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id, action: 'updatePermissions', policies }),
+        body: JSON.stringify(bodyPayload),
       });
       return res.ok;
     } catch {
@@ -831,6 +839,15 @@ export class JarvisApiClient {
 }
 
 export type PermissionPolicy = 'ALLOW' | 'ASK' | 'DENY';
+
+export interface IntegrationToolItem {
+  id: string;
+  name: string;
+  description: string;
+  actionType: 'READ' | 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE';
+  riskLevel: string;
+  policy: PermissionPolicy;
+}
 
 export interface IntegrationItem {
   id: string;
@@ -846,6 +863,8 @@ export interface IntegrationItem {
   permissions: string[];
   supportedActionTypes?: ('READ' | 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE')[];
   policies?: Record<string, PermissionPolicy>;
+  toolPolicies?: Record<string, PermissionPolicy>;
+  tools?: IntegrationToolItem[];
   autoApprove?: {
     READ?: boolean;
     WRITE?: boolean;

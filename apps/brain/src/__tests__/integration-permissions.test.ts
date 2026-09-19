@@ -305,4 +305,127 @@ describe('Integration Permissions & Auto-Execution Lifecycle', () => {
     expect(result.pendingConfirmation?.toolName).toBe('test_mail.send_email');
     expect(mockExecutor).not.toHaveBeenCalled();
   });
+
+  it('blocks tool execution when specific tool policy is DENY even if action-level is ALLOW', async () => {
+    vi.spyOn(agentPlanner as any, 'generateWithFallback').mockResolvedValueOnce({
+      functionCalls: [
+        {
+          name: 'test_mail_send_email',
+          args: { to: 'colleague@example.com', body: 'Review required' },
+        },
+      ],
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  name: 'test_mail_send_email',
+                  args: { to: 'colleague@example.com', body: 'Review required' },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await agentPlanner.planAndExecute({
+      message: 'Send an email to colleague@example.com',
+      toolContext: dummyContext,
+      context: {
+        userProfile: {
+          id: dummyContext.userId,
+          name: 'Sushant',
+          preferences: {
+            integrations: {
+              test_mail: {
+                policies: { EXTERNAL_ACTION: 'ALLOW' }, // Action level is ALLOW
+                toolPolicies: { 'test_mail.send_email': 'DENY' }, // Specific tool is DENY
+              },
+            },
+          },
+        },
+        workingMemory: {},
+        relevantMemories: [],
+        recentHistory: [],
+        activeTasks: [],
+        upcomingEvents: [],
+        systemContextString: '',
+      },
+    });
+
+    expect(result.mode).not.toBe('CONFIRMATION');
+    expect(mockExecutor).not.toHaveBeenCalled();
+    expect(result.text).toContain('disabled in your settings');
+  });
+
+  it('auto-approves tool execution when specific tool policy is ALLOW even if action-level is ASK', async () => {
+    vi.spyOn(agentPlanner as any, 'generateWithFallback')
+      .mockResolvedValueOnce({
+        functionCalls: [
+          {
+            name: 'test_mail_send_email',
+            args: { to: 'colleague@example.com', body: 'Review required' },
+          },
+        ],
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [
+                {
+                  functionCall: {
+                    name: 'test_mail_send_email',
+                    args: { to: 'colleague@example.com', body: 'Review required' },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        text: 'Email sent directly.',
+        functionCalls: [],
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ text: 'Email sent directly.' }],
+            },
+          },
+        ],
+      });
+
+    const result = await agentPlanner.planAndExecute({
+      message: 'Send an email to colleague@example.com',
+      toolContext: dummyContext,
+      context: {
+        userProfile: {
+          id: dummyContext.userId,
+          name: 'Sushant',
+          preferences: {
+            integrations: {
+              test_mail: {
+                policies: { EXTERNAL_ACTION: 'ASK' }, // Action level is ASK
+                toolPolicies: { 'test_mail.send_email': 'ALLOW' }, // Specific tool override is ALLOW
+              },
+            },
+          },
+        },
+        workingMemory: {},
+        relevantMemories: [],
+        recentHistory: [],
+        activeTasks: [],
+        upcomingEvents: [],
+        systemContextString: '',
+      },
+    });
+
+    expect(result.mode).not.toBe('CONFIRMATION');
+    expect(mockExecutor).toHaveBeenCalledTimes(1);
+    expect(result.text).toContain('Email sent directly');
+  });
 });
