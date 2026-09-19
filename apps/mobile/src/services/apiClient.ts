@@ -814,14 +814,14 @@ export class JarvisApiClient {
 
   async updateIntegrationPermissions(
     id: string,
-    autoApprove: Record<string, boolean>
+    policies: Record<string, 'ALLOW' | 'ASK' | 'DENY'>
   ): Promise<boolean> {
     try {
       await this.initializeUrl();
       const res = await fetch(`${this.baseUrl}/integrations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ id, action: 'updatePermissions', autoApprove }),
+        body: JSON.stringify({ id, action: 'updatePermissions', policies }),
       });
       return res.ok;
     } catch {
@@ -829,6 +829,8 @@ export class JarvisApiClient {
     }
   }
 }
+
+export type PermissionPolicy = 'ALLOW' | 'ASK' | 'DENY';
 
 export interface IntegrationItem {
   id: string;
@@ -842,8 +844,10 @@ export interface IntegrationItem {
   connectedAccount: string | null;
   toolCount: number;
   permissions: string[];
-  supportedActionTypes?: ('WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE')[];
+  supportedActionTypes?: ('READ' | 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE')[];
+  policies?: Record<string, PermissionPolicy>;
   autoApprove?: {
+    READ?: boolean;
     WRITE?: boolean;
     EXTERNAL_ACTION?: boolean;
     DESTRUCTIVE?: boolean;

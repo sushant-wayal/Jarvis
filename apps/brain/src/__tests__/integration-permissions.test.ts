@@ -58,6 +58,13 @@ describe('Integration Permissions & Auto-Execution Lifecycle', () => {
       create: { id: dummyContext.conversationId!, userId: dummyContext.userId },
       update: {},
     });
+
+    await prisma.agentStep.deleteMany({
+      where: { agentRun: { conversationId: dummyContext.conversationId } },
+    });
+    await prisma.agentRun.deleteMany({
+      where: { conversationId: dummyContext.conversationId },
+    });
   });
 
   it('halts with CONFIRMATION when actionType is not auto-approved', async () => {
@@ -188,5 +195,114 @@ describe('Integration Permissions & Auto-Execution Lifecycle', () => {
       expect.anything()
     );
     expect(result.text).toContain('I have sent the email');
+  });
+
+  it('immediately blocks execution when policy is DENY', async () => {
+    vi.spyOn(agentPlanner as any, 'generateWithFallback').mockResolvedValueOnce({
+      functionCalls: [
+        {
+          name: 'test_mail_send_email',
+          args: { to: 'colleague@example.com', body: 'Review required' },
+        },
+      ],
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  name: 'test_mail_send_email',
+                  args: { to: 'colleague@example.com', body: 'Review required' },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await agentPlanner.planAndExecute({
+      message: 'Send an email to colleague@example.com',
+      toolContext: dummyContext,
+      context: {
+        userProfile: {
+          id: dummyContext.userId,
+          name: 'Sushant',
+          preferences: {
+            integrations: {
+              test_mail: {
+                policies: { EXTERNAL_ACTION: 'DENY' },
+              },
+            },
+          },
+        },
+        workingMemory: {},
+        relevantMemories: [],
+        recentHistory: [],
+        activeTasks: [],
+        upcomingEvents: [],
+        systemContextString: '',
+      },
+    });
+
+    expect(result.mode).not.toBe('CONFIRMATION');
+    expect(mockExecutor).not.toHaveBeenCalled();
+    expect(result.text).toContain('disallowed in your settings');
+  });
+
+  it('halts with CONFIRMATION when policy is explicitly ASK', async () => {
+    vi.spyOn(agentPlanner as any, 'generateWithFallback').mockResolvedValueOnce({
+      functionCalls: [
+        {
+          name: 'test_mail_send_email',
+          args: { to: 'colleague@example.com', body: 'Review required' },
+        },
+      ],
+      candidates: [
+        {
+          content: {
+            role: 'model',
+            parts: [
+              {
+                functionCall: {
+                  name: 'test_mail_send_email',
+                  args: { to: 'colleague@example.com', body: 'Review required' },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const result = await agentPlanner.planAndExecute({
+      message: 'Send an email to colleague@example.com',
+      toolContext: dummyContext,
+      context: {
+        userProfile: {
+          id: dummyContext.userId,
+          name: 'Sushant',
+          preferences: {
+            integrations: {
+              test_mail: {
+                policies: { EXTERNAL_ACTION: 'ASK' },
+              },
+            },
+          },
+        },
+        workingMemory: {},
+        relevantMemories: [],
+        recentHistory: [],
+        activeTasks: [],
+        upcomingEvents: [],
+        systemContextString: '',
+      },
+    });
+
+    expect(result.mode).toBe('CONFIRMATION');
+    expect(result.pendingConfirmation).toBeDefined();
+    expect(result.pendingConfirmation?.toolName).toBe('test_mail.send_email');
+    expect(mockExecutor).not.toHaveBeenCalled();
   });
 });

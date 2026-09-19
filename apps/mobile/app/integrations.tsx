@@ -19,6 +19,40 @@ import { StatusHeader } from '../src/components/StatusHeader';
 import { apiClient, IntegrationItem } from '../src/services/apiClient';
 import { colors, rounded, typography } from '../src/theme/tokens';
 
+interface PermissionLevelConfig {
+  actionType: 'READ' | 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE';
+  title: string;
+  desc: string;
+  icon: IconName;
+}
+
+const PERMISSION_LEVELS: PermissionLevelConfig[] = [
+  {
+    actionType: 'READ',
+    title: 'Read Access',
+    desc: 'Read data, search emails & view resources',
+    icon: 'visibility',
+  },
+  {
+    actionType: 'WRITE',
+    title: 'Workspace Changes',
+    desc: 'Create drafts, labels & update records',
+    icon: 'edit',
+  },
+  {
+    actionType: 'EXTERNAL_ACTION',
+    title: 'Outbound Actions',
+    desc: 'Send & reply to emails, trigger external events',
+    icon: 'send',
+  },
+  {
+    actionType: 'DESTRUCTIVE',
+    title: 'Destructive Actions',
+    desc: 'Delete messages, purge items & trash',
+    icon: 'delete',
+  },
+];
+
 export default function IntegrationsScreen(): React.ReactElement {
   const [integrations, setIntegrations] = React.useState<IntegrationItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(true);
@@ -193,15 +227,15 @@ export default function IntegrationsScreen(): React.ReactElement {
     }
   };
 
-  const handleTogglePermission = async (
+  const handleSetPolicy = async (
     integrationId: string,
-    actionType: 'WRITE' | 'EXTERNAL_ACTION' | 'DESTRUCTIVE',
-    value: boolean
+    actionType: string,
+    policy: 'ALLOW' | 'ASK' | 'DENY'
   ): Promise<void> => {
     const currentItem = integrations.find((i) => i.id === integrationId);
-    const updatedAutoApprove = {
-      ...(currentItem?.autoApprove || {}),
-      [actionType]: value,
+    const updatedPolicies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> = {
+      ...(currentItem?.policies || {}),
+      [actionType]: policy,
     };
 
     // Optimistic synchronous UI update
@@ -210,13 +244,17 @@ export default function IntegrationsScreen(): React.ReactElement {
         if (it.id !== integrationId) return it;
         return {
           ...it,
-          autoApprove: updatedAutoApprove,
+          policies: updatedPolicies,
+          autoApprove: {
+            ...it.autoApprove,
+            [actionType]: policy === 'ALLOW',
+          },
         };
       })
     );
 
     try {
-      const ok = await apiClient.updateIntegrationPermissions(integrationId, updatedAutoApprove);
+      const ok = await apiClient.updateIntegrationPermissions(integrationId, updatedPolicies);
       if (!ok) {
         setIntegrations((prev) =>
           prev.map((it) => (it.id === integrationId ? currentItem || it : it))
@@ -339,68 +377,101 @@ export default function IntegrationsScreen(): React.ReactElement {
           <View style={styles.permissionsSection}>
             <View style={styles.permissionsHeader}>
               <Icon name="shield" size={13} color={colors.primaryFixed} />
-              <Text style={styles.permissionsHeaderText}>Auto-Execution Permissions</Text>
+              <Text style={styles.permissionsHeaderText}>Action Permissions & Control</Text>
             </View>
 
-            {/* WRITE Toggle */}
-            {(!item.supportedActionTypes || item.supportedActionTypes.includes('WRITE')) && (
-              <View style={styles.permissionRow}>
-                <View style={styles.permissionInfo}>
-                  <Text style={styles.permissionTitle}>Workspace Changes</Text>
-                  <Text style={styles.permissionSubtitle}>
-                    {item.autoApprove?.WRITE
-                      ? 'Auto-approved (Drafts, issues, records)'
-                      : 'Asks confirmation in conversation'}
-                  </Text>
-                </View>
-                <Switch
-                  value={Boolean(item.autoApprove?.WRITE)}
-                  onValueChange={(val) => handleTogglePermission(item.id, 'WRITE', val)}
-                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
-                  thumbColor={item.autoApprove?.WRITE ? colors.primaryFixed : colors.outline}
-                />
-              </View>
-            )}
+            {PERMISSION_LEVELS.filter(
+              (perm) =>
+                !item.supportedActionTypes ||
+                item.supportedActionTypes.length === 0 ||
+                item.supportedActionTypes.includes(perm.actionType)
+            ).map((perm) => {
+              const currentPolicy: 'ALLOW' | 'ASK' | 'DENY' =
+                item.policies?.[perm.actionType] ??
+                (perm.actionType === 'READ'
+                  ? (item.autoApprove?.READ === false ? 'DENY' : 'ALLOW')
+                  : (item.autoApprove?.[perm.actionType] ? 'ALLOW' : 'ASK'));
 
-            {/* EXTERNAL_ACTION Toggle */}
-            {item.supportedActionTypes?.includes('EXTERNAL_ACTION') && (
-              <View style={styles.permissionRow}>
-                <View style={styles.permissionInfo}>
-                  <Text style={styles.permissionTitle}>Outbound Actions</Text>
-                  <Text style={styles.permissionSubtitle}>
-                    {item.autoApprove?.EXTERNAL_ACTION
-                      ? 'Auto-approved (Send & reply to emails)'
-                      : 'Asks confirmation in conversation'}
-                  </Text>
-                </View>
-                <Switch
-                  value={Boolean(item.autoApprove?.EXTERNAL_ACTION)}
-                  onValueChange={(val) => handleTogglePermission(item.id, 'EXTERNAL_ACTION', val)}
-                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
-                  thumbColor={item.autoApprove?.EXTERNAL_ACTION ? colors.primaryFixed : colors.outline}
-                />
-              </View>
-            )}
+              return (
+                <View key={perm.actionType} style={styles.permissionPolicyBlock}>
+                  <View style={styles.permissionTopRow}>
+                    <View style={styles.permissionTitleRow}>
+                      <Icon name={perm.icon} size={14} color={colors.primaryFixed} style={{ marginRight: 6 }} />
+                      <Text style={styles.permissionTitle}>{perm.title}</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.policyBadgeText,
+                        currentPolicy === 'ALLOW' && styles.policyAllowText,
+                        currentPolicy === 'ASK' && styles.policyAskText,
+                        currentPolicy === 'DENY' && styles.policyDenyText,
+                      ]}
+                    >
+                      {currentPolicy === 'ALLOW' ? 'Auto-Executes' : currentPolicy === 'ASK' ? 'Asks in Chat' : 'Blocked'}
+                    </Text>
+                  </View>
 
-            {/* DESTRUCTIVE Toggle */}
-            {item.supportedActionTypes?.includes('DESTRUCTIVE') && (
-              <View style={styles.permissionRow}>
-                <View style={styles.permissionInfo}>
-                  <Text style={styles.permissionTitle}>Destructive Actions</Text>
-                  <Text style={styles.permissionSubtitle}>
-                    {item.autoApprove?.DESTRUCTIVE
-                      ? 'Auto-approved (Trash & permanent delete)'
-                      : 'Asks confirmation in conversation'}
-                  </Text>
+                  <Text style={styles.permissionSubtitle}>{perm.desc}</Text>
+
+                  {/* 3-Way Segmented Control */}
+                  <View style={styles.segmentedControl}>
+                    <TouchableOpacity
+                      style={[
+                        styles.segmentBtn,
+                        currentPolicy === 'ALLOW' && styles.segmentBtnActiveAllow,
+                      ]}
+                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'ALLOW')}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentBtnText,
+                          currentPolicy === 'ALLOW' && styles.segmentBtnTextActiveAllow,
+                        ]}
+                      >
+                        Allow
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.segmentBtn,
+                        currentPolicy === 'ASK' && styles.segmentBtnActiveAsk,
+                      ]}
+                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'ASK')}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentBtnText,
+                          currentPolicy === 'ASK' && styles.segmentBtnTextActiveAsk,
+                        ]}
+                      >
+                        Ask
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.segmentBtn,
+                        currentPolicy === 'DENY' && styles.segmentBtnActiveDeny,
+                      ]}
+                      onPress={() => handleSetPolicy(item.id, perm.actionType, 'DENY')}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentBtnText,
+                          currentPolicy === 'DENY' && styles.segmentBtnTextActiveDeny,
+                        ]}
+                      >
+                        Deny
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-                <Switch
-                  value={Boolean(item.autoApprove?.DESTRUCTIVE)}
-                  onValueChange={(val) => handleTogglePermission(item.id, 'DESTRUCTIVE', val)}
-                  trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
-                  thumbColor={item.autoApprove?.DESTRUCTIVE ? colors.primaryFixed : colors.outline}
-                />
-              </View>
-            )}
+              );
+            })}
           </View>
         )}
 
@@ -682,26 +753,93 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  permissionRow: {
+  permissionPolicyBlock: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  permissionTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 5,
+    marginBottom: 3,
   },
-  permissionInfo: {
-    flex: 1,
-    paddingRight: 10,
+  permissionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   permissionTitle: {
     color: colors.onSurface,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   permissionSubtitle: {
     color: colors.outline,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  policyBadgeText: {
     fontSize: 10,
-    marginTop: 1,
-    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  policyAllowText: {
+    color: colors.primaryFixed,
+  },
+  policyAskText: {
+    color: '#F59E0B',
+  },
+  policyDenyText: {
+    color: '#EF4444',
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: rounded.md,
+    padding: 2,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: rounded.sm,
+  },
+  segmentBtnActiveAllow: {
+    backgroundColor: 'rgba(0, 219, 233, 0.16)',
+    borderWidth: 1,
+    borderColor: colors.primaryFixed,
+  },
+  segmentBtnActiveAsk: {
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  segmentBtnActiveDeny: {
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  segmentBtnText: {
+    color: colors.outline,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  segmentBtnTextActiveAllow: {
+    color: colors.primaryFixed,
+    fontWeight: '700',
+  },
+  segmentBtnTextActiveAsk: {
+    color: '#FBBF24',
+    fontWeight: '700',
+  },
+  segmentBtnTextActiveDeny: {
+    color: '#F87171',
+    fontWeight: '700',
   },
   emptyCard: {
     padding: 32,

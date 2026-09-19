@@ -204,30 +204,39 @@ CRITICAL INSTRUCTIONS FOR THIS TURN:
 `
       : '';
 
-    // Check user integration pre-authorized permissions
+    // Check user integration 3-way permissions policy (ALLOW | ASK | DENY)
     const userPrefs = context.userProfile?.preferences as Record<string, any> | undefined;
     const integrationsConfig = userPrefs?.integrations as Record<string, any> | undefined;
     let integrationPermissionsDirective = '';
     if (integrationsConfig) {
-      const preApprovedLines: string[] = [];
+      const allowLines: string[] = [];
+      const denyLines: string[] = [];
+
       for (const [intId, config] of Object.entries(integrationsConfig)) {
+        const policies = (config as any)?.policies;
         const autoApprove = (config as any)?.autoApprove;
-        if (autoApprove && typeof autoApprove === 'object') {
-          const approvedTypes = Object.entries(autoApprove)
-            .filter(([_, allowed]) => allowed === true)
-            .map(([type]) => type);
-          if (approvedTypes.length > 0) {
-            preApprovedLines.push(`- Integration "${intId}": Pre-authorized for ${approvedTypes.join(', ')}.`);
+
+        if (policies && typeof policies === 'object') {
+          for (const [action, policy] of Object.entries(policies)) {
+            if (policy === 'ALLOW') allowLines.push(`- ${intId} [${action}]: Pre-authorized (Execute directly).`);
+            if (policy === 'DENY') denyLines.push(`- ${intId} [${action}]: Disallowed / Blocked by user.`);
+          }
+        } else if (autoApprove && typeof autoApprove === 'object') {
+          for (const [action, allowed] of Object.entries(autoApprove)) {
+            if (allowed === true) allowLines.push(`- ${intId} [${action}]: Pre-authorized (Execute directly).`);
           }
         }
       }
-      if (preApprovedLines.length > 0) {
-        integrationPermissionsDirective = `
-[PRE-AUTHORIZED INTEGRATION PERMISSIONS]:
-The user has configured explicit auto-approval for the following integration action types in Settings:
-${preApprovedLines.join('\n')}
-For these pre-authorized actions, invoke the tools directly without asking for confirmation.
-`;
+
+      const sections: string[] = [];
+      if (allowLines.length > 0) {
+        sections.push(`[PRE-AUTHORIZED ACTIONS - DIRECT EXECUTION]:\n${allowLines.join('\n')}\nFor these actions, invoke tools directly without asking for confirmation.`);
+      }
+      if (denyLines.length > 0) {
+        sections.push(`[DISALLOWED ACTIONS - BLOCKED BY USER]:\n${denyLines.join('\n')}\nDo NOT attempt to invoke tools for disallowed actions. Inform the user they can enable them in Settings > Integrations.`);
+      }
+      if (sections.length > 0) {
+        integrationPermissionsDirective = `\n${sections.join('\n\n')}\n`;
       }
     }
 
@@ -564,18 +573,51 @@ Timezone & Scheduling Directive:
             Boolean(activePendingConfirmation) &&
             isCanonicalMatch(fcName, activePendingConfirmation!.toolName);
 
-          const isAutoApprovedBySettings = Boolean(
-            tool.actionType &&
-            tool.integrationId &&
-            integrationsConfig?.[tool.integrationId]?.autoApprove?.[tool.actionType] === true
-          );
+          const autoApproveVal = (tool.integrationId && tool.actionType)
+            ? integrationsConfig?.[tool.integrationId]?.autoApprove?.[tool.actionType]
+            : undefined;
+          const toolPolicy = (tool.actionType && tool.integrationId)
+            ? integrationsConfig?.[tool.integrationId]?.policies?.[tool.actionType] ||
+              (autoApproveVal === true ? 'ALLOW' : autoApproveVal === false ? 'ASK' : undefined)
+            : undefined;
 
-          // Check if action requires confirmation
-          if (
+          // 1. Enforce DENY policy
+          if (toolPolicy === 'DENY') {
+            logger.warn('Tool execution blocked by user permission policy (DENY)', {
+              toolName: tool.name,
+              integrationId: tool.integrationId,
+              actionType: tool.actionType,
+            });
+            return {
+              text: `I cannot execute "${tool.name}" because ${tool.actionType} actions for ${tool.integrationId} are disallowed in your settings. You can enable them in Settings > Integrations.`,
+              shouldSpeak: true,
+              toolCalls: [toolCall],
+              toolResults: [
+                {
+                  toolName: tool.name,
+                  success: false,
+                  output: null,
+                  error: `Action disallowed by user permission policy: ${tool.actionType}`,
+                  durationMs: 0,
+                },
+              ],
+              conversationId: toolContext.conversationId,
+              requestId: toolContext.requestId,
+            };
+          }
+
+          const isAutoApprovedBySettings = toolPolicy === 'ALLOW';
+
+          // Check if action requires confirmation:
+          // 1. If tool policy is explicitly 'ASK', always require confirmation unless pre-authorized.
+          // 2. Otherwise, require confirmation if not auto-approved and tool is critical/high risk.
+          const requiresConfirmation =
             !isAuthorizedConfirmation &&
-            !isAutoApprovedBySettings &&
-            (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK')
-          ) {
+            (toolPolicy === 'ASK' ||
+              (!isAutoApprovedBySettings &&
+                (tool.requiresConfirmation || tool.riskLevel === 'CRITICAL' || tool.riskLevel === 'HIGH_RISK')));
+
+          if (requiresConfirmation) {
             const pendingData = {
               actionId: toolCall.id,
               toolName: tool.name,

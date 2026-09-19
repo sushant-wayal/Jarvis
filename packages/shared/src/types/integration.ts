@@ -6,6 +6,8 @@ export type IntegrationAuthType = 'API_KEY' | 'OAUTH' | 'TOKEN' | 'BASIC' | 'NON
 
 export type IntegrationActionType = 'READ' | 'WRITE' | 'DESTRUCTIVE' | 'EXTERNAL_ACTION';
 
+export type PermissionPolicy = 'ALLOW' | 'ASK' | 'DENY';
+
 export interface IntegrationAuthConfig {
   type: IntegrationAuthType;
   requiredFields: string[];

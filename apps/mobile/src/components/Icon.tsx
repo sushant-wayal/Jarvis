@@ -64,7 +64,10 @@ export type IconName =
   | 'account_balance'
   | 'extension'
   | 'extension_off'
-  | 'login';
+  | 'login'
+  | 'visibility'
+  | 'edit'
+  | 'send';
 
 export interface IconProps {
   name: IconName;
@@ -200,6 +203,12 @@ export function Icon({
       return <MaterialIcons name="extension-off" size={size} color={color} style={style} />;
     case 'login':
       return <MaterialIcons name="login" size={size} color={color} style={style} />;
+    case 'visibility':
+      return <MaterialIcons name="visibility" size={size} color={color} style={style} />;
+    case 'edit':
+      return <MaterialIcons name="edit" size={size} color={color} style={style} />;
+    case 'send':
+      return <MaterialIcons name="send" size={size} color={color} style={style} />;
     default:
       return <MaterialIcons name="blur-on" size={size} color={color} style={style} />;
   }

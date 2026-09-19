@@ -30,20 +30,30 @@ export async function GET(req: NextRequest) {
       }
 
       const tools = int.getTools();
-      // Collect all non-READ action types supported by this integration
+      // Collect all action types supported by this integration
       const actionTypesSet = new Set<string>();
       for (const t of tools) {
-        if (t.actionType && t.actionType !== 'READ') {
+        if (t.actionType) {
           actionTypesSet.add(t.actionType);
         }
       }
       const supportedActionTypes = Array.from(actionTypesSet);
 
+      const storedPolicies = userPrefs?.integrations?.[meta.id]?.policies || {};
       const storedAutoApprove = userPrefs?.integrations?.[meta.id]?.autoApprove || {};
+
+      const policies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> = {
+        READ: storedPolicies.READ || (storedAutoApprove.READ === false ? 'DENY' : 'ALLOW'),
+        WRITE: storedPolicies.WRITE || (storedAutoApprove.WRITE === true ? 'ALLOW' : 'ASK'),
+        EXTERNAL_ACTION: storedPolicies.EXTERNAL_ACTION || (storedAutoApprove.EXTERNAL_ACTION === true ? 'ALLOW' : 'ASK'),
+        DESTRUCTIVE: storedPolicies.DESTRUCTIVE || (storedAutoApprove.DESTRUCTIVE === true ? 'ALLOW' : 'ASK'),
+      };
+
       const autoApprove: Record<string, boolean> = {
-        WRITE: Boolean(storedAutoApprove.WRITE),
-        EXTERNAL_ACTION: Boolean(storedAutoApprove.EXTERNAL_ACTION),
-        DESTRUCTIVE: Boolean(storedAutoApprove.DESTRUCTIVE),
+        READ: policies.READ === 'ALLOW',
+        WRITE: policies.WRITE === 'ALLOW',
+        EXTERNAL_ACTION: policies.EXTERNAL_ACTION === 'ALLOW',
+        DESTRUCTIVE: policies.DESTRUCTIVE === 'ALLOW',
       };
 
       return {
@@ -59,6 +69,7 @@ export async function GET(req: NextRequest) {
         toolCount: tools.length,
         permissions: meta.permissions,
         supportedActionTypes,
+        policies,
         autoApprove,
       };
     })
@@ -75,6 +86,7 @@ export async function POST(req: NextRequest) {
       id?: string;
       enabled?: boolean;
       action?: 'toggle' | 'disconnect' | 'updatePermissions';
+      policies?: Record<string, 'ALLOW' | 'ASK' | 'DENY'>;
       autoApprove?: Record<string, boolean>;
       clearCredentials?: boolean;
     };
@@ -88,8 +100,8 @@ export async function POST(req: NextRequest) {
       return errorResponse('NOT_FOUND', `Integration "${body.id}" not found.`, requestId, 404);
     }
 
-    // Action: Update Permissions / Auto-Approve Settings
-    if (body.action === 'updatePermissions' && body.autoApprove) {
+    // Action: Update Permissions / 3-Way Policy Settings
+    if (body.action === 'updatePermissions' && (body.policies || body.autoApprove)) {
       let user = await prisma.user.findFirst();
       if (!user) {
         user = await prisma.user.create({
@@ -105,10 +117,31 @@ export async function POST(req: NextRequest) {
       if (!prefs.integrations) prefs.integrations = {};
       if (!prefs.integrations[int.metadata.id]) prefs.integrations[int.metadata.id] = {};
 
-      prefs.integrations[int.metadata.id].autoApprove = {
-        ...prefs.integrations[int.metadata.id].autoApprove,
-        ...body.autoApprove,
+      const existingPolicies = prefs.integrations[int.metadata.id].policies || {};
+      const updatedPolicies: Record<string, 'ALLOW' | 'ASK' | 'DENY'> = {
+        ...existingPolicies,
+        ...(body.policies || {}),
       };
+
+      // If legacy autoApprove was sent, map it to policies
+      if (body.autoApprove) {
+        for (const [action, allowed] of Object.entries(body.autoApprove)) {
+          if (!body.policies?.[action]) {
+            updatedPolicies[action] = allowed ? 'ALLOW' : 'ASK';
+          }
+        }
+      }
+
+      // Sync autoApprove map
+      const autoApprove: Record<string, boolean> = {
+        READ: updatedPolicies.READ === 'ALLOW',
+        WRITE: updatedPolicies.WRITE === 'ALLOW',
+        EXTERNAL_ACTION: updatedPolicies.EXTERNAL_ACTION === 'ALLOW',
+        DESTRUCTIVE: updatedPolicies.DESTRUCTIVE === 'ALLOW',
+      };
+
+      prefs.integrations[int.metadata.id].policies = updatedPolicies;
+      prefs.integrations[int.metadata.id].autoApprove = autoApprove;
 
       await prisma.user.update({
         where: { id: user.id },
@@ -118,7 +151,8 @@ export async function POST(req: NextRequest) {
       return successResponse(
         {
           id: int.metadata.id,
-          autoApprove: prefs.integrations[int.metadata.id].autoApprove,
+          policies: updatedPolicies,
+          autoApprove,
           message: `Permissions updated for ${int.metadata.name}.`,
         },
         requestId
