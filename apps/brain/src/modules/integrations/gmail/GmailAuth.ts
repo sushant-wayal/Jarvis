@@ -133,11 +133,14 @@ export class GmailAuth {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       const currentPrefs = user?.preferences ? JSON.parse(user.preferences) : {};
 
+      // Merge credentials into existing gmail prefs — never overwrite policies, autoApprove, etc.
+      const existingGmailPrefs = currentPrefs?.integrations?.gmail || {};
       const updatedPrefs = {
         ...currentPrefs,
         integrations: {
           ...(currentPrefs.integrations || {}),
           gmail: {
+            ...existingGmailPrefs,       // ← preserve policies, autoApprove, toolPolicies
             enabled: true,
             credentials: {
               accessToken: this.accessToken,

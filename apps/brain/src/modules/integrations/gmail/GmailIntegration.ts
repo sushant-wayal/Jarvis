@@ -69,6 +69,11 @@ export class GmailIntegration extends BaseIntegration {
 
 
   public override async getStatus(): Promise<IntegrationStatus> {
+    // On every status check, reload the persisted enabled flag from DB so that
+    // a Vercel cold-start (fresh in-memory state) always reflects the user's
+    // last toggle choice rather than defaulting to enabled=true.
+    await this.loadPersistedEnabledState().catch(() => {});
+
     if (!this.enabled) {
       return 'DISABLED';
     }
