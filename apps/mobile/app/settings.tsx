@@ -461,25 +461,6 @@ export default function SettingsScreen(): React.ReactElement {
             Manage external tools, services, and accounts (Gmail, GitHub, YouTube, Financial Advisor) for Jarvis to execute tasks.
           </Text>
 
-          <View style={styles.integrationsPreviewRow}>
-            <View style={styles.integrationBadge}>
-              <Icon name="mail" size={14} color="#EF4444" />
-              <Text style={styles.integrationBadgeText}>Gmail</Text>
-            </View>
-            <View style={styles.integrationBadge}>
-              <Icon name="code" size={14} color="#8B5CF6" />
-              <Text style={styles.integrationBadgeText}>GitHub</Text>
-            </View>
-            <View style={styles.integrationBadge}>
-              <Icon name="smart_display" size={14} color="#EC4899" />
-              <Text style={styles.integrationBadgeText}>Serenity</Text>
-            </View>
-            <View style={styles.integrationBadge}>
-              <Icon name="account_balance" size={14} color="#10B981" />
-              <Text style={styles.integrationBadgeText}>North</Text>
-            </View>
-          </View>
-
           <TouchableOpacity
             style={styles.manageIntegrationsBtn}
             onPress={() => router.push('/integrations')}
@@ -1488,29 +1469,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
   },
-  integrationsPreviewRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 14,
-  },
-  integrationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: rounded.full,
-  },
-  integrationBadgeText: {
-    color: colors.onSurface,
-    fontSize: 12,
-    fontWeight: '600',
-  },
   manageIntegrationsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1519,6 +1477,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: rounded.md,
+    marginTop: 14,
     gap: 8,
   },
   manageIntegrationsBtnText: {
