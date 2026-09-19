@@ -22,7 +22,7 @@ export default function IntegrationsScreen(): React.ReactElement {
   const [integrations, setIntegrations] = React.useState<IntegrationItem[]>([]);
   const [loading, setLoading] = React.useState<boolean>(true);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
-  const [togglingId, setTogglingId] = React.useState<string | null>(null);
+  const pendingTogglesRef = React.useRef<Set<string>>(new Set());
 
   const loadIntegrations = React.useCallback(async (): Promise<void> => {
     try {
@@ -100,62 +100,80 @@ export default function IntegrationsScreen(): React.ReactElement {
   };
 
   const handleToggle = async (item: IntegrationItem, nextValue: boolean): Promise<void> => {
-    if (togglingId) return;
-    setTogglingId(item.id);
+    if (pendingTogglesRef.current.has(item.id)) return;
+    pendingTogglesRef.current.add(item.id);
+
+    // Save previous state for rollback on error
+    const previousIntegrations = [...integrations];
+
+    // Optimistic synchronous UI update — eliminates switch flicker and lag
+    setIntegrations((prev) =>
+      prev.map((it) => {
+        if (it.id !== item.id) return it;
+        if (nextValue) {
+          return {
+            ...it,
+            enabled: true,
+            status: it.authType === 'OAUTH' && !it.connectedAccount ? 'CONFIG_REQUIRED' : 'ENABLED',
+          };
+        } else {
+          return {
+            ...it,
+            enabled: false,
+            status: 'DISABLED',
+            connectedAccount: it.authType === 'OAUTH' ? null : it.connectedAccount,
+          };
+        }
+      })
+    );
 
     try {
-      if (!nextValue) {
-        // Disabling: If OAuth integration, warn that credentials will be wiped
-        if (item.authType === 'OAUTH') {
-          Alert.alert(
-            `Disable ${item.name}?`,
-            `Turning off ${item.name} will clear and wipe all stored OAuth credentials. When re-enabled, you will need to authenticate again.`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => setTogglingId(null),
-              },
-              {
-                text: 'Disconnect & Disable',
-                style: 'destructive',
-                onPress: async () => {
-                  await apiClient.toggleIntegration(item.id, false, true);
-                  await loadIntegrations();
-                  setTogglingId(null);
-                },
-              },
-            ]
-          );
-          return;
-        } else {
-          await apiClient.toggleIntegration(item.id, false);
-          await loadIntegrations();
-        }
-      } else {
-        // Enabling
-        const result = await apiClient.toggleIntegration(item.id, true);
-        if (result?.requiresAuth) {
-          await loadIntegrations();
-          if (item.authType === 'OAUTH') {
-            Alert.alert(
-              'Authentication Required',
-              `${item.name} requires connecting your account to allow Jarvis to access this service. Connect now?`,
-              [
-                { text: 'Later', style: 'cancel' },
-                {
-                  text: 'Connect with Google',
-                  onPress: () => handleStartOAuth(item.id),
-                },
-              ]
-            );
-          }
-        } else {
-          await loadIntegrations();
-        }
+      const result = await apiClient.toggleIntegration(
+        item.id,
+        nextValue,
+        !nextValue && item.authType === 'OAUTH'
+      );
+
+      if (!result) {
+        // Revert on error
+        setIntegrations(previousIntegrations);
+        Alert.alert('Error', `Failed to update ${item.name}. Please check connection.`);
+        return;
       }
+
+      // Sync confirmed state from server response directly without redundant full refetch
+      setIntegrations((prev) =>
+        prev.map((it) =>
+          it.id === item.id
+            ? {
+                ...it,
+                enabled: result.enabled,
+                status: result.status,
+                connectedAccount: !result.enabled && it.authType === 'OAUTH' ? null : it.connectedAccount,
+              }
+            : it
+        )
+      );
+
+      // Prompt to connect account when turning on an unauthenticated OAuth integration
+      if (nextValue && (result.requiresAuth || item.authType === 'OAUTH') && !item.connectedAccount) {
+        Alert.alert(
+          'Authentication Required',
+          `${item.name} is now enabled. Connect your Google account so Jarvis can access your emails?`,
+          [
+            { text: 'Later', style: 'cancel' },
+            {
+              text: 'Connect with Google',
+              onPress: () => handleStartOAuth(item.id),
+            },
+          ]
+        );
+      }
+    } catch {
+      setIntegrations(previousIntegrations);
+      Alert.alert('Error', `Failed to update ${item.name}.`);
     } finally {
-      setTogglingId(null);
+      pendingTogglesRef.current.delete(item.id);
     }
   };
 
@@ -169,6 +187,14 @@ export default function IntegrationsScreen(): React.ReactElement {
           text: 'Disconnect',
           style: 'destructive',
           onPress: async () => {
+            // Optimistically update card to CONFIG_REQUIRED
+            setIntegrations((prev) =>
+              prev.map((it) =>
+                it.id === item.id
+                  ? { ...it, status: 'CONFIG_REQUIRED', connectedAccount: null }
+                  : it
+              )
+            );
             await apiClient.disconnectIntegration(item.id);
             await loadIntegrations();
           },
@@ -194,7 +220,6 @@ export default function IntegrationsScreen(): React.ReactElement {
 
   const renderIntegrationCard = ({ item }: { item: IntegrationItem }) => {
     const iconInfo = getIntegrationIcon(item.id);
-    const isToggling = togglingId === item.id;
     const isConnected = item.status === 'ENABLED';
     const isConfigRequired = item.status === 'CONFIG_REQUIRED';
 
@@ -220,7 +245,6 @@ export default function IntegrationsScreen(): React.ReactElement {
           </View>
           <Switch
             value={item.enabled}
-            disabled={isToggling}
             onValueChange={(val) => handleToggle(item, val)}
             trackColor={{ false: colors.surfaceContainerHigh, true: colors.primaryContainer }}
             thumbColor={item.enabled ? colors.primaryFixed : colors.outline}

@@ -830,7 +830,7 @@ export interface IntegrationItem {
 export interface ToggleIntegrationResult {
   id: string;
   enabled: boolean;
-  status: string;
+  status: 'ENABLED' | 'CONFIG_REQUIRED' | 'DISABLED' | 'ERROR';
   requiresAuth?: boolean;
   message?: string;
 }
