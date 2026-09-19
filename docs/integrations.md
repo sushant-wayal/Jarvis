@@ -83,25 +83,67 @@ export interface StandardToolResult<T = unknown> {
 
 ## 4. Authentication & Security Model
 
-1. **Zero Secret Leaks**: Credentials (API tokens, OAuth secrets) are kept strictly server-side in `apps/brain`. They are never passed to the mobile bundle, never included in tool descriptions, and never logged in debug outputs.
+1. **Zero Secret Leaks**: Credentials (API tokens, OAuth secrets, refresh tokens) are kept strictly server-side in `apps/brain`. They are never passed to the mobile client bundle, never included in tool descriptions, and never logged in debug outputs.
 2. **Modular Credential Lifecycle**: Each service implements a dedicated `<ServiceName>Auth.ts` class handling:
-   - Reading from environment variables (`process.env.GITHUB_TOKEN`) or dynamic token storage.
-   - Token validation via external verification endpoints (`https://api.github.com/user`).
-   - Clean disconnection and token invalidation.
-3. **Audit Logging**: Every tool execution is recorded in the PostgreSQL `ToolExecution` table with latency, parameters, and status.
+   - Reading from environment variables (`process.env.GITHUB_TOKEN`, `process.env.GOOGLE_CLIENT_ID`) or dynamic user credential storage.
+   - Token validation via external verification endpoints (`https://api.github.com/user`, `https://gmail.googleapis.com/gmail/v1/users/me/profile`).
+   - Clean disconnection: Clearing stored access and refresh tokens upon disconnect.
+   - Re-authentication: Re-enabling an OAuth integration prompts the user to reconnect if tokens are missing.
+3. **OAuth 2.0 & Auto-Refresh**: For OAuth services (such as Gmail), Jarvis manages authorization code exchange, access token expiration, and background refresh via `refreshToken`:
+   - Endpoint `GET /api/v1/integrations/google/auth-url`: Generates consent screen URL requesting offline access (`access_type=offline`, `prompt=consent`).
+   - Endpoint `GET /api/v1/integrations/google/callback`: Exchanges authorization code for `access_token` and `refresh_token`, storing them securely in `User.preferences.integrations[service]`.
+   - `GmailAuth.ensureFreshToken()` automatically requests a new access token via Google's token endpoint when expired.
+4. **Audit Logging**: Every tool execution is recorded in the PostgreSQL `ToolExecution` table with latency, parameters, risk level, and completion status.
 
 ---
 
-## 5. Permissions, Risk Levels & Confirmation
+## 5. Granular Permissions & Control Model (`Allow` | `Ask` | `Deny`)
 
-Every tool declares its action type and risk profile:
+Every tool specifies a baseline action classification and risk profile:
 
-| Action Type | Typical Risk Level | Confirmation Required | Example Tools |
+| Action Type | Typical Risk Level | Default Confirmation | Description |
 | :--- | :--- | :--- | :--- |
-| `READ` | `SAFE` | No | `github.get_repositories`, `github.get_issues`, `github.get_commits` |
-| `WRITE` | `HIGH_RISK` | Yes | `github.create_issue`, `github.create_pull_request` |
-| `DESTRUCTIVE` | `CRITICAL` | Yes | Repository deletion, branch purge |
-| `EXTERNAL_ACTION` | `HIGH_RISK` | Yes | Sending emails, external webhooks |
+| `READ` | `SAFE` | No | Read-only lookups (e.g. `gmail.list_emails`, `github.get_issues`) |
+| `WRITE` | `HIGH_RISK` | Yes | Local or external mutations (e.g. `gmail.create_draft`, `github.create_issue`) |
+| `EXTERNAL_ACTION` | `HIGH_RISK` | Yes | Outbound communication (e.g. `gmail.send_email`, `gmail.reply_email`) |
+| `DESTRUCTIVE` | `CRITICAL` | Yes | Permanent deletion (e.g. `gmail.trash_email`, `serenity.remove_video_idea`) |
+
+### Three-State Permission Policies
+Users configure permissions in the mobile app under **Settings → Integrations → Tool Permissions**:
+
+- **`ALLOW` (Pre-Authorized / Auto-Execute)**:
+  - Bypasses interactive confirmation cards.
+  - Jarvis executes the tool immediately during the conversation turn.
+  - Injected into the Gemini LLM system prompt under `[PRE-AUTHORIZED ACTIONS - DIRECT EXECUTION]`.
+- **`ASK` (Interactive Human Confirmation)**:
+  - Agent loop pauses before execution (`mode: 'CONFIRMATION'`).
+  - Mobile UI presents an interactive confirmation card with parameters, risk badge, and `[Approve & Execute]` / `[Reject]`.
+- **`DENY` (Hard Blocked)**:
+  - The tool is completely disabled from execution.
+  - If requested, the planner immediately stops and informs the user that the tool is disabled in settings.
+  - Injected into the Gemini LLM system prompt under `[DISALLOWED ACTIONS - BLOCKED BY USER]`.
+
+### Policy Resolution Precedence
+When an agent step selects a tool, the effective policy is determined with strict precedence:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 1. Tool-Specific Policy                                     │
+│    User.preferences.integrations[id].toolPolicies[tool.name]│
+└──────────────────────────────┬──────────────────────────────┘
+                               │ (if undefined)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Action-Type Policy                                       │
+│    User.preferences.integrations[id].policies[actionType]   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │ (if undefined)
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Baseline Tool Default                                    │
+│    tool.requiresConfirmation ? 'ASK' : 'ALLOW'              │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -110,23 +152,24 @@ Every tool declares its action type and risk profile:
 The standardized request and execution pipeline:
 
 ```text
-User Natural Request: "Create an issue for this bug"
+User Natural Request: "Send an email to alex@example.com about the meeting"
      ↓
-Gemini LLM (inspects recent conversation context to extract owner, repo, title, body)
+Gemini LLM (inspects recent context + [PRE-AUTHORIZED / DISALLOWED] directives)
      ↓
-Gemini Function Call: github_create_issue({ owner, repo, title, body })
+Gemini Function Call: gmail_send_email({ to: "alex@example.com", subject: "...", body: "..." })
      ↓
-ToolRegistry (resolves function name -> IntegrationTool)
-     ↓
+Agent Planner (resolves effective policy for gmail.send_email)
+     ├── DENY  ──> Stop immediately; return friendly "Tool is blocked in settings" notice
+     ├── ASK   ──> Save AgentStep (status: PENDING, mode: CONFIRMATION); prompt user in mobile UI
+     └── ALLOW ──> Pre-authorized; proceed to execute directly
+                   ↓
 BaseIntegrationTool.execute()
      ├── 1. Validates inputSchema via Zod safeParse()
-     │      (If invalid -> returns { success: false, error: { code: 'INVALID_PARAMETERS' } })
-     ├── 2. Verifies requiresConfirmation status
-     └── 3. Invokes Tool Executor
+     ├── 2. Invokes Tool Executor
      ↓
-GitHubClient.request() (Appends Bearer token, enforces 15s AbortSignal timeout)
+GmailClient.request() (Attaches fresh OAuth Bearer token, enforces 15s timeout)
      ↓
-GitHub REST API (/repos/:owner/:repo/issues)
+Gmail REST API (https://gmail.googleapis.com/gmail/v1/users/me/messages/send)
      ↓
 Normalized StandardToolResult returned to Gemini
      ↓
@@ -316,11 +359,70 @@ apps/brain/src/modules/integrations/gmail/
 ### Configuration:
 - `GMAIL_ACCESS_TOKEN` or `GOOGLE_ACCESS_TOKEN`: Bearer access token for Gmail API (`https://mail.google.com/`).
 - `GMAIL_REFRESH_TOKEN`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`: Optional OAuth2 credentials for automatic token refreshing.
-- Runtime connection via `authenticate({ token })`.
+- Runtime connection via Google OAuth2:
+  - `GET /api/v1/integrations/google/auth-url` returns the consent screen URL.
+  - `GET /api/v1/integrations/google/callback` receives the authorization code, exchanges it for tokens, stores them in user preferences, and redirects back to the mobile app.
 
 ---
 
-## 12. Creating a New Integration
+## 12. REST API & Mobile UI Settings
+
+The framework provides first-class endpoints supporting mobile integration management and real-time permission configuration:
+
+### `GET /api/v1/integrations`
+Returns all integrations with dynamic tool introspection:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "gmail",
+      "name": "Gmail",
+      "description": "Read, search, draft, send, reply to emails and organize labels.",
+      "category": "COMMUNICATION",
+      "isEnabled": true,
+      "isConfigured": true,
+      "authType": "OAUTH",
+      "policies": {
+        "READ": "ALLOW",
+        "WRITE": "ASK",
+        "EXTERNAL_ACTION": "ASK",
+        "DESTRUCTIVE": "DENY"
+      },
+      "toolPolicies": {
+        "gmail.send_email": "ALLOW",
+        "gmail.trash_email": "DENY"
+      },
+      "tools": [
+        {
+          "id": "gmail.send_email",
+          "name": "Send Email",
+          "description": "Send emails directly from your Gmail account",
+          "actionType": "EXTERNAL_ACTION",
+          "riskLevel": "HIGH_RISK",
+          "policy": "ALLOW"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `POST /api/v1/integrations`
+Supports management actions:
+- `toggle`: `{ action: "toggle", id: "gmail", enabled: true }`
+- `disconnect`: `{ action: "disconnect", id: "gmail" }` (clears credentials)
+- `updatePermissions`: `{ action: "updatePermissions", id: "gmail", policies: { ... }, toolPolicies: { "gmail.send_email": "ALLOW" } }`
+
+### Mobile UI Settings Screen (`apps/mobile/app/integrations.tsx`)
+- Navigated seamlessly from **Settings → Integrations**.
+- Zero-latency optimistic UI updates for toggling integrations and updating segmented controls (`[ Allow | Ask | Deny ]`).
+- Collapsible tool list with tool count indicator (`Tool Permissions (X tools)`).
+- Visual action badges (`Read`, `Write`, `Outbound`, `Destructive`) and active status badges (`Auto-Executes`, `Asks in Chat`, `Blocked`).
+
+---
+
+## 13. Creating a New Integration
 
 To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
@@ -339,11 +441,12 @@ To implement any new service (e.g., Spotify, Slack, Notion, Home Assistant):
 
 ---
 
-## 13. Using the Integration Development Skill
+## 14. Using the Integration Development Skill
 
 The standardized engineering workflow is codified in the developer skill:
 `file:///.agents/skills/jarvis-integration-developer/SKILL.md`
 
-Whenever you or an AI agent needs to add a new integration, activate the skill and follow its 14-stage checklist. It contains the complete self-contained answers to all 13 core fundamentals, directory conventions, and verification steps.
+Whenever you or an AI agent needs to add a new integration, activate the skill and follow its 15-stage checklist. It contains the complete self-contained answers to all 13 core fundamentals, directory conventions, and verification steps.
+
 
 

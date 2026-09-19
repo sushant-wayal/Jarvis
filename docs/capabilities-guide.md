@@ -110,6 +110,20 @@ The hallmark of Jarvis V2 is executing **multi-step ReAct plans** (`Plan → Too
 
 ---
 
+## Tier 7: Connected Integrations & Granular Tool Permissions
+
+Jarvis integrates directly with your external apps (Gmail, GitHub, North, Serenity). In **Settings → Integrations**, you have full control to toggle integrations and set per-tool permissions: **`[ Allow | Ask | Deny ]`**.
+
+| Capability | Example Prompts | How It Behaves Based on Your Settings |
+| :--- | :--- | :--- |
+| **Email Reading** | *"Do I have any urgent emails from boss?"*<br>*"Summarize my recent unread emails."* | Invokes `gmail.list_emails` / `gmail.get_email` (`READ`). Direct execution. |
+| **Email Sending (Pre-Authorized)** | *"Send an email to sarah@example.com letting her know the deck is ready."* | If `gmail.send_email` is set to **`Allow`**, Jarvis drafts and sends it immediately without interrupting you. |
+| **Email Sending (Interactive Confirmation)** | *"Reply to that thread saying I'll review it tomorrow morning."* | If set to **`Ask`**, Jarvis halts and presents an in-chat confirmation card showing recipient, subject, and body before sending. |
+| **Blocked Tools** | *"Delete all emails from newsletters."* | If `gmail.trash_email` is set to **`Deny`**, Jarvis immediately refuses: *"The delete email tool is blocked in your settings."* |
+| **Code & Issues** | *"Create an issue in my repo for the mobile push notification bug."* | Invokes `github.create_issue` respecting your GitHub tool permissions. |
+
+---
+
 ## 🎯 Summary Matrix: How to Talk to Jarvis
 
 | If you want to... | Say something like... | Mode |
@@ -121,3 +135,6 @@ The hallmark of Jarvis V2 is executing **multi-step ReAct plans** (`Plan → Too
 | **Never forget a chore** | *"Remind me at 8 PM tonight to submit the electricity bill."* | Task Engine |
 | **Look up real-time facts** | *"What's the score in the ongoing football game?"* | Web Search |
 | **Combine tasks together** | *"Find the weather in Pune and remind me at 6 PM if I need a jacket."* | Multi-Step Agent |
+| **Send an email with 1-tap setup** | *"Email John the updated project timeline."* | Pre-Authorized Integration |
+| **Safely check destructive actions** | *"Delete the draft pull request on GitHub."* | Interactive Confirmation |
+

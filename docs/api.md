@@ -117,3 +117,19 @@ Processes text messages through Jarvis brain & tools.
 - `GET /api/v1/memory`: List stored long-term memories.
 - `POST /api/v1/memory`: Create custom memory item.
 - `DELETE /api/v1/memory?id=[id]`: Delete memory item or clear all.
+
+---
+
+### 6. Integrations Management
+- `GET /api/v1/integrations`: Returns all registered integrations with connection status, auth requirements, per-action policies, per-tool policies, and dynamic tool catalog.
+- `POST /api/v1/integrations`: Manages integration state and permissions.
+  - **Toggle**: `{ "action": "toggle", "id": "gmail", "enabled": true }`
+  - **Disconnect**: `{ "action": "disconnect", "id": "gmail" }` (clears credentials)
+  - **Update Permissions**: `{ "action": "updatePermissions", "id": "gmail", "policies": { ... }, "toolPolicies": { "gmail.send_email": "ALLOW", "gmail.trash_email": "DENY" } }`
+
+---
+
+### 7. OAuth2 Authentication Flows
+- `GET /api/v1/integrations/google/auth-url`: Generates and returns the Google OAuth consent URL requesting offline access with refresh token capabilities.
+- `GET /api/v1/integrations/google/callback?code=[code]`: OAuth redirect handler that exchanges the authorization code for tokens, persists them to user preferences, and redirects back to the mobile application.
+

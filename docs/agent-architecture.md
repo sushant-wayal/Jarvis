@@ -41,5 +41,15 @@ Tool Registry   Task Engine    Memory Engine
 
 ### Agent Planner (`apps/brain/src/modules/brain/agent-planner.ts`)
 * Coordinates multi-step tool calling and handles tool failures gracefully.
-* Halts on high-risk tools (`requiresConfirmation: true`) to request user authorization.
+* **Granular Permission & Policy Enforcement (`ALLOW` | `ASK` | `DENY`)**:
+  - Dynamically injects user-configured policies into the LLM system prompt:
+    - `[PRE-AUTHORIZED ACTIONS - DIRECT EXECUTION]`: Tools the user explicitly set to `ALLOW`.
+    - `[DISALLOWED ACTIONS - BLOCKED BY USER]`: Tools the user explicitly set to `DENY`.
+  - Evaluates runtime policies with strict hierarchy:
+    1. Tool-Specific Policy (`toolPolicies[tool.name]` / `toolPolicies[tool.id]`)
+    2. Action-Type Policy (`policies[tool.actionType]`)
+    3. Tool Default (`requiresConfirmation`)
+  - **`ALLOW`**: Auto-executes directly without pausing for confirmation in conversation, even for high-risk actions.
+  - **`ASK`**: Halts execution, records pending `AgentStep` with `mode: 'CONFIRMATION'`, and presents an interactive authorization card on mobile.
+  - **`DENY`**: Blocks execution immediately, returning a user-friendly notice indicating that the tool is disabled in settings.
 * Preserves single-turn direct formatting for deterministic tools (`calculator`, `date_time`, `weather`) to ensure sub-1.2s voice responses.

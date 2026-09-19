@@ -21,16 +21,23 @@ Every tool in Jarvis must strictly follow these workspace engineering rules:
    The LLM (Gemini) is the sole semantic engine for entity resolution, query normalization, and parameter extraction. The tool's `executor()` is a **pure executor**—it must NEVER perform custom regex parsing, string slicing, keyword stripping, or command heuristics. It receives clean, typed parameters directly from the LLM.
 3. **Machine-Readable Input Validation (Rule 7 & Section 4)**:
    Every tool must define a Zod `inputSchema` with explicit `.describe(...)` annotations on every field. `BaseIntegrationTool` automatically validates parameters via `safeParse()` before calling the executor.
-4. **Human Confirmation for Side Effects (Rule 12 & Section 8)**:
-   Any tool that creates, updates, deletes, or triggers external side effects must declare:
-   - `actionType: 'WRITE' | 'DESTRUCTIVE' | 'EXTERNAL_ACTION'`
-   - `riskLevel: 'HIGH_RISK' | 'CRITICAL'`
-   - `requiresConfirmation: true`
-5. **Succinct Normalized Results (Rule 9 & Section 9)**:
+4. **Baseline Risk & Granular Permission Hierarchy (Rule 12 & Section 8)**:
+   Every tool declares baseline safety attributes:
+   - `actionType: 'READ' | 'WRITE' | 'DESTRUCTIVE' | 'EXTERNAL_ACTION'`
+   - `riskLevel: 'SAFE' | 'LOW_RISK' | 'HIGH_RISK' | 'CRITICAL'`
+   - `requiresConfirmation: boolean` (true for WRITE, DESTRUCTIVE, or EXTERNAL_ACTION)
+   
+   At runtime, the **Agent Planner resolves user-configured policies (`ALLOW` | `ASK` | `DENY`)** with strict precedence:
+   1. **Tool-Specific Policy** (`toolPolicies[tool.id]` / `toolPolicies[tool.name]`): Highest precedence. If set to `ALLOW`, auto-executes directly without asking the user, even if high-risk. If `DENY`, immediately blocked. If `ASK`, prompts for confirmation.
+   2. **Action-Category Policy** (`policies[tool.actionType]`): Checked if no tool-specific policy is set.
+   3. **Tool Default** (`requiresConfirmation`): Fallback when no user policies are set.
+5. **UI-Friendly Descriptions for Mobile Settings**:
+   The tool `description` is displayed directly to the user in the mobile Integrations settings screen under each tool card. Keep descriptions concise, active, and human-friendly (under 100 characters).
+6. **Succinct Normalized Results (Rule 9 & Section 9)**:
    Always return `StandardToolResult<TOutput>`. Never dump huge raw HTTP responses into the conversation context. Extract only the concise fields the LLM needs to reason and summarize.
-6. **No Fake Functionality (Rule 22 & Section 14)**:
+7. **No Fake Functionality (Rule 22 & Section 14)**:
    Never return simulated success when an action did not execute. If credentials are missing, API calls fail, or rate limits are hit, return structured errors indicating setup or reconnection needs.
-7. **Native Capability Reuse (Section 15)**:
+8. **Native Capability Reuse (Section 15)**:
    If a user asks to schedule an action or set a reminder for a tool (e.g., "Remind me to check this PR tomorrow"), always rely on Jarvis's native reminder tools (`task_create`, `event_reminder_create`) instead of inventing custom time logic inside the integration tool.
 
 ---
@@ -111,6 +118,7 @@ Follow this checklist whenever adding a tool to any integration:
                 actionType: 'WRITE', riskLevel: 'HIGH_RISK', requiresConfirmation: true
               • DESTRUCTIVE actions:
                 actionType: 'DESTRUCTIVE', riskLevel: 'CRITICAL', requiresConfirmation: true
+              • Provide a concise, clear description (<100 characters) formatted for mobile settings cards.
 
 [ ] Stage 5: Implement Pure Executor
               • Call client method using validated input parameters.
@@ -125,11 +133,13 @@ Follow this checklist whenever adding a tool to any integration:
 [ ] Stage 7: Re-export in index.ts
               • Export class from apps/brain/src/modules/integrations/<service-name>/index.ts.
 
-[ ] Stage 8: Add Unit Tests & Verify
-              • In apps/brain/src/__tests__/integration-framework.test.ts:
+[ ] Stage 8: Add Unit Tests & Verify Policies
+              • In apps/brain/src/__tests__/integration-permissions.test.ts or integration-framework.test.ts:
                 1. Test valid execution with mocked client.
                 2. Test invalid parameter rejection (Zod error).
-                3. Test confirmation flag matches risk level.
+                3. Test default confirmation requirement matches risk level.
+                4. Test tool-specific ALLOW bypasses confirmation and executes directly.
+                5. Test tool-specific DENY blocks execution immediately.
               • Run: npm run typecheck --workspace=apps/brain
               • Run: npm run test --workspace=apps/brain
 ```
@@ -273,6 +283,8 @@ export class DeleteResourceTool extends BaseIntegrationTool<
 | **Missing `requiresConfirmation: true` on side effects** | Violates Rule 12. Actions like creating issues, sending emails, or deleting data execute without user consent. | Set `requiresConfirmation: true` and `riskLevel: 'HIGH_RISK'` or `'CRITICAL'`. |
 | **Omitting `.describe(...)` on Zod schema fields** | Gemini LLM receives a blank description and hallucinates parameter meanings or fails to supply required values. | Always add `.describe('...')` to every field in `z.object({...})`. |
 | **Hardcoding API tokens inside tool files** | Violates Rule 6. Leaks secrets and prevents dynamic user credential switching. | Inject `<ServiceName>Client`, which reads tokens securely via `<ServiceName>Auth`. |
+| **Hardcoding confirmation checks in tool executor** | Tool executors must remain pure. The agent planner checks user policies (`ALLOW`, `ASK`, `DENY`) and handles confirmations or blocking before invocation. | Set baseline `requiresConfirmation` and let the planner evaluate runtime user policies. |
+| **Vague or bloated tool descriptions** | Descriptions are shown directly on mobile settings cards. Overly long or internal text clutters the UI. | Write concise, user-facing summaries (e.g. "Send emails directly from your Gmail account"). |
 | **Inventing parallel reminder/scheduling tools** | Violates Section 15 context awareness. | Direct the LLM to use native `task_create` or `event_reminder_create` for scheduling. |
 
 ---
