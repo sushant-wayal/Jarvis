@@ -3,6 +3,7 @@ import {
   spokenStatusFormatter,
   StatusSpeechThrottler,
 } from '../modules/brain/spoken-status-formatter';
+import { toolRegistry } from '../modules/tools/registry';
 
 describe('SpokenStatusFormatter', () => {
   it('formats media playback tools into natural, clean spoken status', () => {
@@ -69,7 +70,24 @@ describe('SpokenStatusFormatter', () => {
     expect(status).toBe('Scheduling that for you now, sir.');
   });
 
-  it('falls back to safe, dignified phrasing for unknown tools', () => {
+  it('prioritizes LLM-provided spoken_intent over any fallback templates', () => {
+    const status = spokenStatusFormatter.formatToolStatus('play_media', {
+      query: 'Believer',
+      app: 'spotify',
+      spoken_intent: 'Starting up Believer by Imagine Dragons on Spotify for you now, sir.',
+    });
+    expect(status).toBe('Starting up Believer by Imagine Dragons on Spotify for you now, sir.');
+  });
+
+  it('uses spoken_intent for custom tools when provided by LLM', () => {
+    const status = spokenStatusFormatter.formatToolStatus('custom_financial_analysis', {
+      symbol: 'AAPL',
+      spoken_intent: 'Pulling the Q3 financial statements for Apple Inc., sir.',
+    });
+    expect(status).toBe('Pulling the Q3 financial statements for Apple Inc., sir.');
+  });
+
+  it('falls back to safe, dignified phrasing for unknown tools when spoken_intent is absent', () => {
     const status = spokenStatusFormatter.formatToolStatus('unknown_custom_tool', {});
     expect(status).toBe('Looking into that for you now, sir.');
   });
@@ -100,5 +118,42 @@ describe('StatusSpeechThrottler', () => {
     } finally {
       Date.now = originalNow;
     }
+  });
+});
+
+describe('ToolRegistry spoken_intent parameter injection & execution', () => {
+  it('automatically adds spoken_intent parameter to all Gemini function declarations', () => {
+    const declarations = toolRegistry.getGeminiFunctionDeclarations();
+    expect(declarations.length).toBeGreaterThan(0);
+
+    for (const decl of declarations) {
+      const params = decl.parameters as { properties?: Record<string, { type: string; description: string }> };
+      expect(params.properties).toBeDefined();
+      expect(params.properties?.spoken_intent).toBeDefined();
+      expect(params.properties?.spoken_intent.type).toBe('STRING');
+      expect(params.properties?.spoken_intent.description).toContain('Jarvis');
+    }
+  });
+
+  it('safely strips spoken_intent during execution so strict schemas pass', async () => {
+    const calculator = toolRegistry.getTool('calculator');
+    expect(calculator).toBeDefined();
+
+    const result = await calculator!.execute(
+      {
+        expression: '40 + 2',
+        spoken_intent: 'Calculating the mathematical expression for you, sir.',
+      },
+      {
+        conversationId: 'test_conv',
+        userId: 'test_user',
+        requestId: 'test_req',
+        timezone: 'UTC',
+        locale: 'en',
+      }
+    );
+
+    expect(result.success).toBe(true);
+    expect((result.output as { result: number }).result).toBe(42);
   });
 });

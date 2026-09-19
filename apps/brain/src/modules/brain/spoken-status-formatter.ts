@@ -13,6 +13,11 @@ export class SpokenStatusFormatter {
    * STRICT SAFETY: Never reveals raw internal chain-of-thought, system prompts, or raw parameters.
    */
   public formatToolStatus(toolName: string, input?: Record<string, unknown>): string {
+    // 1. LLM-First: Directly prioritize spoken_intent emitted by the planning model
+    if (typeof input?.spoken_intent === 'string' && input.spoken_intent.trim()) {
+      return input.spoken_intent.trim();
+    }
+
     const norm = (toolName || '').toLowerCase().replace(/[._-]/g, '');
 
     // Media & Music
@@ -148,8 +153,8 @@ export const spokenStatusFormatter = new SpokenStatusFormatter();
 
 /**
  * Throttles spoken intermediate updates per request turn:
- * - Max 2 intermediate spoken updates per turn
- * - Minimum 3000ms cooldown between updates
+ * - Allows informative multi-step progress updates (up to 6 per turn)
+ * - Safe 2500ms cooldown between spoken updates to prevent audio overlap
  */
 export class StatusSpeechThrottler {
   private count = 0;
@@ -157,7 +162,7 @@ export class StatusSpeechThrottler {
   private readonly maxUpdates: number;
   private readonly minIntervalMs: number;
 
-  constructor(maxUpdates = 2, minIntervalMs = 3000) {
+  constructor(maxUpdates = 6, minIntervalMs = 2500) {
     this.maxUpdates = maxUpdates;
     this.minIntervalMs = minIntervalMs;
   }

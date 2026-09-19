@@ -139,11 +139,27 @@ class ToolRegistry {
 
     return this.getAllTools()
       .filter((t) => !excludeSet.has(t.name.replace(/\./g, '_').toLowerCase()))
-      .map((t) => ({
-        name: t.name.replace(/\./g, '_'),
-        description: t.description,
-        parameters: t.parameters,
-      }));
+      .map((t) => {
+        const rawParams = (t.parameters as Record<string, unknown>) || { type: 'OBJECT', properties: {} };
+        const properties = {
+          ...((rawParams.properties as Record<string, unknown>) || {}),
+          spoken_intent: {
+            type: 'STRING',
+            description:
+              "Brief, natural 1-sentence statement spoken in Jarvis's calm and polite tone explaining directly to the user what you are doing right now (e.g. 'Looking up the weather in Tokyo for you, sir.', 'Searching your contacts for Sarah.').",
+          },
+        };
+
+        return {
+          name: t.name.replace(/\./g, '_'),
+          description: t.description,
+          parameters: {
+            ...rawParams,
+            type: 'OBJECT',
+            properties,
+          },
+        };
+      });
   }
 
   private wrapJarvisTool(tool: JarvisTool): RegisteredTool {
@@ -161,7 +177,15 @@ class ToolRegistry {
       execute: async (input: unknown, context: ToolContext): Promise<ToolResult> => {
         const startTime = Date.now();
         try {
-          const validatedInput = tool.inputSchema.parse(input);
+          let toolInput = input;
+          if (input && typeof input === 'object' && 'spoken_intent' in (input as Record<string, unknown>)) {
+            const shape = (tool.inputSchema as { shape?: Record<string, unknown> })?.shape;
+            if (!shape || !('spoken_intent' in shape)) {
+              const { spoken_intent, ...rest } = input as Record<string, unknown>;
+              toolInput = rest;
+            }
+          }
+          const validatedInput = tool.inputSchema.parse(toolInput);
           const output = await tool.execute(validatedInput, context);
           const durationMs = Date.now() - startTime;
 

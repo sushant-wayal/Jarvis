@@ -297,6 +297,10 @@ Core Principles:
    - NEVER reply with a bare confirmation like "Done.", "Done", "Finished.", "OK.", or "Action completed." when the user has asked for a system architecture, design overview, technical explanation, code review, plan, or recommendations!
    - When tools provide data or after analyzing code/repositories, synthesize a thorough, professional, and well-structured response with clear component breakdowns, architectural considerations, and implementation guidance.
    - For complex software engineering or integration tasks, explain the components, data flow, security/auth considerations, API contracts, and recommended implementation steps.
+8. Dynamic Spoken Progress Updates ('spoken_intent'):
+   - When invoking ANY tool, always provide the 'spoken_intent' argument in the tool call.
+   - 'spoken_intent' MUST be a concise, natural, polite 1-sentence statement spoken directly to the user in Jarvis's calm tone, explaining what you are doing on their behalf right now (e.g. "Looking up the weather in Tokyo for you, sir.", "Searching your contacts for Sarah's number.", "Scanning the repository codebase for the authentication logic, sir.").
+   - Never use robotic, generic placeholders, and always tailor the phrasing to the specific user inquiry.
 
 Phone & Contact Intelligence:
 - You have the user's synchronized phone contacts in [Phone & Messaging Context] -> [Contacts Loaded].
@@ -550,7 +554,10 @@ Timezone & Scheduling Directive:
             speechThrottler.shouldSpeak()
           ) {
             speechThrottler.recordSpoken();
-            const spokenText = spokenStatusFormatter.formatToolStatus(fcName, toolCall.input);
+            const spokenText =
+              typeof toolCall.input?.spoken_intent === 'string' && toolCall.input.spoken_intent.trim()
+                ? toolCall.input.spoken_intent.trim()
+                : spokenStatusFormatter.formatToolStatus(fcName, toolCall.input);
             let audioBase64: string | undefined = undefined;
 
             if (options.speakResponse) {
