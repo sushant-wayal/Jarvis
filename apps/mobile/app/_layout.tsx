@@ -28,15 +28,16 @@ export default function RootLayout(): React.ReactElement {
         <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
           <StatusBar style="light" />
           <Tabs
-          screenOptions={{
-            headerShown: false,
-            tabBarStyle: styles.tabBar,
-            tabBarItemStyle: styles.tabBarItem,
-            tabBarActiveTintColor: colors.primaryFixed,
-            tabBarInactiveTintColor: colors.outline,
-            tabBarShowLabel: false,
-          }}
-        >
+            backBehavior="history"
+            screenOptions={{
+              headerShown: false,
+              tabBarStyle: styles.tabBar,
+              tabBarItemStyle: styles.tabBarItem,
+              tabBarActiveTintColor: colors.primaryFixed,
+              tabBarInactiveTintColor: colors.outline,
+              tabBarShowLabel: false,
+            }}
+          >
           <Tabs.Screen
             name="index"
             options={{

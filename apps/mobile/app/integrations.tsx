@@ -3,6 +3,7 @@ import * as React from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   FlatList,
   Linking,
   RefreshControl,
@@ -75,6 +76,21 @@ export default function IntegrationsScreen(): React.ReactElement {
     setRefreshing(true);
     await loadIntegrations();
   };
+
+  const handleBack = React.useCallback((): void => {
+    router.navigate('/settings');
+  }, []);
+
+  React.useEffect(() => {
+    const onBackPress = (): boolean => {
+      handleBack();
+      return true;
+    };
+    const backSub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      backSub.remove();
+    };
+  }, [handleBack]);
 
   const handleStartOAuth = async (integrationId: string): Promise<void> => {
     try {
@@ -311,7 +327,7 @@ export default function IntegrationsScreen(): React.ReactElement {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
           accessibilityRole="button"
           accessibilityLabel="Back to settings"
         >
