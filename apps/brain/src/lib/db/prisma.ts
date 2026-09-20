@@ -7,7 +7,6 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient(): PrismaClient {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { PrismaClient: TestPrismaClient } = require('./generated/test-client');
       return new TestPrismaClient({
         log: ['error'],
