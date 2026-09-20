@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../lib/db/prisma';
 import { contextEngine } from '../modules/brain/context-engine';
 import { intentEngine } from '../modules/brain/intent-engine';
@@ -10,7 +10,7 @@ import { taskService } from '../modules/tasks/task-service';
 describe('Jarvis V2 Agentic System Verification', () => {
   const testUserId = 'test-v2-user';
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     // Ensure test user exists in database
     await prisma.user.upsert({
       where: { id: testUserId },
@@ -20,13 +20,6 @@ describe('Jarvis V2 Agentic System Verification', () => {
         name: 'Test User',
       },
     });
-  });
-
-  afterAll(async () => {
-    // Clean up test data
-    await prisma.task.deleteMany({ where: { userId: testUserId } });
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
-    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
   });
 
   it('Scenario 1: Semantic intent classification for calculations', async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { ChatRequestSchema } from '@jarvis/shared';
 import { prisma } from '@/lib/db/prisma';
 import { brainOrchestrator } from '@/modules/brain/orchestrator';
@@ -6,6 +6,14 @@ import { notificationService } from '@/modules/notifications/notification-servic
 
 describe('Asynchronous Deep Work Mode (Background Execution)', () => {
   const testUserId = `test_user_deepwork_${Date.now()}`;
+
+  beforeEach(async () => {
+    await prisma.user.upsert({
+      where: { id: testUserId },
+      update: {},
+      create: { id: testUserId, name: 'Sushant' },
+    });
+  });
 
   it('ChatRequestSchema parses asyncMode cleanly with false as default', () => {
     const defaultParsed = ChatRequestSchema.parse({

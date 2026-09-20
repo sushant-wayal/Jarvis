@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { aiClient } from '@/lib/ai/gemini';
 import { memoryExtractor } from '../modules/brain/memory-extractor';
@@ -6,13 +6,12 @@ import { memoryExtractor } from '../modules/brain/memory-extractor';
 describe('MemoryExtractor Hardening & False-Inference Prevention', () => {
   const testUserId = 'test_user_extractor_hardening';
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     await prisma.user.upsert({
       where: { id: testUserId },
       update: { name: 'Sushant' },
       create: { id: testUserId, name: 'Sushant' },
     });
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
   });
 
   it('does NOT extract memory when user asks casual questions like "what is mom\'s phone number"', async () => {
@@ -62,10 +61,5 @@ describe('MemoryExtractor Hardening & False-Inference Prevention', () => {
     expect(allergyMem).toBeDefined();
 
     spy.mockRestore();
-  });
-
-  afterAll(async () => {
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
-    await prisma.user.deleteMany({ where: { id: testUserId } });
   });
 });

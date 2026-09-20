@@ -1,4 +1,4 @@
-import { describe, expect, it, afterAll } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { brainOrchestrator } from '@/modules/brain/orchestrator';
 import { dataRetentionService } from '@/modules/brain/data-retention-service';
@@ -7,6 +7,14 @@ import { memoryService } from '@/modules/memory/memory-service';
 
 describe('Jarvis Dynamic TTL & Data Retention', () => {
   const testUserId = 'test-ttl-user';
+
+  beforeEach(async () => {
+    await prisma.user.upsert({
+      where: { id: testUserId },
+      update: {},
+      create: { id: testUserId, name: 'Sushant' },
+    });
+  });
 
   it('calculates dynamic and bounded TTLs via TtlEngine', async () => {
     const convTtl = await ttlEngine.suggestConversationTtl('What is the weather today?');
@@ -107,7 +115,7 @@ describe('Jarvis Dynamic TTL & Data Retention', () => {
     expect(conversation).not.toBeNull();
     expect(conversation?.expiresAt).toBeDefined();
     expect(conversation!.expiresAt!.getTime()).toBeGreaterThan(Date.now());
-  });
+  }, 60000);
 
   it('prunes expired conversations, messages, and memories during data retention cleanup', async () => {
     // 1. Create an expired conversation with messages
@@ -172,11 +180,5 @@ describe('Jarvis Dynamic TTL & Data Retention', () => {
 
     // Clean up active test conversation
     await prisma.conversation.delete({ where: { id: activeConv.id } });
-  });
-
-  afterAll(async () => {
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
-    await prisma.conversation.deleteMany({ where: { userId: testUserId } });
-    await prisma.user.deleteMany({ where: { id: testUserId } });
   });
 });

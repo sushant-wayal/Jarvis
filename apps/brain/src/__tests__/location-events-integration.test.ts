@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { eventEvaluationEngine } from '@/modules/events/event-evaluation-engine';
 import { eventService } from '@/modules/events/event-service';
@@ -8,6 +8,14 @@ import { notificationService } from '@/modules/notifications/notification-servic
 
 describe('Jarvis V2 Extension: Location Awareness & Event-Based Reminders', () => {
   const testUserId = 'test-location-user';
+
+  beforeEach(async () => {
+    await prisma.user.upsert({
+      where: { id: testUserId },
+      update: {},
+      create: { id: testUserId, name: 'Sushant' },
+    });
+  });
 
   it('calculates Haversine distances accurately', () => {
     // Distance between Panaji (15.4909, 73.8278) and Calangute (15.5439, 73.7554) ~9.7km
@@ -22,18 +30,6 @@ describe('Jarvis V2 Extension: Location Awareness & Event-Based Reminders', () =
   });
 
   it('Step 1-6: End-to-End Goa Trip & Parasailing Reminder Lifecycle', async () => {
-    // 0. Ensure user exists for Prisma FK constraints
-    await prisma.user.upsert({
-      where: { id: testUserId },
-      update: {},
-      create: { id: testUserId, name: 'Sushant' },
-    });
-
-    // Cleanup previous test state
-    await prisma.eventReminder.deleteMany({ where: { userId: testUserId } });
-    await prisma.userEvent.deleteMany({ where: { userId: testUserId } });
-    await prisma.notification.deleteMany({ where: { userId: testUserId } });
-
     // Step 1: User says "I'm going to Goa next month" -> Create Goa Trip Event
     const goaTrip = await eventService.createEvent({
       userId: testUserId,
@@ -148,9 +144,6 @@ describe('Jarvis V2 Extension: Location Awareness & Event-Based Reminders', () =
   }, 20000);
 
   it('correctly associates known place inside geofence and clears knownPlaceId outside geofence', async () => {
-    // Cleanup any existing known places for test user
-    await prisma.knownPlace.deleteMany({ where: { userId: testUserId } });
-
     // Save a known place (e.g. PG with 100m radius)
     const place = await locationService.saveKnownPlace({
       userId: testUserId,

@@ -29,6 +29,7 @@ coverage/
 *.sqlite-journal
 dev.db
 dev.db-journal
+**/src/lib/db/generated/
 
 # Mobile / Android / iOS
 .expo-shared/

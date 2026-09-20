@@ -1,19 +1,17 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '@/lib/db/prisma';
 import { memoryLifecycleService } from '../modules/memory/memory-lifecycle';
 
 describe('Semantic Memory Lifecycle & Identity Guard', () => {
   const testUserId = 'test_user_identity_guard';
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     // Ensure test user exists with name 'Sushant'
     await prisma.user.upsert({
       where: { id: testUserId },
       update: { name: 'Sushant' },
       create: { id: testUserId, name: 'Sushant' },
     });
-    // Clean memories
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
   });
 
   it('rejects candidate claiming a false identity that contradicts verified User.name', async () => {
@@ -76,9 +74,4 @@ describe('Semantic Memory Lifecycle & Identity Guard', () => {
     });
     expect(blackCoffee).toBeDefined();
   }, 120000);
-
-  afterAll(async () => {
-    await prisma.memory.deleteMany({ where: { userId: testUserId } });
-    await prisma.user.deleteMany({ where: { id: testUserId } });
-  });
 });

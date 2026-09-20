@@ -66,17 +66,6 @@ describe('Voice & Hands-Free Earbud Confirmation Lifecycle', () => {
       },
       update: {},
     });
-
-    // Clean up any lingering agent runs/steps/messages for test isolation
-    await prisma.agentStep.deleteMany({
-      where: { agentRun: { conversationId: dummyContext.conversationId } },
-    });
-    await prisma.agentRun.deleteMany({
-      where: { conversationId: dummyContext.conversationId },
-    });
-    await prisma.message.deleteMany({
-      where: { conversationId: dummyContext.conversationId },
-    });
   });
 
   it('Turn 1: pauses on dangerous action and creates pending confirmation', async () => {

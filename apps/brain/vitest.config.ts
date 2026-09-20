@@ -6,6 +6,13 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     testTimeout: 30000,
+    fileParallelism: false,
+    globalSetup: ['./src/lib/db/vitest-global-setup.ts'],
+    setupFiles: ['./src/lib/db/vitest-setup.ts'],
+    env: {
+      NODE_ENV: 'test',
+      VITEST: 'true',
+    },
   },
   resolve: {
     alias: {

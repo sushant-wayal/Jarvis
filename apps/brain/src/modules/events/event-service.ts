@@ -113,8 +113,8 @@ export class EventService {
           userId,
           status: { in: ['PLANNED', 'UPCOMING', 'ACTIVE'] },
           OR: [
-            { locationName: { contains: input.targetLocation, mode: 'insensitive' } },
-            { title: { contains: input.targetLocation, mode: 'insensitive' } },
+            { locationName: { contains: input.targetLocation } },
+            { title: { contains: input.targetLocation } },
           ],
         },
       });
